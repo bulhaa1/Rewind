@@ -203,10 +203,19 @@ function Body({
 
   if (state.status === 'current') {
     return (
-      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
-        <Check className="h-3 w-3 text-accent" />
-        Rewind is up to date.
-      </p>
+      <>
+        <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
+          <Check className="h-3 w-3 text-accent" />
+          Rewind is up to date.
+        </p>
+        {/* "Check again", not nothing. Without it this state is a dead end --
+            the only route to re-checking would be closing the panel and
+            reopening it, which reads as the feature having stopped working. */}
+        <Button size="sm" variant="outline" className="mt-2 w-full" onClick={onCheck}>
+          <RefreshCw className="h-3 w-3" />
+          Check again
+        </Button>
+      </>
     )
   }
 
