@@ -572,6 +572,14 @@ async function runRecordSelfTest(): Promise<void> {
 
   const seconds = Number(process.env.REWIND_SELFTEST_RECORD_SECONDS ?? '10')
 
+  // Declared out here rather than inside the try: block-scoped consts are not
+  // visible to a sibling finally, and the whole point is to reach them on the way out.
+  const realOutputPath = getSetting('outputPath')
+  const realScreenshotPath = getSetting('screenshotPath')
+
+  // app.exit() does not unwind the stack, so it cannot be called from the try.
+  let exitCode = 0
+
   try {
     log.info(`RECORD TEST: redirecting output to ${outDir}`)
     setSetting('outputPath', outDir)
@@ -613,12 +621,23 @@ async function runRecordSelfTest(): Promise<void> {
 
     await sleep(1500)
     log.info('RECORD TEST: complete')
-    app.exit(0)
+    exitCode = 0
   } catch (e) {
     log.error('RECORD TEST failed:', e)
     fs.writeFileSync(path.join(outDir, 'RECORD_DONE'), `ERROR: ${e instanceof Error ? e.message : String(e)}`)
-    app.exit(1)
+    exitCode = 1
+  } finally {
+    // See runSelfTest: these settings persist, and the process exits immediately
+    // above, so an unrestored redirect leaves the app saving into temp forever.
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore?.setOutputPath(realOutputPath).catch(() => {})
+    }
+    if (realScreenshotPath) setSetting('screenshotPath', realScreenshotPath)
+    log.info('RECORD TEST: restored the configured output folders')
   }
+
+  app.exit(exitCode)
 }
 
 /**
@@ -635,6 +654,15 @@ async function runSelfTest(): Promise<void> {
     app.exit(2)
     return
   }
+
+  // Out here, not inside the try, so the finally below can see them.
+  const realOutputPath = getSetting('outputPath')
+  const realScreenshotPath = getSetting('screenshotPath')
+
+  // `app.exit()` terminates the process immediately and does not unwind the stack,
+  // so calling it from inside the try meant the finally never ran and the settings
+  // stayed redirected. The exit is deferred until after the restore instead.
+  let exitCode = 0
 
   try {
     // Point the pipeline at the test directory and disable the game detector.
@@ -675,11 +703,30 @@ async function runSelfTest(): Promise<void> {
 
     await sleep(1500)
     log.info('SELFTEST: complete')
-    app.exit(0)
+    exitCode = 0
   } catch (e) {
     log.error('SELFTEST: failed', e)
-    app.exit(1)
+    exitCode = 1
+  } finally {
+    // Put the user's real folders back.
+    //
+    // These settings are persisted, and the process exits a few lines above, so
+    // without this a single `npm run selftest` left the app permanently writing
+    // clips and screenshots into the temp directory. Nothing warned: the app
+    // simply stopped saving where the user had asked it to, and the library view
+    // showed the handful of test files instead.
+    log.info(
+      `SELFTEST: restoring output folders (output=${realOutputPath ?? 'UNDEFINED'}, screenshots=${realScreenshotPath ?? 'UNDEFINED'})`,
+    )
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore?.setOutputPath(realOutputPath).catch(() => {})
+    }
+    if (realScreenshotPath) setSetting('screenshotPath', realScreenshotPath)
+    log.info('SELFTEST: restored the configured output folders')
   }
+
+  app.exit(exitCode)
 }
 
   for (const sig of ['SIGINT', 'SIGHUP'] as NodeJS.Signals[]) {

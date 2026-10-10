@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Circle, Square, Camera, Save, Loader2, Play } from 'lucide-react'
 import { api } from '../lib/api'
-import { Button } from './ui'
+import { Button, cn } from './ui'
 import { ScannerSweep } from './mark'
 
 /** mm:ss for the continuous recorder; hh:mm:ss once past an hour. */
@@ -111,7 +111,17 @@ export function CaptureControls({
     <div className="shrink-0 px-3 pb-3 pt-3">
       <div className="rounded-lg border border-line bg-surface">
         <div className="flex items-center gap-3 p-3">
-          <div className="relative shrink-0 text-accent">
+          <div
+            className={cn(
+              'relative shrink-0 text-accent transition-opacity duration-300',
+              // The record timer is drawn in the middle of the rings, so while it is
+              // up the sweep reads as clutter behind the digits rather than as a
+              // separate element. Fading it back makes the timer the figure and the
+              // sweep the ground. The blur is small on purpose: enough to stop the
+              // accent competing, not enough to turn it to mush.
+              recording && 'opacity-20 blur-[0.7px]',
+            )}
+          >
             <ScannerSweep active={ready || recording} size={72} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               {recording ? (

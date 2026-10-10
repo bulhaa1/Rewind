@@ -169,6 +169,32 @@ export function registerIpc(s: Services): void {
       if (replay().isReplayBufferActive()) {
         await replay().pauseReplayBuffer()
         s.status.set(OBS_STATUS_MESSAGES.paused)
+
+        /*
+         * Stopping the buffer while a continuous recording was running finishes that
+         * recording rather than discarding it. The stitching happens inside
+         * replay-buffer because it needs the output still alive; registering the file
+         * in the library and telling the renderer is this layer's job, exactly as it
+         * is for an explicit stop.
+         */
+        const finished = replay().takeFinishedOnTeardown?.() ?? null
+        if (finished) {
+          try {
+            const sourceName = capture().getCurrentSourceName()
+            const cm = require('./clip-manager.js')
+            const meta = require('./clip-meta.js')
+            const moved = cm.moveIntoSourceFolder(finished, sourceName, obsCore().getConfig().outputPath)
+            meta.setClipMeta(moved, {
+              recordedAt: Date.now(),
+              source: sourceName,
+              audioTracks: obsCore().audioTrackLabels(),
+            })
+            s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+            replayLog.info(`Recording finished because the buffer stopped: ${moved}`)
+          } catch (e) {
+            replayLog.error('Recording finished by buffer stop but could not be registered:', e)
+          }
+        }
       } else {
         await replay().startReplayBuffer(true)
         s.status.set(OBS_STATUS_MESSAGES.ready)

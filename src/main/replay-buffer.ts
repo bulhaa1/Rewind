@@ -586,7 +586,49 @@ export class ReplayBuffer {
     log.info('Replay buffer paused')
   }
 
+  /**
+   * A recording finished as a side effect of the buffer tearing down, if any.
+   *
+   * Set by `destroyRunningChain` when continuous recording was still running. The
+   * caller that asked for the buffer to stop consumes this and does the same
+   * post-processing an explicit stop would, rather than leaving the file
+   * un-registered and invisible in the library.
+   */
+  private finishedOnTeardown: string | null = null
+
+  /** Takes the recording finished by a teardown, if there was one. */
+  takeFinishedOnTeardown(): string | null {
+    const file = this.finishedOnTeardown
+    this.finishedOnTeardown = null
+    return file
+  }
+
   private async destroyRunningChain(): Promise<void> {
+    /*
+     * Continuous recording did not stop when the buffer stopped. `destroyRunningChain`
+     * set `active = false` and left `recordingActive` true, so after the user stopped
+     * the buffer the panel's record timer kept counting against OBS's own clock, and
+     * the segments already written were never joined -- they sat in scratch until the
+     * next recording overwrote them.
+     *
+     * This runs before the teardown, not after: taking the final segment needs the
+     * output still alive. It is finished properly rather than abandoned, because
+     * silently discarding minutes of footage because someone pressed the wrong button
+     * is the worse failure of the two.
+     */
+    if (this.recordingActive) {
+      try {
+        this.finishedOnTeardown = await this.stopContinuousRecording()
+      } catch (e) {
+        // Teardown must complete even if the recording cannot be finished.
+        // stopContinuousRecording clears the flag on its own failure paths, but not
+        // on every one, and a stuck flag is exactly what this exists to prevent.
+        this.recordingActive = false
+        this.cleanupScratch()
+        log.warn('Buffer stopped mid-recording; the recording could not be finished:', e)
+      }
+    }
+
     const wasActive = this.active
     this.active = false
     this.startedAt = 0
