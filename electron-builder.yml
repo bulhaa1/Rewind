@@ -6,23 +6,36 @@ directories:
   output: release
   buildResources: assets
 
-# Native modules and the OBS runtime must stay outside the asar: they contain .node
-# files and executables that can't be loaded from a virtual filesystem.
 asar: true
+
+# Native modules are already compiled against Electron's ABI by `npm run rebuild`
+# (@electron/rebuild). Letting electron-builder rebuild them itself needs Python
+# and the full toolchain, and fails outright on a machine without it -- while the
+# binaries already in node_modules are the ones the app actually loads.
+npmRebuild: false
+
 asarUnpack:
-  - node_modules/@streamlabs/obs-studio-node/**
+  # Only modules that are genuinely required out of the asar, because they hold
+  # .node binaries that cannot be loaded from a virtual filesystem.
   - node_modules/koffi/**
   - node_modules/@koromix/**
   - node_modules/uiohook-napi/**
   - node_modules/get-windows/**
   - node_modules/native-sound-mixer/**
-  - node_modules/ffmpeg-static/**
-  - node_modules/ffprobe-static/**
 
 files:
   - out/**/*
   - package.json
   - '!**/*.map'
+  # The three large packages below are shipped by extraResources and located at
+  # runtime through process.resourcesPath, never through node_modules -- see
+  # resolveFfmpeg, resolveFfprobe and resolveModulePath in obs-bind. They were
+  # previously unpacked from the asar as well, which shipped a second copy of
+  # each for no reason: about 1042 MB of duplication, including all three
+  # platforms' worth of ffprobe.
+  - '!node_modules/@streamlabs/obs-studio-node/**'
+  - '!node_modules/ffmpeg-static/**'
+  - '!node_modules/ffprobe-static/**'
 
 extraResources:
   # The main process resolves these from process.resourcesPath at runtime.
@@ -30,6 +43,8 @@ extraResources:
     to: obs-studio-node
     filter:
       - '**/*'
+      # Microsoft debug symbols: 311 MB that ships to nobody.
+      - '!**/*.pdb'
   - from: node_modules/ffmpeg-static/ffmpeg.exe
     to: ffmpeg/ffmpeg.exe
   - from: node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe
@@ -45,6 +60,20 @@ win:
   artifactName: ${productName}-${version}-setup.${ext}
   # Electron's own icon is not an .ico; point the installer at ours.
   icon: assets/favicon.ico
+  # TEMPORARY: see the note above `npmRebuild`. Stamping the icon and version
+  # metadata into Reflect.exe needs electron-builder's winCodeSign tool, whose
+  # archive contains macOS dylib symlinks. Windows refuses to create symlinks
+  # without Developer Mode or an elevated shell, and the extraction retries into
+  # a fresh directory every time, so packaging never completes there.
+  #
+  # Turning this off skips that tool entirely. The cost is that Reflect.exe keeps
+  # Electron's default icon and no version metadata in Task Manager and Programs
+  # and Features. The app's own icons are unaffected: the panel, editor window and
+  # tray all take theirs from src/main/icons.ts at runtime.
+  #
+  # Enabling Developer Mode (Settings > System > For developers) and removing this
+  # line restores exe stamping and is the real fix.
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
