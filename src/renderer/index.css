@@ -1,0 +1,185 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/geist';
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
+
+/*
+ * Reflect design tokens.
+ *
+ * A neutral graphite panel lit by a single warm signal colour, taken from the
+ * flame end of the logo. The recording state is expressed by the buffer sweep
+ * filling, not by a red dot, so nothing here competes with the arc for attention.
+ *
+ * Colour is the one place where the brand and the interface had to be reconciled
+ * rather than invented. The reasoning behind the hue choices, including why the
+ * semantic colours had to move, is in DESIGN.md. Regenerate the artwork with
+ * `npm run icons` and review the palette with `npm run palette`.
+ */
+@theme {
+  --font-sans: 'Geist Variable', 'Geist Sans', 'SF Pro Display', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-canvas: oklch(17% 0.006 285);
+  --color-surface: oklch(21% 0.008 285);
+  --color-raised: oklch(25% 0.009 285);
+  --color-line: oklch(30% 0.010 285);
+  --color-line-strong: oklch(38% 0.012 285);
+
+  --color-ink: oklch(96% 0.002 285);
+  --color-ink-muted: oklch(72% 0.008 285);
+  --color-ink-faint: oklch(58% 0.010 285);
+
+  /* Accent is the flame end of the logo: sampled from the artwork's deep orange
+     (oklch 0.692 0.120 58) and pushed to 55 so it keeps clear of both semantic
+     colours. At 80 it would have sat 25 degrees from warn; at 42 only 20 degrees
+     from danger. See DESIGN.md. */
+  --color-accent: oklch(78% 0.16 55);
+  --color-accent-dim: oklch(63% 0.14 55);
+  --color-accent-soft: oklch(78% 0.16 55 / 0.14);
+
+  /* Danger is red, and it has to stay legible as "recording" with an orange
+     accent 33 degrees away. Deepened in lightness and chroma so the pair reads
+     apart rather than as two shades of the same fire. */
+  --color-danger: oklch(62% 0.2 22);
+  /* Warn moved amber (80) to yellow (95). Amber was too close to the new accent. */
+  --color-warn: oklch(84% 0.15 95);
+
+  /* Diffuse elevation. Both of these were referenced by the menu, the toasts and
+     the notification overlay while being defined nowhere, so Tailwind emitted
+     `box-shadow: var(--shadow-raise)` against an empty custom property. That is
+     an invalid value, the declaration was dropped, and those surfaces have had no
+     elevation at all -- a menu that floats with nothing under it reads as part of
+     the panel. On a near-black canvas a tight shadow reads as a smudge rather than
+     as height, so these are wide and low-contrast: separation comes mostly from
+     the border, and the shadow only softens the join. */
+  --shadow-raise: 0 1px 2px oklch(0% 0 0 / 0.45), 0 6px 16px oklch(0% 0 0 / 0.4);
+  --shadow-pop: 0 2px 6px oklch(0% 0 0 / 0.5), 0 16px 32px oklch(0% 0 0 / 0.45);
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  /* Numeric readouts use the mono face so values do not jitter as digits change. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .rise {
+    animation: rise 0.18s ease-out;
+  }
+}
+
+/*
+ * Scrollbars.
+ *
+ * Suppressing them was a mistake on the panel, where overlay scrollbars cover a
+ * 400px surface — but Settings is a long page, and removing its scrollbar removed
+ * the only signal that Hotkeys and the encoder settings existed at all. The rule
+ * is now scoped: lists inside the panel stay clean, and anything that actually
+ * scrolls gets a thin bar drawn from the palette rather than the OS default.
+ */
+.scroll-clean {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scroll-clean::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

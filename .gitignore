@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+release/
+
+# Native rebuild artifacts
+build/
+*.node
+
+# Logs and local state
+*.log
+npm-debug.log*
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Editor scratch
+*.tmp
+*.bak

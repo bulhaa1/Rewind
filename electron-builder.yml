@@ -1,0 +1,58 @@
+appId: app.reflect.desktop
+productName: Reflect
+copyright: Reflect
+
+directories:
+  output: release
+  buildResources: assets
+
+# Native modules and the OBS runtime must stay outside the asar: they contain .node
+# files and executables that can't be loaded from a virtual filesystem.
+asar: true
+asarUnpack:
+  - node_modules/@streamlabs/obs-studio-node/**
+  - node_modules/koffi/**
+  - node_modules/@koromix/**
+  - node_modules/uiohook-napi/**
+  - node_modules/get-windows/**
+  - node_modules/native-sound-mixer/**
+  - node_modules/ffmpeg-static/**
+  - node_modules/ffprobe-static/**
+
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+
+extraResources:
+  # The main process resolves these from process.resourcesPath at runtime.
+  - from: node_modules/@streamlabs/obs-studio-node
+    to: obs-studio-node
+    filter:
+      - '**/*'
+  - from: node_modules/ffmpeg-static/ffmpeg.exe
+    to: ffmpeg/ffmpeg.exe
+  - from: node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe
+    to: ffprobe/ffprobe.exe
+  - from: assets/favicon.ico
+    to: favicon.ico
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-setup.${ext}
+  # Electron's own icon is not an .ico; point the installer at ours.
+  icon: assets/favicon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Reflect
+
+# No update server: Reflect is fully offline, so auto-update is deliberately absent.
+publish: null
