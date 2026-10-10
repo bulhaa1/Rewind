@@ -26,6 +26,10 @@ No unnecessary distractions. No cloud dependency. Just your gameplay, captured l
 
 Rewind — Play. Capture. Keep.
 
+## Preview
+
+<img width="603" height="986" alt="Screenshot 2026-10-11 012117" src="https://github.com/user-attachments/assets/8557028b-d783-438c-9607-09bb00915286" /> <img width="582" height="676" alt="Screenshot 2026-10-11 012149" src="https://github.com/user-attachments/assets/f884d4ab-0960-432f-8143-48b2a185992c" /> <img width="613" height="493" alt="Screenshot 2026-10-11 012221" src="https://github.com/user-attachments/assets/cd81f6db-64b1-4af2-a5a0-e0b1827fad73" /> <img width="1189" height="862" alt="Screenshot 2026-10-11 012335" src="https://github.com/user-attachments/assets/54c58e90-1aed-4f63-bd65-887439bccbce" /> 
+
 ## Install
 
 Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
