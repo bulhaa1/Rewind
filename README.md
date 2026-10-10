@@ -1,12 +1,30 @@
 # Rewind
 
-A lightweight replay buffer for Windows. It keeps the last few seconds on a
-rolling buffer so you can pull out a moment *after* it happened — hotkey-driven
-and tray-resident.
+Have you ever wanted a simple, lightweight way to clip your gameplay or take screenshots without a bulky overlay, unnecessary background processes, or an app that gets in the way?
 
-Built on OBS Studio's engine (`obs-studio-node`). None of OBS's concepts appear on
-the surface: you press a key, you get a clip.
+Rewind is built for exactly that.
 
+Modern capture tools like NVIDIA ShadowPlay and AMD Radeon ReLive offer convenient recording features, but they can introduce overhead and come with extra software and features you may not need. In competitive gaming, every frame and every millisecond matters. You shouldn't have to sacrifice performance or clutter your desktop just to save a great moment.
+
+Rewind takes a different approach: keep it lightweight, stay out of the way, and capture what matters.
+
+🎮 Instant Replay — Save those incredible plays, clutch rounds, and unexpected moments without recording your entire session manually.
+
+📹 Screen and Game Recording — Start recording when you need it and stop when you're done.
+
+📸 Quick Screenshots — Capture important moments with minimal interruption.
+
+✂️ Local Clip Management — Browse, organize, and edit your clips without relying on a cloud service.
+
+🔒 Privacy First — Your recordings stay on your drive. No account required, no cloud uploads, and no telemetry. Your gameplay is yours.
+
+⚡ Designed to Stay Out of the Way — A compact, unobtrusive experience focused on doing the job without unnecessary overlays or background clutter.
+
+Rewind is built around a simple idea: your capture software should work for you, not get in your way.
+
+No unnecessary distractions. No cloud dependency. Just your gameplay, captured locally.
+
+Rewind — Play. Capture. Keep.
 
 ## Install
 
