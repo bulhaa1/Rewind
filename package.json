@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
-  "author": "Rewind",
+  "author": {
+    "name": "Rewind",
+    "url": "https://github.com/bulhaa1/Rewind"
+  },
   "license": "GPL-2.0-or-later",
   "private": true,
   "scripts": {
@@ -57,5 +60,10 @@
     "tailwindcss": "^4.1.14",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bulhaa1/Rewind.git"
+  },
+  "homepage": "https://github.com/bulhaa1/Rewind"
 }
