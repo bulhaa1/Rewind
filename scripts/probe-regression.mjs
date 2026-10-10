@@ -20,7 +20,7 @@ export default async function ({ evaluate, drainErrors }) {
   check('save clip', saved === true)
   await new Promise((r) => setTimeout(r, 4000))
 
-  // 4. library reflects it
+  // 4. library rewinds it
   const clips = await call(`window.electronAPI.getSavedClips().then(r => r.data.length)`)
   check('clip library non-empty', clips > 0, `${clips} clips`)
 

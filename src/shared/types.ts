@@ -1,7 +1,7 @@
 /**
  * Types shared between the main process and the renderer.
  *
- * Reflect is local-only, so there is no account, sync or telemetry surface to
+ * Rewind is local-only, so there is no account, sync or telemetry surface to
  * represent here. Every IPC channel returns an `IpcResult` envelope rather than a
  * bare value, so the renderer never has to guess whether a transport-level failure
  * happened or a handler simply returned nothing.
@@ -176,7 +176,7 @@ export interface CaptureSourceState {
 }
 
 /** Push events emitted from main -> renderer. */
-export interface ReflectEvents {
+export interface RewindEvents {
   'obs-status': { status: ObsStatus; message?: string }
   'clip-saved': { clipPath?: string }
   'screenshot-saved': { path: string }
@@ -186,4 +186,4 @@ export interface ReflectEvents {
   'auth-session-preloaded': unknown
 }
 
-export type ReflectEventName = keyof ReflectEvents
+export type RewindEventName = keyof RewindEvents

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Opens a specific clip in the editor and reports whether it actually plays.
  *
  * The other editor probes open whichever clip the library happens to hold, which
@@ -7,7 +7,7 @@
  *
  *   node scripts/cdp.mjs scripts/probe-editor-clip.mjs
  */
-const TARGET = process.env.REFLECT_PROBE_CLIP ?? 'Editor Test Recording.mp4'
+const TARGET = process.env.REWIND_PROBE_CLIP ?? 'Editor Test Recording.mp4'
 
 export default async function ({ evaluate, drainErrors }) {
   const opened = await evaluate(`

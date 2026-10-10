@@ -44,7 +44,7 @@ export class IpcError extends Error {
  * renamed or removed IPC method becomes a compile error in the renderer instead of
  * a runtime `undefined is not a function`.
  */
-export interface ReflectApi {
+export interface RewindApi {
   // Replay
   saveReplay(): Promise<IpcResult<string>>
   takeScreenshot(): Promise<IpcResult<string>>
@@ -171,13 +171,13 @@ export interface ReflectApi {
   on(event: 'play-notification-sound', handler: () => void): () => void
 }
 
-const bridge = (window as unknown as { electronAPI?: ReflectApi }).electronAPI
+const bridge = (window as unknown as { electronAPI?: RewindApi }).electronAPI
 
 if (!bridge) {
-  throw new Error('Reflect preload bridge is missing; the renderer was loaded without its preload script')
+  throw new Error('Rewind preload bridge is missing; the renderer was loaded without its preload script')
 }
 
-export const api: ReflectApi = bridge
+export const api: RewindApi = bridge
 /** Human-readable message for any thrown value. */
 export function messageOf(e: unknown, fallback = 'Something went wrong'): string {
   if (e instanceof IpcError) return e.message

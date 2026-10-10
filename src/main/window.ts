@@ -10,7 +10,7 @@ const crashLog = scope('Crash')
 
 const PRELOAD = path.join(__dirname, '../preload/index.js')
 const RENDERER_DIR = path.join(__dirname, '../renderer')
-const DEV_URL = process.env.REFLECT_DEV_SERVER
+const DEV_URL = process.env.REWIND_DEV_SERVER
 
 const MAIN_WIDTH = 400
 const MAIN_HEIGHT = 550
@@ -104,7 +104,7 @@ function startCrashReporter(): void {
 /**
  * Locks down the renderer with a strict CSP.
  *
- * Reflect is offline by design, so `connect-src` permits nothing remote. Dev mode
+ * Rewind is offline by design, so `connect-src` permits nothing remote. Dev mode
  * widens script/connect only for the Vite server.
  */
 function applyContentSecurityPolicy(): void {
@@ -121,7 +121,7 @@ function applyContentSecurityPolicy(): void {
         'Content-Security-Policy': [
           `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; ` +
           `img-src 'self' data:; font-src 'self' data:; ${connectSrc}; ` +
-          `media-src 'self' file: reflect-clip:; object-src 'none'; base-uri 'self'; ` +
+          `media-src 'self' file: rewind-clip:; object-src 'none'; base-uri 'self'; ` +
           `form-action 'self'; frame-ancestors 'none';`,
         ],
       },
@@ -146,7 +146,7 @@ function acquireSingleInstanceLock(onReady: () => void): void {
 
   app.on('second-instance', (_e, argv) => {
     log.info('Second instance detected')
-    const protocolArg = argv.find((a) => a.startsWith('reflect://'))
+    const protocolArg = argv.find((a) => a.startsWith('rewind://'))
     if (protocolArg) log.info(`Protocol activation: ${protocolArg}`)
     showMainWindow()
   })
@@ -235,7 +235,7 @@ export function showMainWindow(): void {
  */
 function createTray(handlers: { onShow: () => void; onSaveClip: () => Promise<void>; onQuit: () => void }): Tray {
   const t = new Tray(appIcon())
-  t.setToolTip('Reflect - Replay Buffer')
+  t.setToolTip('Rewind - Replay Buffer')
 
   const menu = Menu.buildFromTemplate([
     { label: 'Show', click: handlers.onShow },
@@ -279,7 +279,7 @@ export function bootstrap(hooks: {
 
   acquireSingleInstanceLock(() => {
     app.whenReady().then(async () => {
-      log.info(`Reflect v${app.getVersion()} starting (pid ${process.pid})`)
+      log.info(`Rewind v${app.getVersion()} starting (pid ${process.pid})`)
       reportPreviousCrashDumps()
 
       // Needs a live session: `session.defaultSession` throws before app-ready.

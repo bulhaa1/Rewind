@@ -1,4 +1,4 @@
-﻿/** Changes the encoder setting through the UI and reports whether the app survives. */
+/** Changes the encoder setting through the UI and reports whether the app survives. */
 export default async function ({ evaluate, drainErrors }) {
   await new Promise((r) => setTimeout(r, 1500))
 
@@ -9,7 +9,7 @@ export default async function ({ evaluate, drainErrors }) {
 
   console.log('before      :', await ping(5000))
 
-  const target = process.env.REFLECT_PROBE_ENCODER ?? 'x264'
+  const target = process.env.REWIND_PROBE_ENCODER ?? 'x264'
   console.log('changing encoder to', target)
   const started = Date.now()
   const res = await evaluate(`

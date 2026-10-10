@@ -4,15 +4,15 @@
  * Encoder tables, timing constants and the audio topology are the numbers the
  * pipeline is actually specified by, so they live in one reviewable place instead
  * of being scattered through the encoder and buffer code. Changing a value here is
- * a deliberate change to how Reflect behaves, not a refactor.
+ * a deliberate change to how Rewind behaves, not a refactor.
  */
 import type { CaptureMode, EncoderVendor, VideoCodec } from './types.js'/** OBS source names. These three exist purely to satisfy the 0.25 replay-buffer API. */
 export const OBS_SOURCE_NAMES = {
-  replayEncoder: 'reflect-replay-encoder',
-  recordingPlaceholder: 'reflect-recording-placeholder',
-  recordingOutputEncoder: 'reflect-recording-output-encoder',
-  recordingService: 'reflect-recording-service',
-  streamingService: 'reflect-stream-service',
+  replayEncoder: 'rewind-replay-encoder',
+  recordingPlaceholder: 'rewind-recording-placeholder',
+  recordingOutputEncoder: 'rewind-recording-output-encoder',
+  recordingService: 'rewind-recording-service',
+  streamingService: 'rewind-stream-service',
 } as const
 
 export const DEFAULT_SETTINGS = {

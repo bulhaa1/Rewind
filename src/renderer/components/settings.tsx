@@ -605,7 +605,7 @@ function StartupSection() {
       <SettingSwitchRow
         binding={SETTINGS.launchOnStartup}
         label="Launch on startup"
-        description="Automatically start Reflect when you log in to Windows"
+        description="Automatically start Rewind when you log in to Windows"
       />
     </Section>
   )
@@ -865,5 +865,5 @@ function VersionFooter() {
     queryFn: async () => read(api.getAppVersion(), ''),
     staleTime: Infinity,
   })
-  return <div className="pb-4 pt-2 text-center text-[11px] text-ink-faint">Reflect v{data}</div>
+  return <div className="pb-4 pt-2 text-center text-[11px] text-ink-faint">Rewind v{data}</div>
 }

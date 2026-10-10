@@ -218,7 +218,7 @@ export function ClipList({
   const reveal = useCallback(
     async (clip: ClipInfo) => {
       const res = await api.showClipInFolder(clip.path)
-      if (!res.success) window.dispatchEvent(new CustomEvent('reflect:refresh-clips'))
+      if (!res.success) window.dispatchEvent(new CustomEvent('rewind:refresh-clips'))
     },
     [],
   )

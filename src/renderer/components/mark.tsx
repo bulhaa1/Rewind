@@ -1,5 +1,5 @@
 /*
- * Reflect mark.
+ * Rewind mark.
  *
  * The dial from the brand artwork: a ring with a play triangle, which is what the
  * app actually does -- it holds the last few seconds and hands them back.
@@ -15,7 +15,7 @@
  */
 import markUrl from '@assets/icon/icon-32.png'
 
-export function ReflectMark({ className = 'h-6 w-6' }: { className?: string }) {
+export function RewindMark({ className = 'h-6 w-6' }: { className?: string }) {
   return <img src={markUrl} alt="" aria-hidden className={className} draggable={false} />
 }
 

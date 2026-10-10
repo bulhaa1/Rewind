@@ -203,7 +203,7 @@ export async function probeClip(file: string): Promise<ClipProbe | null> {
  * Screenshot grab.
  *
  * gdigrab runs first, contrary to the original's ddagrab-first approach: Desktop
- * Duplication permits only a few concurrent sessions and Reflect already holds one
+ * Duplication permits only a few concurrent sessions and Rewind already holds one
  * through OBS's display capture, so ddagrab can stall. gdigrab uses GDI and is
  * unaffected. ddagrab remains as a fallback.
  *

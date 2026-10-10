@@ -14,7 +14,7 @@ import fs from 'node:fs'
  * `process.resourcesPath/favicon.ico`.
  *
  * The tray then fell through its `isEmpty()` guard to `nativeImage.createEmpty()`,
- * so an installed Reflect showed a blank tray icon on the one surface the app is
+ * so an installed Rewind showed a blank tray icon on the one surface the app is
  * always running on. Nothing errored. This mirrors `resolveFfmpeg()`, which
  * already branches on `app.isPackaged` for exactly this reason.
  */

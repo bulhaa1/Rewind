@@ -19,7 +19,7 @@ export const EXCLUDED_PROCESSES = new Set([
   'conhost', 'devenv', 'idea64', 'rider64', 'webstorm64', 'pycharm64', 'clion64',
   'sublime_text', 'notepad++', 'atom', 'cursor', 'discord', 'spotify', 'slack', 'teams',
   'zoom', 'telegram', 'signal', 'whatsapp', 'skype', 'vlc', 'mpc-hc', 'mpc-hc64', 'mpv',
-  'wmplayer', 'potplayer', 'potplayermini64', 'foobar2000', 'electron', 'reflect', 'obs64',
+  'wmplayer', 'potplayer', 'potplayermini64', 'foobar2000', 'electron', 'rewind', 'obs64',
   'obs32', 'streamlabs', 'explorer', 'dwm', 'shellexperiencehost', 'searchhost',
   'systemsettings', 'applicationframehost', 'textinputhost', 'lockapp',
   'startmenuexperiencehost', 'searchui', 'cortana', 'taskmgr', 'snippingtool', 'widgets',
@@ -40,7 +40,7 @@ type WindowLike = {
   bounds: Electron.Rectangle
 }
 
-/** The two entry points Reflect uses from the `get-windows` package. */
+/** The two entry points Rewind uses from the `get-windows` package. */
 interface WindowsApi {
   activeWindow(): Promise<WindowLike>
   openWindows(): Promise<WindowLike[]>

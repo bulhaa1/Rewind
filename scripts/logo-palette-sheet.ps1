@@ -68,7 +68,7 @@ $fontMono = New-Object System.Drawing.Font 'Consolas', 8
 $bTitle = New-Object System.Drawing.SolidBrush $INK
 $bMuted = New-Object System.Drawing.SolidBrush $INK_MUTED
 
-$g.DrawString('Reflect - proposed palette, drawn on the app canvas', $fontTitle, $bTitle, 28, 24)
+$g.DrawString('Rewind - proposed palette, drawn on the app canvas', $fontTitle, $bTitle, 28, 24)
 
 function Draw-Row($x, $y, $label, $swatches, $width) {
   $g.DrawString($label, $fontBody, $bMuted, $x, ($y - 18))

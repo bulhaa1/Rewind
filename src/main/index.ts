@@ -28,7 +28,7 @@ const protocolLog = scope('ClipProtocol')
 // Custom protocol
 // ---------------------------------------------------------------------------
 
-const CLIP_SCHEME = 'reflect-clip'
+const CLIP_SCHEME = 'rewind-clip'
 let previewRoot = ''
 
 /**
@@ -56,7 +56,7 @@ function declareClipScheme(): void {
  * Must be called after the app is ready — `protocol.handle` throws otherwise.
  */
 function registerClipProtocol(): void {
-  previewRoot = path.join(os.tmpdir(), 'reflect-editor-preview')
+  previewRoot = path.join(os.tmpdir(), 'rewind-editor-preview')
 
   // Must use the shared resolver: `outputPath` is empty until the user picks a
   // folder, and comparing against it rejected every request — which surfaced in the
@@ -465,8 +465,8 @@ function main(): void {
   declareClipScheme()
 
   process.defaultApp
-    ? app.setAsDefaultProtocolClient('reflect', process.execPath, [path.resolve(process.argv[1])])
-    : app.setAsDefaultProtocolClient('reflect')
+    ? app.setAsDefaultProtocolClient('rewind', process.execPath, [path.resolve(process.argv[1])])
+    : app.setAsDefaultProtocolClient('rewind')
 
   // Everything below needs a live app: `app.getPath('videos')` (default output
   // location), the session, and the `screen` module all throw before ready.
@@ -506,9 +506,9 @@ function main(): void {
     screen.on('display-removed', invalidateDisplays)
     screen.on('display-metrics-changed', invalidateDisplays)
 
-    if (process.env.REFLECT_SELFTEST === '1') void runSelfTest()
-    if (process.env.REFLECT_SELFTEST_RECORD === '1') void runRecordSelfTest()
-    if (process.env.REFLECT_SELFTEST_SETTINGS === '1') void runSettingsSelfTest()
+    if (process.env.REWIND_SELFTEST === '1') void runSelfTest()
+    if (process.env.REWIND_SELFTEST_RECORD === '1') void runRecordSelfTest()
+    if (process.env.REWIND_SELFTEST_SETTINGS === '1') void runSettingsSelfTest()
   })
 
 /**
@@ -520,7 +520,7 @@ function main(): void {
  */
 async function runSettingsSelfTest(): Promise<void> {
   if (!replay || !services) {
-    log.error('REFLECT_SELFTEST_SETTINGS set without a replay buffer or services')
+    log.error('REWIND_SELFTEST_SETTINGS set without a replay buffer or services')
     app.exit(2)
     return
   }
@@ -545,7 +545,7 @@ async function runSettingsSelfTest(): Promise<void> {
     await time('full reinit', () => services.reinitPipeline())
     await time('full reinit (2nd)', () => services.reinitPipeline())
 
-    fs.writeFileSync(path.join(app.getPath('temp'), 'reflect-settings-timing.txt'), 'done')
+    fs.writeFileSync(path.join(app.getPath('temp'), 'rewind-settings-timing.txt'), 'done')
     log.info('SETTINGS TIMING: complete')
     app.exit(0)
   } catch (e) {
@@ -563,14 +563,14 @@ async function runSettingsSelfTest(): Promise<void> {
  * button calls, so a pass means the button's path works.
  */
 async function runRecordSelfTest(): Promise<void> {
-  const outDir = process.env.REFLECT_SELFTEST_OUT
+  const outDir = process.env.REWIND_SELFTEST_OUT
   if (!outDir || !replay) {
-    log.error('REFLECT_SELFTEST_RECORD set without an output directory or replay buffer')
+    log.error('REWIND_SELFTEST_RECORD set without an output directory or replay buffer')
     app.exit(2)
     return
   }
 
-  const seconds = Number(process.env.REFLECT_SELFTEST_RECORD_SECONDS ?? '10')
+  const seconds = Number(process.env.REWIND_SELFTEST_RECORD_SECONDS ?? '10')
 
   try {
     log.info(`RECORD TEST: redirecting output to ${outDir}`)
@@ -583,7 +583,7 @@ async function runRecordSelfTest(): Promise<void> {
 
     // Apply the requested frame rate so the harness can verify the real output
     // rate rather than whatever was left over from a previous run.
-    const wantFps = Number(process.env.REFLECT_SELFTEST_FPS ?? '0')
+    const wantFps = Number(process.env.REWIND_SELFTEST_FPS ?? '0')
     if (wantFps) {
       log.info(`RECORD TEST: requesting ${wantFps} fps`)
       setSetting('fps', wantFps)
@@ -596,7 +596,7 @@ async function runRecordSelfTest(): Promise<void> {
     await replay.startContinuousRecording()
     log.info('RECORD TEST: recording =', replay.isRecordingContinuously())
 
-    if (process.env.REFLECT_SELFTEST_AUDIO === '1') {
+    if (process.env.REWIND_SELFTEST_AUDIO === '1') {
       log.info('RECORD TEST: signalling harness to play tone')
       fs.writeFileSync(path.join(outDir, 'PLAY_TONE'), String(Date.now()))
     }
@@ -624,14 +624,14 @@ async function runRecordSelfTest(): Promise<void> {
 /**
  * Drives the real save/screenshot/library paths and exits.
  *
- * Only runs when REFLECT_SELFTEST is set, so it is inert in normal use. It
+ * Only runs when REWIND_SELFTEST is set, so it is inert in normal use. It
  * deliberately goes through `saveClipAndNotify` / `takeScreenshot` rather than
  * reimplementing them, so a pass means the shipped path works.
  */
 async function runSelfTest(): Promise<void> {
-  const outDir = process.env.REFLECT_SELFTEST_OUT
+  const outDir = process.env.REWIND_SELFTEST_OUT
   if (!outDir) {
-    log.error('REFLECT_SELFTEST set but REFLECT_SELFTEST_OUT is missing')
+    log.error('REWIND_SELFTEST set but REWIND_SELFTEST_OUT is missing')
     app.exit(2)
     return
   }
@@ -653,9 +653,9 @@ async function runSelfTest(): Promise<void> {
     log.info('SELFTEST: accumulating 30s of footage...')
     await sleep(30_000)
 
-    // With REFLECT_SELFTEST_AUDIO set, ask the harness to play a tone now so the
+    // With REWIND_SELFTEST_AUDIO set, ask the harness to play a tone now so the
     // saved clip can be checked for real signal rather than just a valid stream.
-    if (process.env.REFLECT_SELFTEST_AUDIO === '1') {
+    if (process.env.REWIND_SELFTEST_AUDIO === '1') {
       log.info('SELFTEST: signalling harness to play tone')
       fs.writeFileSync(path.join(outDir, 'PLAY_TONE'), String(Date.now()))
       await sleep(14_000)

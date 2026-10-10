@@ -127,7 +127,7 @@ export function notify(type: BufferStatus, deps: NotifyDeps, message?: string): 
     win.moveTop()
   })
 
-  const devUrl = process.env.REFLECT_DEV_SERVER
+  const devUrl = process.env.REWIND_DEV_SERVER
   const indexHtml = path.join(deps.rendererDir, 'index.html')
   const query = message ? `?notification=${type}&message=${encodeURIComponent(message)}` : `?notification=${type}`
 

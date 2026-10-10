@@ -24,7 +24,7 @@ async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string
  * The main panel.
  *
  * Three bands: capture controls, the media library, and a status strip. Everything
- * is local — Reflect has no account, no sync state and no network calls.
+ * is local — Rewind has no account, no sync state and no network calls.
  */
 export function HomePage() {
   const client = useQueryClient()
@@ -129,7 +129,7 @@ export function HomePage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <Header title="Reflect" />
+      <Header title="Rewind" />
 
       <CaptureControls
         status={status}
@@ -245,7 +245,7 @@ function StatusStrip({ status, message }: { status: string; message?: string }) 
   )
 }
 
-/** Confirmation for destructive deletes. Reflect keeps no cloud copy to fall back on. */
+/** Confirmation for destructive deletes. Rewind keeps no cloud copy to fall back on. */
 function ConfirmDelete({
   target,
   onClose,

@@ -20,7 +20,7 @@ const electron = require('electron')
 const ffmpeg = path.join(projectRoot, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
 const ffprobe = path.join(projectRoot, 'node_modules', 'ffprobe-static', 'bin', 'win32', 'x64', 'ffprobe.exe')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\reflect-recordtest'
+const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-recordtest'
 const TONE = path.join(OUT, 'tone.wav')
 
 const FPS = Number(process.argv[2] ?? '120')
@@ -44,11 +44,11 @@ const child = spawn(electron, ['.'], {
   cwd: projectRoot,
   env: {
     ...process.env,
-    REFLECT_SELFTEST_RECORD: '1',
-    REFLECT_SELFTEST_OUT: OUT,
-    REFLECT_SELFTEST_RECORD_SECONDS: String(SECONDS),
-    REFLECT_SELFTEST_FPS: String(FPS),
-    REFLECT_SELFTEST_AUDIO: '1',
+    REWIND_SELFTEST_RECORD: '1',
+    REWIND_SELFTEST_OUT: OUT,
+    REWIND_SELFTEST_RECORD_SECONDS: String(SECONDS),
+    REWIND_SELFTEST_FPS: String(FPS),
+    REWIND_SELFTEST_AUDIO: '1',
   },
 })
 

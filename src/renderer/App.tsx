@@ -13,7 +13,7 @@ import { RestartOverlay } from './components/restart-overlay'
 /**
  * Chooses which surface to render.
  *
- * All three Reflect windows load this same entry point; they are distinguished by
+ * All three Rewind windows load this same entry point; they are distinguished by
  * query string rather than by route:
  *
  *   (none)                    the main panel, hash-routed

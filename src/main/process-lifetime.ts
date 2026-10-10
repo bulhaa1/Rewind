@@ -5,7 +5,7 @@ const log = scope('ProcessLifetime')
 
 /**
  * Binds spawned children (obs64.exe) to a Win32 job object with
- * JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE so they terminate when Reflect exits.
+ * JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE so they terminate when Rewind exits.
  *
  * Without this a crash or force-kill leaves an orphaned obs64 holding the capture
  * device, which blocks the next launch.

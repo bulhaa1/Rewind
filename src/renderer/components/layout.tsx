@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react'
 import { ChevronLeft, Settings as SettingsIcon } from 'lucide-react'
-import { ReflectMark } from './mark'
+import { RewindMark } from './mark'
 import { cn } from './ui'
 
 /** Top bar shared by the panel and settings. */
@@ -39,7 +39,7 @@ export function Header({
         </button>
       ) : (
         <span className="text-accent">
-          <ReflectMark className="h-[18px] w-[18px]" />
+          <RewindMark className="h-[18px] w-[18px]" />
         </span>
       )}
 

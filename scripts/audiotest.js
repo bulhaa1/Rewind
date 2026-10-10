@@ -1,7 +1,7 @@
 /**
  * End-to-end audio test.
  *
- * Plays a known 1kHz tone through the default output device while Reflect records,
+ * Plays a known 1kHz tone through the default output device while Rewind records,
  * then measures the saved clip. This distinguishes "the capture chain is broken"
  * from "the machine happened to be silent", which a quiet test run cannot tell apart.
  */
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\reflect-audiotest'
+const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-audiotest'
 const TONE = path.join(OUT, 'tone.wav')
 const ffmpeg = path.join(projectRoot, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
 const electron = require('electron')
@@ -59,7 +59,7 @@ async function main() {
   const child = spawn(electron, ['.'], {
     stdio: ['ignore', 'ignore', 'ignore'],
     cwd: projectRoot,
-    env: { ...process.env, REFLECT_SELFTEST: '1', REFLECT_SELFTEST_OUT: OUT, REFLECT_SELFTEST_AUDIO: '1' },
+    env: { ...process.env, REWIND_SELFTEST: '1', REWIND_SELFTEST_OUT: OUT, REWIND_SELFTEST_AUDIO: '1' },
   })
 
   const guard = setTimeout(() => {

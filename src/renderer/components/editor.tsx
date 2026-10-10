@@ -11,7 +11,7 @@ interface ClipInfo {
 
 /** Maps the clip path to the privileged scheme the renderer can stream from. */
 function clipUrl(filePath: string): string {
-  return `reflect-clip://local/${encodeURIComponent(filePath)}`
+  return `rewind-clip://local/${encodeURIComponent(filePath)}`
 }
 
 /**

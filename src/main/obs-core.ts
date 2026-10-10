@@ -25,9 +25,9 @@ export interface ObsConfig {
   outputResolution: 'native' | '1080p' | '720p'
 }
 
-/** Default output root: `<Videos>/Reflect`. */
+/** Default output root: `<Videos>/Rewind`. */
 export function defaultOutputPath(): string {
-  return path.join(app.getPath('videos'), 'Reflect')
+  return path.join(app.getPath('videos'), 'Rewind')
 }
 
 /** Scales the canvas down to a 16:9 ceiling, preserving aspect and even dimensions. */
@@ -186,7 +186,7 @@ export class ObsCore {
 
     // Host our own IPC pipe so we own the obs64 child process. The counter lets a
     // reinit reuse the same name without colliding with the previous instance.
-    const pipe = `reflect-${process.pid}-${++this.pipeCounter}`
+    const pipe = `rewind-${process.pid}-${++this.pipeCounter}`
     log.info(`Hosting OBS IPC pipe: ${pipe}`)
     mod.NodeObs.IPC.host(pipe)
 
@@ -271,7 +271,7 @@ export class ObsCore {
       const section = getSettingSection('Audio')
       setSettingValue(section, 'SampleRate', '44100')
       setSettingValue(section, 'ChannelSetup', 'Stereo')
-      // Disable the legacy OBS device routing; Reflect binds devices per-source.
+      // Disable the legacy OBS device routing; Rewind binds devices per-source.
       for (const name of ['Desktop1Device', 'Desktop2Device', 'AuxDevice1', 'AuxDevice2', 'AuxDevice3', 'AuxDevice4']) {
         setSettingValue(section, name, 'disabled')
       }

@@ -18,7 +18,7 @@ import { log as mainLog } from './logger.js'
 const log = scope('ClipEditor')
 const winLog = scope('EditorWindow')
 
-const PREVIEW_DIR = path.join(require('os').tmpdir(), 'reflect-editor-preview')
+const PREVIEW_DIR = path.join(require('os').tmpdir(), 'rewind-editor-preview')
 const FFMPEG_MAP = ['-map', '0:v:0', '-map', '0:a?']
 
 /** Active ffmpeg children, killed if the editor window dies mid-operation. */
@@ -436,7 +436,7 @@ export function openEditorWindow(clipPath: string, preloadPath: string, renderer
     show: false,
     frame: true,
     resizable: true,
-    title: 'Reflect: Edit Clip',
+    title: 'Rewind: Edit Clip',
     backgroundColor: '#0a0a0a',
     webPreferences: {
       preload: preloadPath,
@@ -455,7 +455,7 @@ export function openEditorWindow(clipPath: string, preloadPath: string, renderer
     editorWindow?.focus()
   })
 
-  const devUrl = process.env.REFLECT_DEV_SERVER
+  const devUrl = process.env.REWIND_DEV_SERVER
   const indexHtml = path.join(rendererDir, 'index.html')
   const query = `?editor=1&clipPath=${encodeURIComponent(clipPath)}`
 

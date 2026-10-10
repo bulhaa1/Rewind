@@ -7,7 +7,7 @@ type Level = 'info' | 'warn' | 'error'
 /**
  * Minimal append-only logger writing to `<userData>/logs/main.log`.
  *
- * Deliberately dependency-free: Reflect has no telemetry, and a self-contained
+ * Deliberately dependency-free: Rewind has no telemetry, and a self-contained
  * logger keeps that guarantee structural rather than a matter of configuration.
  */
 class Logger {

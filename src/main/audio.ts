@@ -31,7 +31,7 @@ const APP_SOURCE_WINDOW_PROP = 'window'
 const APP_SOURCE_PRIORITY = 2
 
 /** Never offer our own processes as per-app capture targets. */
-const SELF_EXECUTABLES = new Set(['obs64', 'reflect', 'electron'])
+const SELF_EXECUTABLES = new Set(['obs64', 'rewind', 'electron'])
 
 const KINDS: DeviceKind[] = ['output', 'input']
 

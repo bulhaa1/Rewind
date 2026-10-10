@@ -1,6 +1,6 @@
-appId: app.reflect.desktop
-productName: Reflect
-copyright: Reflect
+appId: app.rewind.desktop
+productName: Rewind
+copyright: Rewind
 
 directories:
   output: release
@@ -61,12 +61,12 @@ win:
   # Electron's own icon is not an .ico; point the installer at ours.
   icon: assets/favicon.ico
   # TEMPORARY: see the note above `npmRebuild`. Stamping the icon and version
-  # metadata into Reflect.exe needs electron-builder's winCodeSign tool, whose
+  # metadata into Rewind.exe needs electron-builder's winCodeSign tool, whose
   # archive contains macOS dylib symlinks. Windows refuses to create symlinks
   # without Developer Mode or an elevated shell, and the extraction retries into
   # a fresh directory every time, so packaging never completes there.
   #
-  # Turning this off skips that tool entirely. The cost is that Reflect.exe keeps
+  # Turning this off skips that tool entirely. The cost is that Rewind.exe keeps
   # Electron's default icon and no version metadata in Task Manager and Programs
   # and Features. The app's own icons are unaffected: the panel, editor window and
   # tray all take theirs from src/main/icons.ts at runtime.
@@ -81,7 +81,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Reflect
+  shortcutName: Rewind
 
-# No update server: Reflect is fully offline, so auto-update is deliberately absent.
+# No update server: Rewind is fully offline, so auto-update is deliberately absent.
 publish: null

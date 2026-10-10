@@ -36,7 +36,7 @@ const electronBin = require('electron')
 const child = spawn(electronBin, ['.'], {
   stdio: 'inherit',
   cwd: projectRoot,
-  env: { ...process.env, REFLECT_DEV_SERVER: devUrl },
+  env: { ...process.env, REWIND_DEV_SERVER: devUrl },
 })
 
 child.on('exit', (code) => {

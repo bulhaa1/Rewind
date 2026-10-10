@@ -153,4 +153,4 @@ api.on = (event: string, handler: (...args: any[]) => void): (() => void) => {
 
 contextBridge.exposeInMainWorld('electronAPI', api)
 
-export type ReflectApi = typeof api
+export type RewindApi = typeof api

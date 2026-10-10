@@ -598,7 +598,7 @@ export function registerIpc(s: Services): void {
     if (typeof url !== 'string' || url.length === 0) return ok()
     try {
       const parsed = new URL(url)
-      // Reflect is offline; refuse anything that isn't plain web navigation.
+      // Rewind is offline; refuse anything that isn't plain web navigation.
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
         note(`Blocked open-external with non-http protocol: ${parsed.protocol}`)
         return ok()
@@ -1214,7 +1214,7 @@ export async function takeScreenshot(s: Services): Promise<string> {
  *
  * `outputPath` is empty until the user picks a folder, so it must resolve to the
  * same default the recorder used. When these two disagreed, clips were written to
- * `<Videos>\Reflect` while every path guard compared against `''`, which made the
+ * `<Videos>\Rewind` while every path guard compared against `''`, which made the
  * library look empty and rejected every thumbnail, open and delete.
  */
 export function outputRoot(): string {

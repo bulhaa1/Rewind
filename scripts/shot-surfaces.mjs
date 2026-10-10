@@ -1,6 +1,6 @@
-﻿import fs from 'node:fs'
+import fs from 'node:fs'
 import path from 'node:path'
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\reflect-shots'
+const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-shots'
 fs.mkdirSync(OUT, { recursive: true })
 
 const send = (ws, id, method, params = {}) => new Promise((resolve) => {

@@ -1,7 +1,7 @@
 /**
  * End-to-end self test.
  *
- * Launches Reflect, waits for the replay buffer to fill, then drives the real
+ * Launches Rewind, waits for the replay buffer to fill, then drives the real
  * save, screenshot and library paths through the same functions the UI uses, and
  * reports what actually landed on disk.
  *
@@ -20,8 +20,8 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\reflect-selftest'
-const LOG = path.join(process.env.APPDATA || '', 'Reflect', 'logs', 'main.log')
+const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-selftest'
+const LOG = path.join(process.env.APPDATA || '', 'Rewind', 'logs', 'main.log')
 
 function reset() {
   try {
@@ -40,19 +40,19 @@ const electron = require('electron')
 const child = spawn(electron, ['.', '--selftest'], {
   stdio: ['ignore', 'inherit', 'inherit'],
   cwd: projectRoot,
-  env: { ...process.env, REFLECT_SELFTEST: '1', REFLECT_SELFTEST_OUT: OUT },
+  env: { ...process.env, REWIND_SELFTEST: '1', REWIND_SELFTEST_OUT: OUT },
 })
 
 let exitCode = 0
 child.on('exit', (code) => {
-  line(`\nReflect exited with code ${code}`)
+  line(`\nRewind exited with code ${code}`)
   report()
   process.exit(exitCode)
 })
 
 // Hard stop: a wedged OBS child must not hang the suite.
 const guard = setTimeout(() => {
-  line('\nTIMEOUT: killing Reflect')
+  line('\nTIMEOUT: killing Rewind')
   child.kill()
   exitCode = 1
 }, 180_000)

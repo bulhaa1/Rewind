@@ -700,7 +700,7 @@ export class ReplayBuffer {
     this.segments = []
     this.recordingActive = true
     this.recordingStartedAt = Date.now()
-    this.scratchDir = path.join(os.tmpdir(), 'reflect-recording', `rec-${this.recordingStartedAt}`)
+    this.scratchDir = path.join(os.tmpdir(), 'rewind-recording', `rec-${this.recordingStartedAt}`)
     fs.mkdirSync(this.scratchDir, { recursive: true })
 
     const window = this.segmentSeconds()
@@ -883,7 +883,7 @@ handleSignal(ev: ObsSignal): void {
       log.error(`OBS Error - Code: ${code}, Signal: ${signal}, Type: ${type}, Error: ${error || 'none'}`)
     }
 
-    // No filtering by `type`: only the replay buffer is ever started in Reflect, so
+    // No filtering by `type`: only the replay buffer is ever started in Rewind, so
     // the recording/streaming handlers installed above never fire in practice.
     log.info(`OBS signal: ${signal} (type=${type}, code=${code})`)
 

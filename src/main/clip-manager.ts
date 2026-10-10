@@ -29,7 +29,7 @@ export function isEditorCopy(fileName: string): boolean {
  *
  * Strips the `[exe.exe]: ` prefix and any `(process: exe)` suffix, then removes
  * characters Windows forbids in a path segment. Without that last step a title
- * like `Reflect | OpenChamber` produces an uncreatable directory and the clip is
+ * like `Rewind | OpenChamber` produces an uncreatable directory and the clip is
  * stranded in the base folder.
  */
 export function toSubfolderName(sourceName: string): string {
@@ -133,7 +133,7 @@ export function repairTrailingDotFolders(root: string): void {
 function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>, uploadKeys: Set<string>): boolean {
   if (!fileName.endsWith('.mp4') && !fileName.endsWith('.mkv')) return false
   if (isEditorCopy(fileName)) return false
-  // Files Reflect wrote itself are recognised by name, so they survive even if the
+  // Files Rewind wrote itself are recognised by name, so they survive even if the
   // metadata sidecar is lost or the user moves the file. Gating them on metadata
   // alone meant a continuous recording could silently vanish from the library.
   if (fileName.startsWith(REPLAY_PREFIX) || fileName.startsWith(RECORDING_PREFIX)) return true

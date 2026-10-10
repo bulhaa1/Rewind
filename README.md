@@ -1,4 +1,4 @@
-# Reflect
+# Rewind
 
 A lightweight replay buffer for Windows. It keeps the last few seconds on a
 rolling buffer so you can pull out a moment *after* it happened — hotkey-driven,
@@ -11,14 +11,14 @@ the surface: you press a key, you get a clip.
 
 ## Install
 
-Download `Reflect-<version>-setup.exe` and run it. Per-user install, no admin, no
+Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
 account, no network access at any point.
 
 **Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build.
 
 ## Using it
 
-Reflect lives in the system tray. The panel opens from the tray, or with the
+Rewind lives in the system tray. The panel opens from the tray, or with the
 global hotkeys:
 
 | Key | Action |
@@ -96,7 +96,7 @@ Stated plainly rather than discovered later:
   waveform generation, not in capture.
 - **Per-app audio mixing, extra device channels and `separateAudioTracks` are
   exposed in Settings but unverified.** They may work; they have not been tested.
-- **`Reflect.exe` keeps Electron's default icon.** `signAndEditExecutable` is off
+- **`Rewind.exe` keeps Electron's default icon.** `signAndEditExecutable` is off
   because electron-builder's signing tool cannot be extracted on Windows without
   Developer Mode. The app's own icons — panel, editor window, tray — are correct;
   only the executable's own icon and version metadata are not stamped.
@@ -112,7 +112,7 @@ combined with GPL-3.0. OBS Studio and `obs-studio-node` are GPL-2.0.
 
 ## Relationship to other software
 
-Reflect is an independent reimplementation. It was written by observing the
+Rewind is an independent reimplementation. It was written by observing the
 behaviour of another product and rebuilding the functionality from the OBS engine
 upwards; no third-party application code was copied into this repository.
 
