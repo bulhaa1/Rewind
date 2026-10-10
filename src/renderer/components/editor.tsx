@@ -593,15 +593,42 @@ function Waveform({ peaks }: { peaks: number[] }) {
     return out
   }, [peaks, budget])
 
+  /*
+   * Normalise against the loudest bar, so the waveform uses the lane's height.
+   *
+   * Absolute amplitude is the wrong scale here. A quiet recording peaks around
+   * 0.02-0.07, which is 2-7% of the lane -- and the 2px floor below then pins
+   * almost every bar to the same stubby height, which reads as a flat line rather
+   * than as quiet audio. Dividing by the maximum keeps the *shape*, which is what
+   * a waveform is for, and makes a quiet clip legible instead of blank.
+   *
+   * A floor on the divisor stops a near-silent clip from being stretched into a
+   * dramatic-looking waveform out of noise.
+   */
+  const { shaped, loudest } = useMemo(() => {
+    let max = 0
+    for (const p of bars) if (p > max) max = p
+    const scale = Math.max(max, 0.05)
+    return { shaped: bars.map((p) => Math.min(1, p / scale)), loudest: max }
+  }, [bars])
+
   return (
     <div ref={ref} className="flex h-full items-center gap-px px-1">
-      {bars.map((peak, i) => (
+      {shaped.map((peak, i) => (
         <div
           key={i}
           className="min-w-px flex-1 rounded-sm bg-accent/50"
-          style={{ height: `${Math.max(2, Math.min(100, peak * 100))}%` }}
+          style={{ height: `${Math.max(2, peak * 100)}%` }}
+          title={`Peak ${Math.round(peak * 100)}% of the loudest sample in this track`}
         />
       ))}
+      {/* Peak level is the one number worth showing: after normalising, the
+          waveform no longer tells you whether the recording was quiet or loud. */}
+      {loudest > 0 ? (
+        <span className="ml-1.5 shrink-0 self-start text-[9px] tabular-nums text-ink-muted">
+          peak {loudest < 0.01 ? '<1' : Math.round(loudest * 100)}%
+        </span>
+      ) : null}
     </div>
   )
 }

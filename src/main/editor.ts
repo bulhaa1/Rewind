@@ -414,9 +414,34 @@ const EDITOR_MIN_HEIGHT = 600
  * bundle serves both.
  */
 export function openEditorWindow(clipPath: string, preloadPath: string, rendererDir: string): void {
+  const indexHtml = path.join(rendererDir, 'index.html')
+  const devUrl = process.env.REWIND_DEV_SERVER
+  const urlFor = (p: string) => {
+    const query = `?editor=1&clipPath=${encodeURIComponent(p)}`
+    return devUrl ? `${devUrl}${query}` : `file://${indexHtml}${query}`
+  }
+
   if (editorWindow && !editorWindow.isDestroyed()) {
+    /*
+     * Reuse the window, but point it at the clip that was actually asked for.
+     *
+     * This used to just focus and return, which meant editing clip B while clip A
+     * was open silently showed clip A -- and nothing on screen said so. That is a
+     * data-integrity bug, not a cosmetic one: you can trim and save over the wrong
+     * clip believing you opened the right one.
+     *
+     * Reloading with the new query reuses the same load path as a first open, so
+     * the renderer's startup stays the single way a clip gets loaded.
+     */
+    log.info('Editor window already open; reloading for the requested clip')
+    openRequest = { clipPath }
+    // Abort any decode still running for the previous clip before its output is
+    // orphaned by the reload.
+    killRunningFfmpeg()
+    void editorWindow.loadURL(urlFor(clipPath)).catch((e) => {
+      log.error('Failed to reload the editor for the requested clip:', e)
+    })
     editorWindow.focus()
-    log.info('Editor window already open; focusing')
     return
   }
 
@@ -455,11 +480,7 @@ export function openEditorWindow(clipPath: string, preloadPath: string, renderer
     editorWindow?.focus()
   })
 
-  const devUrl = process.env.REWIND_DEV_SERVER
-  const indexHtml = path.join(rendererDir, 'index.html')
-  const query = `?editor=1&clipPath=${encodeURIComponent(clipPath)}`
-
-  editorWindow.loadURL(devUrl ? `${devUrl}${query}` : `file://${indexHtml}${query}`)
+  editorWindow.loadURL(urlFor(clipPath))
   if (devUrl) editorWindow.webContents.openDevTools()
 
   editorWindow.on('closed', () => {
