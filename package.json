@@ -5,7 +5,7 @@
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
   "author": "Reflect",
-  "license": "GPL-2.0",
+  "license": "GPL-2.0-or-later",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.js",
