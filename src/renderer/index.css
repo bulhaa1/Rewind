@@ -7,9 +7,10 @@
 /*
  * Rewind design tokens.
  *
- * A neutral graphite panel lit by a single warm signal colour, taken from the
- * flame end of the logo. The recording state is expressed by the buffer sweep
- * filling, not by a red dot, so nothing here competes with the arc for attention.
+ * A neutral graphite panel lit by a single deep-indigo signal colour, taken from
+ * the cool end of the logo's dial. The recording state is expressed by the buffer
+ * sweep filling, not by a red dot, so nothing here competes with the arc for
+ * attention.
  *
  * Colour is the one place where the brand and the interface had to be reconciled
  * rather than invented. The reasoning behind the hue choices, including why the
@@ -30,13 +31,13 @@
   --color-ink-muted: oklch(72% 0.008 285);
   --color-ink-faint: oklch(58% 0.010 285);
 
-  /* Accent is the flame end of the logo: sampled from the artwork's deep orange
-     (oklch 0.692 0.120 58) and pushed to 55 so it keeps clear of both semantic
-     colours. At 80 it would have sat 25 degrees from warn; at 42 only 20 degrees
-     from danger. See DESIGN.md. */
-  --color-accent: oklch(78% 0.16 55);
-  --color-accent-dim: oklch(63% 0.14 55);
-  --color-accent-soft: oklch(78% 0.16 55 / 0.14);
+  /* Accent is a deep indigo, taken from the cool end of the logo's dial.
+     At hue 285 it sits 263 degrees from danger red and 190 from warn yellow, so
+     the three semantic colours no longer compete -- which the warm accent did,
+     at 33 and 40 degrees. See DESIGN.md. */
+  --color-accent: oklch(72% 0.16 285);
+  --color-accent-dim: oklch(60% 0.14 285);
+  --color-accent-soft: oklch(72% 0.16 285 / 0.14);
 
   /* Danger is red, and it has to stay legible as "recording" with an orange
      accent 33 degrees away. Deepened in lightness and chroma so the pair reads
