@@ -7,7 +7,6 @@ and tray-resident.
 Built on OBS Studio's engine (`obs-studio-node`). None of OBS's concepts appear on
 the surface: you press a key, you get a clip.
 
-![The panel](assets/icon/_contact-sheet.png)
 
 ## Install
 
