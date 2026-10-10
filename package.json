@@ -27,10 +27,13 @@
     "icons:review": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-contact-sheet.ps1",
     "palette": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-palette.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-palette-sheet.ps1",
     "selftest": "node scripts/selftest.js",
-    "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs"
+    "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs",
+    "release": "npm run build && node scripts/stamp-exe.mjs && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",
+    "release:local": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win --publish never && npm run package:stamp"
   },
   "dependencies": {
     "@streamlabs/obs-studio-node": "https://s3-us-west-2.amazonaws.com/obsstudionodes3.streamlabs.com/osn-0.25.77-release-win64.tar.gz",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "get-windows": "^9.3.0",

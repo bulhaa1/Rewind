@@ -184,6 +184,14 @@ export interface RewindEvents {
   'hotkey-capture-key': string
   'play-notification-sound': undefined
   'auth-session-preloaded': unknown
+  /** Update checker state, pushed on every transition. See main/updater.ts. */
+  'update-state': {
+    supported: boolean
+    status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error'
+    version?: string
+    progress?: number
+    error?: string
+  }
 }
 
 export type RewindEventName = keyof RewindEvents

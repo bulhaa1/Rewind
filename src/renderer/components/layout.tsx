@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { ChevronLeft, Settings as SettingsIcon } from 'lucide-react'
 import { RewindMark } from './mark'
 import { cn } from './ui'
+import { UpdateButton } from './update-button'
 
 /** Top bar shared by the panel and settings. */
 export function Header({
@@ -48,14 +49,17 @@ export function Header({
       <div className="ml-auto flex items-center gap-1">
         {right}
         {!withBack ? (
-          <button
-            type="button"
-            onClick={() => (window.location.hash = '/settings')}
-            aria-label="Settings"
-            className="flex h-7 w-7 items-center justify-center rounded text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-          >
-            <SettingsIcon className="h-4 w-4" />
-          </button>
+          <>
+            <UpdateButton />
+            <button
+              type="button"
+              onClick={() => (window.location.hash = '/settings')}
+              aria-label="Settings"
+              className="flex h-7 w-7 items-center justify-center rounded text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+            >
+              <SettingsIcon className="h-4 w-4" />
+            </button>
+          </>
         ) : null}
       </div>
     </header>

@@ -21,6 +21,11 @@ const api: Record<string, unknown> = {}
 api.saveReplay = invoke(IPC.saveReplay)
 api.takeScreenshot = invoke(IPC.takeScreenshot)
 api.toggleReplayBuffer = invoke(IPC.toggleReplayBuffer)
+// Updates. Each is only ever called from the header button.
+api.getUpdateState = invoke(IPC.getUpdateState)
+api.checkForUpdates = invoke(IPC.checkForUpdates)
+api.downloadUpdate = invoke(IPC.downloadUpdate)
+api.quitAndInstall = invoke(IPC.quitAndInstall)
 api.getStatus = invoke(IPC.getStatus)
 api.getConfig = invoke(IPC.getConfig)
 api.getBufferDuration = invoke(IPC.getBufferDuration)

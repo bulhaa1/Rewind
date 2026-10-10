@@ -1,8 +1,8 @@
 # Rewind
 
 A lightweight replay buffer for Windows. It keeps the last few seconds on a
-rolling buffer so you can pull out a moment *after* it happened — hotkey-driven,
-tray-resident, and offline.
+rolling buffer so you can pull out a moment *after* it happened — hotkey-driven
+and tray-resident.
 
 Built on OBS Studio's engine (`obs-studio-node`). None of OBS's concepts appear on
 the surface: you press a key, you get a clip.
@@ -12,7 +12,13 @@ the surface: you press a key, you get a clip.
 ## Install
 
 Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
-account, no network access at any point.
+account.
+
+Recording, editing and clips are all local files. Rewind contains no analytics,
+no telemetry and no crash reporting, and it makes no network request on its own —
+the only way it ever contacts the network is if you press **Check for updates**
+in the header. Nothing polls, nothing downloads unasked, and quitting the app
+does not install an update you have not applied.
 
 **Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build.
 

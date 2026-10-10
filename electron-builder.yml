@@ -83,5 +83,15 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Rewind
 
-# No update server: Rewind is fully offline, so auto-update is deliberately absent.
-publish: null
+# Releases live on GitHub, and the updater reads them from here.
+#
+# This is a target, not a behaviour change: the app still never contacts the
+# network on its own. `autoCheckForUpdates` is off in src/main/updater.ts, so a
+# check happens only when someone clicks the button in the header. What this
+# setting does is tell electron-builder where to publish, and make it emit
+# latest.yml, which is the file the updater reads to learn a version exists.
+publish:
+  provider: github
+  owner: bulhaa1
+  repo: Rewind
+  releaseType: release

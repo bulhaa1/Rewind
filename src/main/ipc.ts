@@ -764,6 +764,25 @@ export function registerIpc(s: Services): void {
     }
   })
 
+  // ---------------------------------------------------------------------------
+  // Updates
+  //
+  // All four are user-initiated. Nothing here runs on a timer or at startup,
+  // which is what lets the app claim it stays off the network by itself.
+  // ---------------------------------------------------------------------------
+
+  handle(IPC.getUpdateState, () => ok(require('./updater.js').getUpdateState()))
+
+  handle(IPC.checkForUpdates, async () => ok(await require('./updater.js').checkForUpdates()))
+
+  handle(IPC.downloadUpdate, async () => ok(await require('./updater.js').downloadUpdate()))
+
+  handle(IPC.quitAndInstall, () => {
+    // The process is replaced by the installer, so this never really returns.
+    require('./updater.js').quitAndInstall()
+    return ok()
+  })
+
   handle(IPC.getAudioDevices, () => ok(require('./audio.js').listDevices(obsCore().obs)))
 
   handle(IPC.getChannelDevices, () => ok(require('./audio.js').channelDevices()))

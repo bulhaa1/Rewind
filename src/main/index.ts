@@ -475,6 +475,12 @@ function main(): void {
     buildPipeline()
     registerIpc(services as never)
     registerClipProtocol()
+    // Pushes the initial update state to the panel. This does not check for
+    // updates -- it only reports whether checking is possible at all, which in a
+    // dev build it is not. No network call happens here.
+    require('./updater.js').initUpdater((state: unknown) => {
+      getMainWindow()?.webContents.send('update-state', state)
+    })
   })
 
   bootstrap({

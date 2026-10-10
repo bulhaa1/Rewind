@@ -44,10 +44,25 @@ export class IpcError extends Error {
  * renamed or removed IPC method becomes a compile error in the renderer instead of
  * a runtime `undefined is not a function`.
  */
+/** Update checker state. Mirrors main/updater.ts and the 'update-state' event. */
+export interface UpdateState {
+  supported: boolean
+  status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error'
+  version?: string
+  progress?: number
+  error?: string
+}
+
 export interface RewindApi {
   // Replay
   saveReplay(): Promise<IpcResult<string>>
   takeScreenshot(): Promise<IpcResult<string>>
+  // Updates. Each is only ever called from the header button; none runs on a
+  // timer, so the app makes no network call unless the user asks for one.
+  getUpdateState(): Promise<IpcResult<UpdateState>>
+  checkForUpdates(): Promise<IpcResult<UpdateState>>
+  downloadUpdate(): Promise<IpcResult<UpdateState>>
+  quitAndInstall(): Promise<IpcResult<void>>
   toggleReplayBuffer(): Promise<IpcResult<{ active: boolean }>>
   getStatus(): Promise<IpcResult<{ status: ObsStatus; message?: string }>>
   getConfig(): Promise<IpcResult<{ bufferDuration: number; fps: number; outputPath: string; fpsActual?: number }>>
@@ -167,6 +182,7 @@ export interface RewindApi {
   on(event: 'clip-saved', handler: (p?: { clipPath?: string }) => void): () => void
   on(event: 'screenshot-saved', handler: (p: { path: string }) => void): () => void
   on(event: 'auto-detect-switched', handler: () => void): () => void
+  on(event: 'update-state', handler: (s: UpdateState) => void): () => void
   on(event: 'hotkey-capture-key', handler: (hotkey: string) => void): () => void
   on(event: 'play-notification-sound', handler: () => void): () => void
 }

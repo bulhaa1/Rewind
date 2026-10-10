@@ -4,6 +4,12 @@ export const IPC = {
   // replay / buffer
   saveReplay: 'save-replay',
   takeScreenshot: 'take-screenshot',
+  // Updates. Every one of these is driven by the header button; none is called
+  // on a timer or at startup, which is what keeps Rewind silent on the network.
+  getUpdateState: 'get-update-state',
+  checkForUpdates: 'check-for-updates',
+  downloadUpdate: 'download-update',
+  quitAndInstall: 'quit-and-install',
   toggleReplayBuffer: 'toggle-replay-buffer',
   setReplayBufferActive: 'set-replay-buffer-active',
   isReplayBufferActive: 'is-replay-buffer-active',
@@ -132,4 +138,5 @@ export const EVENT_CHANNELS = [
   'auto-detect-switched',
   'hotkey-capture-key',
   'play-notification-sound',
+  'update-state',
 ] as const
