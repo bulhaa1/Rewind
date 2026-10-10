@@ -23,7 +23,7 @@ export function Header({
   return (
     <header
       className={cn(
-        'flex h-10 shrink-0 items-center gap-2 border-b border-line px-3',
+        'flex h-11 shrink-0 items-center gap-2 border-b border-line px-3.5',
         withBack ? 'bg-surface' : 'bg-canvas',
       )}
     >

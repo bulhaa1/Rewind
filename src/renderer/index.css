@@ -60,6 +60,37 @@
   --radius: 0.5rem;
 }
 
+@keyframes rewind-scanner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * The capture scanner's motion.
+ *
+ * transform-box: fill-box makes the rotation pivot around the swept arcs' own
+ * bounding box rather than the SVG viewport, which is what keeps the sweep
+ * centred on the rings instead of swinging around a corner.
+ */
+.rewind-scanner {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rewind-scanner 3.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The sweep is decoration and carries no information, so dropping it costs
+     nothing. Without this it would still spin, because the base rule is the
+     animation itself rather than a transition. */
+  .rewind-scanner {
+    animation: none;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-line);

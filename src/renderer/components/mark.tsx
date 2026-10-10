@@ -20,66 +20,74 @@ export function RewindMark({ className = 'h-6 w-6' }: { className?: string }) {
 }
 
 /**
- * The buffer sweep.
+ * The capture scanner.
  *
- * A 300 degree arc that fills clockwise as the rolling buffer accumulates, with a
- * tick at the limit. This is the app's one signature element: nothing else in a
- * capture utility is time-shaped, so it is immediately legible as "how much past
- * is safe to save".
+ * Concentric rings with a sweep rotating while the engine is capturing. It
+ * replaces a 300-degree arc that filled as the buffer accumulated.
+ *
+ * The change was not only aesthetic. A filling arc is a *quantity*, and it had to
+ * be fed a quantity to work: the panel ran a one-second timer purely so the arc
+ * would re-render, and that timer existed only because the arc could not move
+ * without it. A rotation expresses no amount, so it needs no data and no timer --
+ * one less thing running while the panel is open.
+ *
+ * It also echoes the dial in the brand mark, so the status indicator and the logo
+ * are the same object rather than two unrelated graphics.
+ *
+ * The motion is decoration and is honestly so: it says the engine is live, not
+ * how much is buffered. Anything shaped like a meter has to be careful about that
+ * distinction -- the previous arc briefly derived its fill from `Date.now()` and
+ * showed a plausible level that meant nothing, which is worse than showing none.
  */
-export function BufferArc({
-  progress,
+export function ScannerSweep({
   active,
-  size = 76,
+  size = 72,
 }: {
-  /** 0..1 of the buffer filled. */
-  progress: number
+  /** The engine is capturing. Motion stops when this is false. */
   active: boolean
   size?: number
 }) {
-  const stroke = 5
-  const r = 40
-  const circumference = 2 * Math.PI * r
-  // 300 degree sweep, leaving a gap at the bottom for the readout.
-  const track = circumference * (300 / 360)
+  const c = 32
+
+  /** An arc on the circle of radius `r`, from `from` to `to` degrees. */
+  const arc = (r: number, from: number, to: number) => {
+    const p = (deg: number) => [
+      c + r * Math.cos((deg * Math.PI) / 180),
+      c + r * Math.sin((deg * Math.PI) / 180),
+    ]
+    const [x1, y1] = p(from)
+    const [x2, y2] = p(to)
+    const large = Math.abs(to - from) > 180 ? 1 : 0
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`
+  }
+
+  const R = 30
+  // A bright leading edge with three segments fading out behind it.
+  const tail = [
+    { from: 0, to: -7, opacity: 0.95 },
+    { from: -9.5, to: -16.5, opacity: 0.5 },
+    { from: -19, to: -26, opacity: 0.28 },
+    { from: -28.5, to: -35.5, opacity: 0.14 },
+  ]
 
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className="-rotate-[90deg]" aria-hidden>
-      <circle
-        cx="50"
-        cy="50"
-        r={r}
-        fill="none"
-        strokeWidth={stroke}
-        className="stroke-line"
-        strokeLinecap="round"
-        strokeDasharray={`${track} ${circumference}`}
-      />
-      {active ? (
-        <circle
-          cx="50"
-          cy="50"
-          r={r}
-          fill="none"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          // Transitions between ticks rather than stepping once a second, so the
-          // sweep advances continuously instead of ticking along the ring.
-          className="stroke-accent transition-[stroke-dasharray] duration-1000 ease-linear motion-reduce:transition-none"
-          strokeDasharray={`${track * Math.max(0.02, Math.min(1, progress))} ${circumference}`}
-        />
-      ) : (
-        <circle
-          cx="50"
-          cy="50"
-          r={r}
-          fill="none"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          className="stroke-line-strong"
-          strokeDasharray={`${track * 0.02} ${circumference}`}
-        />
-      )}
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden className="block">
+      {/* Track rings. Concentric, so rotating them is invisible -- they stay put
+          while the sweep moves across them. */}
+      <g fill="none" stroke="currentColor">
+        <circle cx={c} cy={c} r={R} strokeOpacity={0.12} strokeWidth={1} />
+        <circle cx={c} cy={c} r={R - 8} strokeOpacity={0.08} strokeWidth={1} />
+        <circle cx={c} cy={c} r={R - 16} strokeOpacity={0.05} strokeWidth={1} />
+      </g>
+
+      <g className={active ? 'rewind-scanner' : undefined}>
+        <g fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+          {tail.map((s) => (
+            <path key={s.from} d={arc(R, s.from, s.to)} strokeOpacity={active ? s.opacity : 0.12} />
+          ))}
+        </g>
+        <circle cx={c} cy={c} r={1.8} fill="currentColor" fillOpacity={active ? 0.75 : 0.25} />
+      </g>
     </svg>
   )
 }

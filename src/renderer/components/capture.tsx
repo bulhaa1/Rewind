@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Circle, Square, Camera, Save, Loader2, Play } from 'lucide-react'
-import { api, formatBuffer } from '../lib/api'
+import { api } from '../lib/api'
 import { Button } from './ui'
-import { BufferArc } from './mark'
+import { ScannerSweep } from './mark'
 
 /** mm:ss for the continuous recorder; hh:mm:ss once past an hour. */
 function elapsed(ms: number): string {
@@ -17,14 +17,13 @@ function elapsed(ms: number): string {
 /**
  * The capture controls.
  *
- * The arc shows how much of the rolling buffer is filled — the one thing a user
+ * The arc shows how much of the rolling buffer is filled â€” the one thing a user
  * needs before deciding a moment is still recoverable. Instant replay and
  * continuous recording are separate affordances because they answer different
  * questions: "keep that second" versus "record the next twenty minutes".
  */
 export function CaptureControls({
   status,
-  bufferSeconds,
   sourceName,
   sourceInactive,
   saving,
@@ -32,14 +31,12 @@ export function CaptureControls({
   lastSaved,
   bufferActive,
   bufferBusy,
-  bufferStartedAt,
   onSaveReplay,
   onScreenshot,
   onBufferStart,
   onBufferStop,
 }: {
   status: string
-  bufferSeconds: number
   sourceName: string
   sourceInactive: boolean
   saving: boolean
@@ -49,8 +46,6 @@ export function CaptureControls({
   bufferActive: boolean
   /** A start/stop request is in flight. */
   bufferBusy: boolean
-  /** Epoch ms when the rolling buffer began, or 0 when it is stopped. */
-  bufferStartedAt: number
   onSaveReplay: () => void
   onScreenshot: () => void
   onBufferStart: () => void
@@ -62,16 +57,6 @@ export function CaptureControls({
   const [recording, setRecording] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [busy, setBusy] = useState(false)
-  // The arc is a clock face, so it needs a clock. Without a local tick it only
-  // re-rendered when some unrelated query happened to resolve, and a meter that
-  // stands still for minutes at a time reads as a frozen UI, not a filling buffer.
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!bufferActive) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [bufferActive])
 
   // Poll the recorder's own clock rather than counting locally, so the displayed
   // time matches what OBS actually considers elapsed.
@@ -122,47 +107,26 @@ export function CaptureControls({
     }
   }, [busy, recording])
 
-  /**
-   * How much of the rolling buffer is filled.
-   *
-   * Measured against the engine's own start time and the configured length. It
-   * previously derived from `Date.now()`, which produced a plausible-looking but
-   * meaningless arc: a meter that always shows a level is worse than no meter.
-   * Once the buffer is full the ring sits complete, which is the moment that says
-   * "anything from here back is still recoverable".
-   */
-  const filled = bufferActive && bufferStartedAt ? (now - bufferStartedAt) / 1000 : 0
-  const progress = ready ? Math.min(1, filled / Math.max(1, bufferSeconds)) : 0
-
   return (
-    <div className="shrink-0 px-3 pb-3">
+    <div className="shrink-0 px-3 pb-3 pt-3">
       <div className="rounded-lg border border-line bg-surface">
         <div className="flex items-center gap-3 p-3">
-          <div className="relative shrink-0">
-            <BufferArc progress={progress} active={ready} size={72} />
+          <div className="relative shrink-0 text-accent">
+            <ScannerSweep active={ready || recording} size={72} />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               {recording ? (
                 <>
                   <span className="tabular text-sm font-medium text-danger">{elapsed(elapsedMs)}</span>
                   <span className="text-[9px] uppercase tracking-wider text-ink-faint">rec</span>
                 </>
-              ) : (
-                <>
-                  <span className="tabular text-[13px] font-medium">
-                    {initializing ? '··' : formatBuffer(bufferSeconds)}
-                  </span>
-                  <span className="text-[9px] uppercase tracking-wider text-ink-faint">
-                    {initializing ? 'init' : ready ? 'buffer' : 'paused'}
-                  </span>
-                </>
-              )}
+              ) : null}
             </div>
           </div>
 
           <div className="min-w-0 flex-1">
             <p className="label">Capturing</p>
             <p className="truncate text-[13px] font-medium" title={sourceName}>
-              {sourceName || '—'}
+              {sourceName || 'â€”'}
             </p>
             {sourceInactive ? (
               <span className="mt-0.5 inline-block text-[10px] text-warn">Window not available</span>
@@ -173,7 +137,7 @@ export function CaptureControls({
         {/*
           Two actions on the first row, and Screenshot spanning the second. It was
           the third cell of a two-column grid, so a hole the width of a button sat
-          beside it — a gap in the middle of the panel's primary controls read as a
+          beside it â€” a gap in the middle of the panel's primary controls read as a
           control that failed to load.
         */}
         <div className="grid grid-cols-2 gap-1.5 border-t border-line p-2">

@@ -24,7 +24,7 @@ async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string
  * The main panel.
  *
  * Three bands: capture controls, the media library, and a status strip. Everything
- * is local — Rewind has no account, no sync state and no network calls.
+ * is local â€” Rewind has no account, no sync state and no network calls.
  */
 export function HomePage() {
   const client = useQueryClient()
@@ -42,9 +42,6 @@ export function HomePage() {
   const { data: source } = useQuery(sourceNameQuery)
   const { data: bufferState } = useQuery(bufferActiveQuery)
   const bufferActive = bufferState?.active ?? false
-  const bufferStartedAt = bufferState?.startedAt ?? 0
-
-  const bufferSeconds = config?.bufferDuration ?? 60
 
   const { data: clips = [], isPending: clipsPending } = useQuery(clipsQuery)
   const { data: shots = [], isPending: shotsPending } = useQuery(screenshotsQuery)
@@ -133,7 +130,6 @@ export function HomePage() {
 
       <CaptureControls
         status={status}
-        bufferSeconds={bufferSeconds}
         sourceName={source?.name ?? ''}
         sourceInactive={!!source?.inactive}
         saving={isSaving}
@@ -141,7 +137,6 @@ export function HomePage() {
         lastSaved={lastSaved}
         bufferActive={bufferActive}
         bufferBusy={bufferBusy}
-        bufferStartedAt={bufferStartedAt}
         onSaveReplay={saveClip}
         onScreenshot={takeScreenshot}
         onBufferStart={startBuffer}
@@ -227,14 +222,14 @@ function StatusStrip({ status, message }: { status: string; message?: string }) 
       {status === 'initializing' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          {message ?? 'Starting engine…'}
+          {message ?? 'Starting engineâ€¦'}
         </span>
       ) : status === 'paused' ? (
         'Buffer paused'
       ) : status === 'saving' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Saving clip…
+          Saving clipâ€¦
         </span>
       ) : status === 'ready' ? (
         'Rolling buffer active'
