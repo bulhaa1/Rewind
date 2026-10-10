@@ -72,12 +72,15 @@
 /*
  * The capture scanner's motion.
  *
- * transform-box: fill-box makes the rotation pivot around the swept arcs' own
- * bounding box rather than the SVG viewport, which is what keeps the sweep
- * centred on the rings instead of swinging around a corner.
+ * transform-origin must resolve against the *viewBox*, not the fill box. The
+ * sweep is a partial arc spanning about 35 degrees, so its bounding box is a small
+ * off-centre rectangle rather than the ring it sits on. With transform-box:
+ * fill-box the rotation pivots around that rectangle's centre and the sweep
+ * visibly orbits outside the rings. Against the viewBox, 50% 50% is the circle's
+ * centre, which is what the sweep is drawn around.
  */
 .rewind-scanner {
-  transform-box: fill-box;
+  transform-box: view-box;
   transform-origin: center;
   animation: rewind-scanner 3.4s linear infinite;
 }
