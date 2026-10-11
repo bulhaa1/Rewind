@@ -40,6 +40,7 @@ export interface PersistedSettings {
   desktopMuted: boolean
   micVolume: number
   micMuted: boolean
+  micGain: number
   desktopDeviceId: string
   micDeviceId: string
   appAudioLevels: Record<string, { volume: number; muted: boolean }>
@@ -82,6 +83,7 @@ export interface AudioLevel {
   volume: number
   muted: boolean
 }
+
 
 export interface AudioDevice {
   id: string

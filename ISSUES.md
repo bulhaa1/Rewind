@@ -3,8 +3,9 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-11, after the on-demand updater, the Data settings
-section, the resolution fix, the start/stop hotkey and the startup fix.
+Last updated: 2026-10-11, after verifying `separateAudioTracks` end to end, the
+on-demand updater, the Data settings section, the resolution fix, the start/stop
+hotkey and the startup fix.
 
 Status values:
 
@@ -125,6 +126,56 @@ so the canvas would not update. Should be handled; not yet.
 
 ---
 
+## Verified
+
+### `separateAudioTracks` produces genuinely separate tracks
+
+Measured end to end on 2026-10-11 with `node scripts/audiotracktest.js`, which
+forces the setting on, plays a 1 kHz tone through the default output device during
+the recording window, and probes the saved clip.
+
+**Works.** One 30 s replay recorded with the setting on produced **3** audio streams;
+the same recording with it off produced **1**. The mixer mask is built before the
+chain (`audio tracks=0b111` on, `0b1` off), so the setting is what changes the count
+rather than anything incidental to the machine.
+
+The tracks are separately addressable and are *not* cosmetic copies. Decoded to PCM
+and hashed:
+
+| Stream | Track label | mean | max | Distinct PCM |
+|---|---|---|---|---|
+| 0 | Mix | -26.8 dB | -21 dB | — |
+| 1 | Desktop | -26.8 dB | -21 dB | identical to Mix |
+| 2 | Microphone | -91.0 dB | -91.0 dB | **differs from Mix** |
+
+A bandpass at the tone frequency (900–1100 Hz) keeps -31.3 dB on streams 0 and 1 and
+leaves stream 2 at -91.0 dB, so the desktop signal is routed to its own track and the
+microphone track carries something else.
+
+Mix and Desktop are byte-identical here, which is correct rather than suspicious: the
+mix is desktop + microphone, and the microphone contributed nothing, so the sum equals
+the one non-silent input. It is not evidence of a duplicated stream.
+
+**Caveat on how far this goes.** The microphone track was verified to be *routable and
+distinguishable*, not to carry live speech: this machine has no microphone carrying
+signal — all three input endpoints (`Audio Array AM-C47`, `Virtual Desktop Audio`,
+`Steam Streaming Microphone`) read exactly -91.0 dB, which is also what ffmpeg reports
+for a generated `anullsrc`, i.e. digital silence. `-91.0 dB` is this build's silence
+floor, not a measurement failure. So: the track split, the mixer mask and the routing
+are proven; **that a live microphone lands on track 3 is not.** That still needs a run on
+a machine with a working mic input.
+
+Both track toggles are in **Settings → Audio** (`settings.tsx` `AudioSection`), not
+Settings → Quality where this file previously listed them.
+
+**Scope: `separateAudioTracks` only.** The three audio items still listed under
+Untested were *not* exercised by this run and no evidence is claimed for them. A
+pass here says the core track split works; it says nothing about per-app mixing,
+extra device channels or `perDeviceAudioTracks`, each of which needs its own
+recording with the relevant devices configured.
+
+---
+
 ## Untested
 
 Shipped, reachable in the UI, never actually exercised. Any of these could be
@@ -134,9 +185,18 @@ broken.
 |---|---|
 | Per-app audio mixing (`appAudioLevels`) | Settings → Audio |
 | Extra device channels (`deviceChannels`) | Settings → Audio |
-| `separateAudioTracks` | Settings → Quality |
-| `perDeviceAudioTracks` | Settings → Quality |
+| `perDeviceAudioTracks` | Settings → Audio |
 | 120 fps yields genuinely distinct frames | Settings → Quality |
+
+The three audio rows share a track-splitting foundation with
+`separateAudioTracks`, which is now verified — the mixer mask and multi-track muxing
+are known to work. That is not a pass for them: each needs its own recording, with
+per-app levels set or devices actually attached, and none has been run.
+
+`perDeviceAudioTracks` in particular has a specific reason it could not be checked
+alongside the core split: it only changes the mask when extra device channels are
+configured, and a run with no devices shows an identical mask whether it works or
+not. Verifying it means attaching at least two endpoints and recording.
 
 **AMD and Intel GPUs.** Only ever run on an NVIDIA RTX 5080. The encoder is
 detected at runtime and `codecsByVendor` covers NVENC, AMF and QSV with an x264

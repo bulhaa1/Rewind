@@ -16,6 +16,7 @@ import { registerIpc, saveClipAndNotify, takeScreenshot, outputRoot, OBS_STATUS_
 import { getClipMeta, setClipMeta } from './clip-meta.js'
 import { openEditorWindow, currentEditorClip, closeEditorWindow, cleanupEditor, saveClip } from './editor.js'
 import { getSetting, setSetting } from './store.js'
+import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
 import { TIMING } from '@shared/constants.js'
@@ -526,7 +527,7 @@ const services = {
         setClipMeta(p, { recordedAt, source: source ?? undefined, edited: true, editedAt: Date.now() }),
       onReplaced: (p, editedAt) => setClipMeta(p, { edited: true, editedAt }),
       getClipMeta,
-      getAudioTrackLabels: () => obsCore?.audioTrackLabels() ?? ['Mix'],
+      getAudioTrackLabels: () => getClipMeta(currentEditorClip()?.clipPath ?? '')?.audioTracks ?? ['Mix'],
     }),
 }
 
@@ -624,6 +625,7 @@ function main(): void {
     if (process.env.REWIND_SELFTEST === '1') void runSelfTest()
     if (process.env.REWIND_SELFTEST_RECORD === '1') void runRecordSelfTest()
     if (process.env.REWIND_SELFTEST_SETTINGS === '1') void runSettingsSelfTest()
+    if (process.env.REWIND_SELFTEST_AUDIOTRACKS === '1') void runAudioTrackSelfTest()
   })
 
 /**
@@ -750,6 +752,157 @@ async function runRecordSelfTest(): Promise<void> {
     }
     if (realScreenshotPath) setSetting('screenshotPath', realScreenshotPath)
     log.info('RECORD TEST: restored the configured output folders')
+  }
+
+  app.exit(exitCode)
+}
+
+/**
+ * Records with `separateAudioTracks` forced on and measures the saved file.
+ *
+ * Every clip in the library has exactly one audio stream, because the setting has
+ * never been on during a recording. "The toggle exists in Settings" is therefore not
+ * evidence that it does anything, and the editor work planned on top of it assumes it
+ * does. This forces it on for one recording, plays a tone so the desktop track has
+ * something measurable in it, and reports the stream layout and per-stream loudness.
+ *
+ * Exit code: 0 when the file has at least two audio streams, 1 when it has fewer, 2 on
+ * a harness failure. Only the stream count gates it — whether the tracks hold
+ * *different* audio is a judgement the caller makes from the two numbers together.
+ */
+async function runAudioTrackSelfTest(): Promise<void> {
+  const outDir = process.env.REWIND_SELFTEST_OUT
+  if (!outDir || !replay) {
+    log.error('REWIND_SELFTEST_AUDIOTRACKS set without an output directory or replay buffer')
+    app.exit(2)
+    return
+  }
+
+  // Out here, not inside the try, so the finally below can see them. Every one of
+  // these is persisted, and app.exit() does not unwind the stack, so an unrestored
+  // value would outlive the run: the app would keep splitting tracks, keep saving to
+  // the temp directory, or keep capturing a display the user did not choose.
+  const realOutputPath = getSetting('outputPath')
+  const realSeparate = getSetting('separateAudioTracks')
+  const realCaptureMode = getSetting('captureMode')
+  const realDisplayIndex = getSetting('displayIndex')
+
+  // `0` runs the same recording with the setting off, as a control: without it, "3
+  // streams" could just be what this machine always produces.
+  const separate = process.env.REWIND_SELFTEST_AUDIOTRACKS_ON !== '0'
+
+  let exitCode = 0
+
+  try {
+    log.info(`AUDIO TRACK TEST: redirecting output to ${outDir}`)
+    setSetting('outputPath', outDir)
+    setSetting('separateAudioTracks', separate)
+    // Auto-detect rewrites the capture source every few seconds and each switch
+    // rebuilds the replay chain, which would measure the detector instead of the
+    // encoder.
+    detector?.stop()
+    setSetting('captureMode', 'display')
+    setSetting('displayIndex', 0)
+
+    // The mixer mask is baked into the replay chain when it is built, so the setting
+    // has to be in place *before* the rebuild rather than after it.
+    await services.reinitPipeline('audio track self-test')
+
+    log.info(
+      `AUDIO TRACK TEST: mask=0b${(obsCore?.audioTrackMask() ?? 0).toString(2)} ` +
+        `labels=${JSON.stringify(obsCore?.audioTrackLabels() ?? [])}`,
+    )
+
+    log.info('AUDIO TRACK TEST: accumulating audio...')
+    await sleep(12_000)
+
+    // Signal the harness to play a tone now, so the desktop track has known signal and
+    // the microphone track does not. Without this both tracks measure whatever the
+    // room happened to be doing, and a silent machine reports two identical zeros.
+    if (process.env.REWIND_SELFTEST_AUDIO === '1') {
+      log.info('AUDIO TRACK TEST: signalling harness to play tone')
+      fs.writeFileSync(path.join(outDir, 'PLAY_TONE'), String(Date.now()))
+      await sleep(18_000)
+    }
+
+    log.info(`AUDIO TRACK TEST: buffer active = ${replay.isReplayBufferActive()}`)
+    const file = await replay.saveReplayBuffer('display')
+    log.info(`AUDIO TRACK TEST: saved ${file}`)
+
+    const info = await probe(file)
+    if (!info) throw new Error('ffprobe could not read the saved clip')
+
+    const audio = info.streams.filter((s) => s.codec_type === 'audio')
+    log.info(`AUDIO TRACK TEST: ${audio.length} audio stream(s), tags=${JSON.stringify(audio.map((s) => s.tags ?? {}))}`)
+
+    const meanVolumes: (number | null)[] = []
+    let measurementFailed = false
+    for (let i = 0; i < audio.length; i++) {
+      const v = await measureStreamVolume(file, i)
+      // A failed measurement must not be recorded as a silent stream: the two look the
+      // same in the report, and a silent stream is a claim about the audio while a
+      // failure is a claim about the harness.
+      if (!v.ok) {
+        measurementFailed = true
+        meanVolumes.push(null)
+        log.error(`AUDIO TRACK TEST: audio stream ${i} could not be measured: ${v.error}`)
+        continue
+      }
+      meanVolumes.push(v.meanDb)
+      log.info(`AUDIO TRACK TEST: audio stream ${i}: mean=${v.meanDb ?? '-inf'} dB max=${v.maxDb ?? '-inf'} dB`)
+    }
+
+    // `separate` is what was requested, not what came out: the stream count is the
+    // evidence, and collapsing the two would hide a broken setting behind a true flag.
+    const report = {
+      separate,
+      streamCount: audio.length,
+      streamLabels: audio.map((s) => s.tags?.handler_name ?? s.tags?.title ?? null),
+      meanVolumes,
+      // Travels with the numbers so a reader of the JSON can tell "this track is
+      // silent" from "this track was never measured".
+      measurementFailed,
+    }
+    fs.writeFileSync(path.join(outDir, 'audiotracks-report.json'), JSON.stringify(report, null, 2))
+    fs.writeFileSync(path.join(outDir, 'AUDIOTRACKS_DONE'), file)
+    log.info(`AUDIO TRACK TEST: ${JSON.stringify(report)}`)
+
+    // The split run and the control run are judged by *opposite* expectations, and both
+    // can fail. A split run that stops splitting is the regression this gates on; a
+    // control that still splits means the count stopped depending on the setting at
+    // all, which makes every "3 streams" reading meaningless. The control therefore
+    // cannot be a pass-by-construction: hardcoding 0 for it would let that second
+    // regression through green.
+    if (measurementFailed) {
+      exitCode = 2
+    } else if (separate) {
+      exitCode = audio.length >= 2 ? 0 : 1
+    } else {
+      exitCode = audio.length === 1 ? 0 : 1
+    }
+  } catch (e) {
+    log.error('AUDIO TRACK TEST failed:', e)
+    try {
+      fs.writeFileSync(path.join(outDir, 'AUDIOTRACKS_DONE'), `ERROR: ${errorMessage(e)}`)
+    } catch {
+      /* the harness cannot even read its own directory */
+    }
+    exitCode = 2
+  } finally {
+    log.info(
+      `AUDIO TRACK TEST: restoring separateAudioTracks=${realSeparate} output=${realOutputPath ?? 'UNDEFINED'} ` +
+        `captureMode=${realCaptureMode} displayIndex=${realDisplayIndex}`,
+    )
+    setSetting('separateAudioTracks', realSeparate)
+    // The capture source was switched the same way the other two were, through the
+    // same persisted store, so it is restored the same way. Skipping these two left a
+    // user on 'game' or on their second monitor permanently recording display 0.
+    setSetting('captureMode', realCaptureMode)
+    setSetting('displayIndex', realDisplayIndex)
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore?.setOutputPath(realOutputPath).catch(() => {})
+    }
   }
 
   app.exit(exitCode)

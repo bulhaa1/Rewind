@@ -130,7 +130,25 @@ export interface ProbeStream {
   height?: number
   r_frame_rate?: string
   pix_fmt?: string
+  /**
+   * Container stream tags. ffprobe emits these without being asked, but nothing
+   * typed them, so a caller that needs the handler name had no way to read it.
+   */
+  tags?: Record<string, string>
 }
+
+/**
+ * Result of measuring one stream's loudness.
+ *
+ * A failure and a measurement are kept apart on purpose. They look alike at the
+ * call site -- both mean "no number" -- but they mean opposite things: one is a
+ * broken audio file, the other is a working file with a silent track. Collapsing
+ * them lets a failed measurement be reported as a silent stream, which is the one
+ * reading that must never be trusted.
+ */
+export type StreamVolume =
+  | { ok: true; meanDb: number | null; maxDb: number | null }
+  | { ok: false; error: string }
 
 export interface ProbeResult {
   streams: ProbeStream[]
@@ -155,6 +173,49 @@ export function probe(file: string): Promise<ProbeResult | null> {
         } catch {
           resolve(null)
         }
+      },
+    )
+  })
+}
+
+/**
+ * Loudness of one audio stream, selected by its position among the audio streams.
+ *
+ * `volumedetect` prints its result to **stderr**, so capturing stdout alone reports
+ * silence for a file that is not silent at all. Both streams are read for that reason.
+ *
+ * Digital silence is reported by ffmpeg as `-inf`, which is not a number, so it comes
+ * back as a null `meanDb` rather than being coerced into a plausible-looking figure.
+ * ffmpeg exiting non-zero is a *failure* and comes back as `ok: false`, never as a
+ * null measurement -- see {@link StreamVolume}.
+ */
+export function measureStreamVolume(file: string, audioIndex: number): Promise<StreamVolume> {
+  return new Promise((resolve) => {
+    execFile(
+      resolveFfmpeg(),
+      ['-hide_banner', '-nostats', '-i', file, '-map', `0:a:${audioIndex}`, '-af', 'volumedetect', '-f', 'null', 'NUL'],
+      { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const text = `${stdout ?? ''}\n${stderr ?? ''}`
+        const read = (field: string): number | null => {
+          const m = new RegExp(`${field}:\\s+(-?[\\d.]+|-inf)\\s+dB`).exec(text)
+          if (!m || m[1] === '-inf') return null
+          const n = Number(m[1])
+          return Number.isFinite(n) ? n : null
+        }
+        const meanDb = read('mean_volume')
+        const maxDb = read('max_volume')
+
+        // No reading at all is a failure even when ffmpeg exited cleanly: volumedetect
+        // always prints both lines for a decodable stream, so their absence means the
+        // audio was never decoded rather than that it was quiet.
+        if (err || (meanDb === null && maxDb === null)) {
+          const error = err ? err.message : 'volumedetect printed no volume reading'
+          log.warn(`Could not measure audio stream ${audioIndex} of ${path.basename(file)}: ${error}`)
+          resolve({ ok: false, error })
+          return
+        }
+        resolve({ ok: true, meanDb, maxDb })
       },
     )
   })

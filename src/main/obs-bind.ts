@@ -49,6 +49,7 @@ export interface ObsModule {
   AdvancedReplayBufferFactory: { create: () => any }
   ServiceFactory: { create: (type: string, name: string, settings: Record<string, unknown>) => any }
   SceneFactory: { create: (name: string) => any }
+  FilterFactory: { create: (id: string, name: string, settings?: Record<string, unknown>) => any }
   FaderFactory: { create: (mul: number) => any }
 }
 

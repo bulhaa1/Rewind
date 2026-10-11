@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS = {
   desktopMuted: false,
   micVolume: 1,
   micMuted: false,
+  // Unity gain, so a fresh install records exactly what the pre-gain build recorded.
+  micGain: 1,
   desktopDeviceId: 'default',
   micDeviceId: 'default',
   appAudioLevels: {},
@@ -139,6 +141,17 @@ export const TRACK = {
   DEVICE_BASE: 4,
   MAX: 6,
 } as const
+
+/**
+ * Microphone input gain bounds, in linear multipliers.
+ *
+ * The ceiling is Rewind's, not OBS's. An OBS fader cannot amplify at all — it clamps at
+ * 0 dB — so the boost runs through the built-in gain filter instead, which has no such
+ * limit. The bound is kept low deliberately: past 2x (~+6 dB) a boost stops being level
+ * matching and starts being the thing that clips, and clipping a voice is worse than a
+ * quiet one.
+ */
+export const MIC_GAIN = { MIN: 0, MAX: 2, STEP: 0.05, DEFAULT: 1 } as const
 
 /** Bitrate for every created audio track, in kbps. */
 export const AUDIO_TRACK_KBPS = 160

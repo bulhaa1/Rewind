@@ -92,43 +92,66 @@ interface ProbeAudioInfo {
 }
 
 /**
- * Decides how to address the clip's audio streams.
+ * Decides how to address the clip's audio streams, and names them.
  *
- * When the clip has multiple streams *and* the recording used separate tracks, each
- * stream is individually addressable. Otherwise they're treated as one mix.
+ * More than one stream in the file means the recording split its tracks, whatever
+ * the app's settings say now — a clip carries its own layout for life, and gating on
+ * the live label count silently collapsed every multi-track clip into one mix the
+ * moment the setting was turned off. Stream 0 is the mix the recorder always writes,
+ * so it is dropped when the tracks are split. Labels come from the recording; a clip
+ * with no recorded labels still splits, with generic names.
  */
-export function analyzeAudio(info: ProbeAudioInfo): { split: boolean; streams: number[] } {
-  if (info.streamCount === 0) return { split: false, streams: [] }
-  return info.split
-    ? { split: true, streams: Array.from({ length: info.streamCount - 1 }, (_, i) => i + 1) }
-    : { split: false, streams: [0] }
+export function analyzeAudio(info: ProbeAudioInfo): { split: boolean; streams: number[]; labels: string[] } {
+  if (info.streamCount === 0) return { split: false, streams: [], labels: [] }
+  if (!info.split) return { split: false, streams: [0], labels: ['Audio'] }
+  const streams = Array.from({ length: info.streamCount - 1 }, (_, i) => i + 1)
+  return { split: true, streams, labels: streams.map((s) => info.labels[s] ?? `Track ${s}`) }
 }
 
 /**
  * Remux MKV to MP4 for preview: OBS can record MKV, but Chromium's demuxer is
  * unreliable with it, and a stream copy is cheap.
  */
+/**
+ * Remux MKV to MP4 for preview: OBS can record MKV, but Chromium's demuxer is
+ * unreliable with it, and a stream copy is cheap.
+ *
+ * Same argument-order correction as extractTrackPreview: `-i` first, then the
+ * output options. FFMPEG_MAP's input-side form only works when nothing else
+ * competes with it, and `-c copy` in front of `-i` is exactly that competition.
+ */
 async function remuxForPreview(file: string): Promise<string> {
   fs.mkdirSync(PREVIEW_DIR, { recursive: true })
   const base = path.basename(file, path.extname(file))
   const out = uniquePath(PREVIEW_DIR, `${base}.${Date.now()}.preview`, '.mp4')
 
-  await ffmpegTo([...FFMPEG_MAP, '-c', 'copy', '-movflags', '+faststart', '-i', file], out)
+  await ffmpegTo(['-i', file, ...FFMPEG_MAP, '-c', 'copy', '-movflags', '+faststart'], out)
   return out
 }
 
 /** Extracts one audio stream to m4a so the renderer can decode a waveform. */
+/**
+ * Extracts one audio stream to m4a so the renderer can decode a waveform.
+ *
+ * Deliberately does NOT spread FFMPEG_MAP here. FFMPEG_MAP carries its `-map`
+ * directives ahead of `-i`, which is the input-side form ffmpeg accepts when the
+ * whole file is being remuxed. Adding a second `-map` after it, as this used to,
+ * gave ffmpeg conflicting stream selections with output options placed before
+ * the input; it exited -22 with "Invalid argument" and every audio lane past the
+ * mix silently lost its waveform. `-i` has to come before any output option, so
+ * this builds its argv in that order and maps exactly the one stream it wants.
+ */
 async function extractTrackPreview(file: string, stream: number, label: string, stamp: string): Promise<string> {
   fs.mkdirSync(PREVIEW_DIR, { recursive: true })
   const base = path.basename(file, path.extname(file))
   const out = path.join(PREVIEW_DIR, `${base}.${stamp}.track${stream}.m4a`)
 
-  await ffmpegTo([...FFMPEG_MAP, '-map', `0:a:${stream}`, '-c', 'copy', '-i', file], out)
+  await ffmpegTo(['-i', file, '-map', `0:a:${stream}`, '-c', 'copy'], out)
   void label
   return out
 }
 
-export async function getClipInfo(file: string, trackLabels: string[]): Promise<ClipInfoResult> {
+export async function getClipInfo(file: string, recordedLabels: string[]): Promise<ClipInfoResult> {
   const info = await probe(file)
   const streamCount = info?.streams.filter((s) => s.codec_type === 'audio').length ?? 0
   const duration = await probeDuration(file)
@@ -151,19 +174,18 @@ export async function getClipInfo(file: string, trackLabels: string[]): Promise<
     temps.push(previewPath)
   }
 
-  const analysis = analyzeAudio({ streamCount, split: streamCount > 1 && trackLabels.length === streamCount, labels: trackLabels })
+  const analysis = analyzeAudio({ streamCount, split: streamCount > 1, labels: recordedLabels })
+  const stamp = String(Date.now())
 
-  let audioTracks: AudioTrackInfo[]
-  if (!analysis.split) {
-    audioTracks = analysis.streams.map((s) => ({ stream: s, label: 'Audio', previewPath: null }))
-  } else {
-    const stamp = String(Date.now())
-    audioTracks = analysis.streams.map((s, i) => ({
-      stream: s,
-      label: trackLabels[s] ?? `Track ${s}`,
-      previewPath: path.join(PREVIEW_DIR, `${path.basename(file, path.extname(file))}.${stamp}.track${s}.m4a`),
-    }))
+  const audioTracks: AudioTrackInfo[] = analysis.streams.map((s, i) => ({
+    stream: s,
+    label: analysis.labels[i],
+    previewPath: analysis.split
+      ? path.join(PREVIEW_DIR, `${path.basename(file, path.extname(file))}.${stamp}.track${s}.m4a`)
+      : null,
+  }))
 
+  if (analysis.split) {
     for (const t of audioTracks) {
       if (!t.previewPath) continue
       try {
@@ -369,10 +391,13 @@ export async function saveClip(req: SaveClipRequest, deps: SaveClipDeps): Promis
       const info = await probe(req.clipPath)
       const probeInfo: ProbeAudioInfo = {
         streamCount: info?.streams.filter((s) => s.codec_type === 'audio').length ?? 0,
+        // Same rule the lanes were drawn with: a split must be honoured on save even
+        // when the clip has no recorded labels, or the volumes the user just dragged
+        // on lanes 2 and 3 would be silently dropped.
         split: false,
         labels: deps.getAudioTrackLabels(),
       }
-      probeInfo.split = probeInfo.streamCount > 1 && probeInfo.labels.length === probeInfo.streamCount
+      probeInfo.split = probeInfo.streamCount > 1
       await trimWithAudioMix(req.clipPath, temp, req.startSec, req.endSec, probeInfo, volumes)
     } else {
       await trimCopy(req.clipPath, temp, req.startSec, req.endSec)

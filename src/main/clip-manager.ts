@@ -3,7 +3,7 @@ import path from 'node:path'
 import { scope } from './logger.js'
 import { isInside, isReservedDeviceName, nonEmptyString } from './util.js'
 import { probeClip, probeDuration, probe, type ClipProbe } from './ffmpeg.js'
-import { clipMeta } from './store.js'
+import { clipMeta, type ClipMeta } from './store.js'
 import { RECORDING_PREFIX, REPLAY_PREFIX, parseRecordingStamp, THUMBNAIL } from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
 
@@ -214,7 +214,19 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
   }
 
   if (Object.keys(metaUpdates).length > 0) {
-    clipMeta.set('clips', { ...meta, ...metaUpdates })
+    /*
+     * Merged per path against a fresh read, not the scan's own snapshot.
+     *
+     * This scan reads the store once, up front, and probing takes seconds. A clip
+     * saved in that window was stamped with fields this snapshot never saw —
+     * `source` and `audioTracks` above all — and writing either the whole map or the
+     * per-clip record wholesale threw them away. That cost every clip its recorded
+     * track layout about a second after it was written.
+     */
+    const current = clipMeta.get('clips') ?? {}
+    const merged: Record<string, ClipMeta> = { ...current }
+    for (const [p, rec] of Object.entries(metaUpdates)) merged[p] = { ...current[p], ...rec }
+    clipMeta.set('clips', merged)
   }
 
   return out.sort((a, b) => b.recordedAt - a.recordedAt)
