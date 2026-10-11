@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, formatDuration, messageOf } from '../lib/api'
 import { Button, CenteredSpinner, cn } from './ui'
+import { VolumeControl } from './audio-controls'
 import type { ClipAudioTrack } from '@shared/types.js'
 
 interface ClipInfo {
@@ -114,6 +115,16 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 
   const [tracks, setTracks] = useState<ClipAudioTrack[]>([])
   const [volumes, setVolumes] = useState<Record<number, number>>({})
+  /*
+   * Overall clip loudness, applied to every track.
+   *
+   * Kept separate from the per-track values rather than folded into them, so
+   * moving the master does not overwrite what the user set per track: the two
+   * multiply at save time. Folding it in would make "reset the track" and "nudge
+   * the master" fight each other, and there would be no way back to the original
+   * per-track balance without redoing it by hand.
+   */
+  const [masterVolume, setMasterVolume] = useState(1)
   const [peaks, setPeaks] = useState<Record<number, number[]>>({})
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -224,12 +235,19 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [togglePlay])
 
+  /*
+   * What actually gets written: master x per-track, per stream.
+   *
+   * The multiply happens here rather than in the ffmpeg filter chain so that
+   * main receives one plain number per track and never has to know a master
+   * exists. Two sliders, one value.
+   */
   const trackVolumes = useMemo(
-    () => tracks.map((t) => ({ stream: t.stream, volume: volumes[t.stream] ?? 1 })),
-    [tracks, volumes],
+    () => tracks.map((t) => ({ stream: t.stream, volume: masterVolume * (volumes[t.stream] ?? 1) })),
+    [tracks, volumes, masterVolume],
   )
 
-  const volumesChanged = trackVolumes.some((t) => t.volume !== 1)
+  const volumesChanged = masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   const save = async (mode: 'overwrite' | 'copy') => {
     setSaving({ mode })
@@ -375,23 +393,26 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
           />
 
           {tracks.length > 0 ? (
-            <div className="flex flex-col gap-1">
-              {tracks.map((track) => (
-                <AudioTrackLane
-                  key={track.stream}
-                  label={track.label}
-                  stream={track.stream}
-                  peaks={peaks[track.stream]}
-                  volume={volumes[track.stream] ?? 1}
-                  startSec={startSec}
-                  endSec={endSec}
-                  currentSec={currentSec}
-                  duration={duration}
-                  onSeek={seek}
-                  onVolumeChange={(v) => setVolumes((prev) => ({ ...prev, [track.stream]: v }))}
-                />
-              ))}
-            </div>
+            <>
+              <MasterVolumeRow value={masterVolume} onChange={setMasterVolume} />
+              <div className="flex flex-col gap-1">
+                {tracks.map((track) => (
+                  <AudioTrackLane
+                    key={track.stream}
+                    label={track.label}
+                    stream={track.stream}
+                    peaks={peaks[track.stream]}
+                    volume={volumes[track.stream] ?? 1}
+                    startSec={startSec}
+                    endSec={endSec}
+                    currentSec={currentSec}
+                    duration={duration}
+                    onSeek={seek}
+                    onVolumeChange={(v) => setVolumes((prev) => ({ ...prev, [track.stream]: v }))}
+                  />
+                ))}
+              </div>
+            </>
           ) : (
             <p className="text-center text-[11px] text-ink-faint">No audio loaded</p>
           )}
@@ -598,6 +619,46 @@ function Timeline({
           title={`Trim end — ${formatDuration(endSec)}`}
         />
         <div className="absolute inset-y-0 w-px bg-ink" style={{ left: `${playheadPct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Overall clip loudness, above the per-track sliders.
+ *
+ * Reuses the shared VolumeControl rather than a plain range input, so it gets
+ * the same drag-to-scrub and mute behaviour as every other volume in the app --
+ * a control that behaves differently because it lives in a different window is
+ * worse than no control.
+ *
+ * The mute button here is deliberately not a mute: it resets to 100%. Muting the
+ * whole clip and saving that would be a destructive surprise with no obvious way
+ * back, whereas reset is exactly what someone reaching for "undo that" wants.
+ */
+function MasterVolumeRow({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [muted, setMuted] = useState(false)
+  const shown = muted ? 0 : value
+
+  return (
+    <div className="flex items-center gap-2 rounded bg-raised/30 px-2 py-1.5">
+      {/* VolumeControl renders its own label inline; a second one here read as a
+          duplicate on screen. */}
+      <div className="min-w-0 flex-1">
+        <VolumeControl
+          label="Clip volume"
+          title="Applies to every audio track, on top of each track's own volume."
+          level={{ volume: shown, muted }}
+          onVolumeChange={(v) => {
+            setMuted(false)
+            onChange(v)
+          }}
+          onMuteToggle={() => {
+            if (shown === 1 && !muted) return
+            setMuted(false)
+            onChange(1)
+          }}
+        />
       </div>
     </div>
   )
