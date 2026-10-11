@@ -48,27 +48,39 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
 
   const windowMs = opts.windowSeconds * 1000
   const parts: string[] = []
-  let cursor = opts.startedAt
   let trimmedCount = 0
+  /** End of the slice the previous segment covered; the next one continues from here. */
+  let previousEnd = opts.startedAt
 
   for (let i = 0; i < opts.segments.length; i++) {
     const seg = opts.segments[i]
-    const windowEnd = Math.min(cursor + windowMs, opts.stoppedAt)
     const actualSec = await probeDuration(seg.file)
 
     if (!actualSec || actualSec < 0.5) {
       log.warn(`Segment unreadable, skipping: ${path.basename(seg.file)}`)
-      cursor = windowEnd
       continue
     }
 
-    // The file spans [savedAt - actual, savedAt]. Cut the slice this segment owns,
-    // which is its window minus whatever the previous one already covered.
+    // Each file spans [savedAt - actual, savedAt]: OBS writes it at savedAt, and
+    // it carries a whole segment-window of footage ending there.
     const segStartMs = seg.savedAt - actualSec * 1000
+
+    // Where this segment's footage begins, clamped to the press.
+    //
+    // The first segment needs its own anchor because OBS's rolling buffer is
+    // already recording when the user presses, so this file also contains
+    // footage from *before* the press. Starting the cursor at startedAt made the
+    // lead come out negative, the Math.max(0, ...) below then read that as "no
+    // trim needed", and up to a full segment-window of pre-press footage ended
+    // up at the front of the clip. Starting from max(startedAt, segStartMs)
+    // drops it, because the first segment's lead is then measured from the
+    // press rather than from the start of its file.
+    const cursor = i === 0 ? Math.max(opts.startedAt, segStartMs) : previousEnd
+    const windowEnd = Math.min(cursor + windowMs, opts.stoppedAt)
     const lead = Math.max(0, (cursor - segStartMs) / 1000)
     const dur = Math.min((windowEnd - cursor) / 1000, Math.max(0, actualSec - lead))
 
-    cursor = windowEnd
+    previousEnd = windowEnd
 
     if (dur <= 0.2) continue
     if (lead <= 0.05 && dur >= actualSec - 0.2) {
