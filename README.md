@@ -150,6 +150,9 @@ Stated plainly rather than discovered later:
   exposed in Settings but unverified.** They may work; they have not been tested.
 - **Unsigned.** Windows SmartScreen will warn on first run, and on every update.
 
+The full list — open bugs, untested features, and decisions still pending — is
+in [ISSUES.md](ISSUES.md).
+
 ## Licence
 
 GPL-2.0-or-later. See [LICENSE](LICENSE).
