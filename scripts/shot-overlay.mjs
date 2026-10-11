@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-shots'
+import os from 'node:os'
+const OUT = path.join(os.tmpdir(), 'rewind-shots')
 const send = (ws, id, method, params = {}) => new Promise((resolve) => {
   const onMsg = (ev) => { const m = JSON.parse(ev.data); if (m.id === id) { ws.removeEventListener('message', onMsg); resolve(m.result) } }
   ws.addEventListener('message', onMsg); ws.send(JSON.stringify({ id, method, params }))

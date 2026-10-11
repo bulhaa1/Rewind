@@ -9,7 +9,7 @@
 # oklch rather than hex because that is what the design tokens are written in, and
 # comparing hue in oklch is meaningful in a way that comparing hex is not.
 param(
-  [string]$Source = 'C:\Users\user\Downloads\Logo for rewind.png'
+  [string]$Source = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads\Logo for rewind.png')
 )
 
 $ErrorActionPreference = 'Stop'

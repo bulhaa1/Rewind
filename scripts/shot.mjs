@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-shots'
+const OUT = path.join(os.tmpdir(), 'rewind-shots')
 fs.mkdirSync(OUT, { recursive: true })
 
 const targets = await (await fetch('http://127.0.0.1:9222/json')).json()

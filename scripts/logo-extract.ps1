@@ -28,7 +28,10 @@
 #     leaves a hard-edged wedge. Components are used instead: keep the ring and
 #     whatever sits wholly inside it, drop whatever crosses it.
 param(
-  [string]$Source = 'C:\Users\user\Downloads\Logo for rewind.png',
+  # Defaults to the conventional Downloads location on the current user, so the
+  # path is not this developer's home directory baked into a public repo. Pass
+  # -Source to override.
+  [string]$Source = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads\Logo for rewind.png'),
   [string]$OutDir = 'assets',
   [double]$DialCx = 932,
   [double]$DialCy = 343,

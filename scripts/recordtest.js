@@ -13,6 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import os from 'node:os'
 
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -20,7 +21,7 @@ const electron = require('electron')
 const ffmpeg = path.join(projectRoot, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
 const ffprobe = path.join(projectRoot, 'node_modules', 'ffprobe-static', 'bin', 'win32', 'x64', 'ffprobe.exe')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-recordtest'
+const OUT = path.join(os.tmpdir(), 'rewind-recordtest')
 const TONE = path.join(OUT, 'tone.wav')
 
 const FPS = Number(process.argv[2] ?? '120')

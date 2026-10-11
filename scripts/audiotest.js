@@ -10,11 +10,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import os from 'node:os'
 
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-audiotest'
+const OUT = path.join(os.tmpdir(), 'rewind-audiotest')
 const TONE = path.join(OUT, 'tone.wav')
 const ffmpeg = path.join(projectRoot, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
 const electron = require('electron')

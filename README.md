@@ -136,8 +136,8 @@ npm run icons      # extract -> sizes -> .ico -> contact sheet
 npm run palette    # sample the artwork -> oklch -> palette sheet
 ```
 
-`DESIGN.md` explains the mark's geometry, why there are two sizes of it, and how
-the accent hue was chosen.
+The mark's geometry and the reasoning behind the accent hue are documented
+internally rather than in this file, so the repo carries no local paths.
 
 ## Known limitations
 

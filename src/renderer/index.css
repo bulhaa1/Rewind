@@ -14,7 +14,7 @@
  *
  * Colour is the one place where the brand and the interface had to be reconciled
  * rather than invented. The reasoning behind the hue choices, including why the
- * semantic colours had to move, is in DESIGN.md. Regenerate the artwork with
+ * semantic colours had to move, is documented internally. Regenerate the artwork with
  * `npm run icons` and review the palette with `npm run palette`.
  */
 @theme {
@@ -34,7 +34,7 @@
   /* Accent is a deep indigo, taken from the cool end of the logo's dial.
      At hue 285 it sits 263 degrees from danger red and 190 from warn yellow, so
      the three semantic colours no longer compete -- which the warm accent did,
-     at 33 and 40 degrees. See DESIGN.md. */
+     at 33 and 40 degrees. See the internal design notes. */
   --color-accent: oklch(72% 0.16 285);
   --color-accent-dim: oklch(60% 0.14 285);
   --color-accent-soft: oklch(72% 0.16 285 / 0.14);

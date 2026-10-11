@@ -25,3 +25,8 @@ Thumbs.db
 # Editor scratch
 *.tmp
 *.bak
+# Internal design/product notes. These are working documents, not project
+# documentation -- DESIGN.md in particular describes the reverse-engineering
+# lineage and local machine layout, which should not be published.
+DESIGN.md
+PRODUCT.md

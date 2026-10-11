@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const OUT = 'C:\\Users\\jude\\AppData\\Local\\Temp\\rewind-selftest'
+const OUT = path.join(os.tmpdir(), 'rewind-selftest')
 const LOG = path.join(process.env.APPDATA || '', 'Rewind', 'logs', 'main.log')
 
 function reset() {
