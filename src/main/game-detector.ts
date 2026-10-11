@@ -8,23 +8,68 @@ const log = scope('GameDetector')
 /**
  * Processes that are never games even when fullscreen.
  *
- * This is the original's exclusion list, verbatim. It is a denylist, not an allowlist,
- * which means unknown fullscreen apps (qBittorrent, Photos, MSI Afterburner) are
- * treated as game candidates. Preserved as-is for behavioural parity; tightening it
- * is a candidate improvement.
+ * A denylist, not an allowlist, which means an unknown fullscreen app is treated
+ * as a game candidate. That is the wrong default often enough to be worth
+ * listing aggressively.
+ *
+ * Names are the window owner process name with `.exe` stripped and lowercased,
+ * which is how `isExcluded` compares them. Verified names are called out below;
+ * where a name is the product's conventional executable rather than something
+ * confirmed on disk, that is said, because a wrong entry here silently does
+ * nothing.
+ *
+ * AI and developer tooling kept getting caught: a terminal-sized window that
+ * happens to fill the screen is indistinguishable from a game by geometry
+ * alone. OpenChamber was detected on this machine on every single launch, which
+ * cost a five-second game-hook timeout each time.
  */
 export const EXCLUDED_PROCESSES = new Set([
+  // Browsers and web apps
   'chrome', 'firefox', 'msedge', 'brave', 'opera', 'vivaldi', 'arc', 'chromium', 'opera_gx',
-  'waterfox', 'librewolf', 'thorium', 'code', 'windowsterminal', 'powershell', 'pwsh', 'cmd',
-  'conhost', 'devenv', 'idea64', 'rider64', 'webstorm64', 'pycharm64', 'clion64',
-  'sublime_text', 'notepad++', 'atom', 'cursor', 'discord', 'spotify', 'slack', 'teams',
-  'zoom', 'telegram', 'signal', 'whatsapp', 'skype', 'vlc', 'mpc-hc', 'mpc-hc64', 'mpv',
-  'wmplayer', 'potplayer', 'potplayermini64', 'foobar2000', 'electron', 'rewind', 'obs64',
-  'obs32', 'streamlabs', 'explorer', 'dwm', 'shellexperiencehost', 'searchhost',
+  'waterfox', 'librewolf', 'thorium',
+
+  // Editors and IDEs
+  'code', 'devenv', 'idea64', 'rider64', 'webstorm64', 'pycharm64', 'clion64',
+  'sublime_text', 'notepad++', 'atom', 'cursor', 'zed', 'positrond', 'vscodium',
+
+  // AI assistants and agents. `claude` covers Claude Desktop on both install
+  // paths -- the standalone %LOCALAPPDATA%\AnthropicClaude\app-*\claude.exe and
+  // the MSIX build under WindowsApps -- which are both just claude.exe.
+  'claude', 'codex', 'opencode', 'openchamber', 'windsurf', 'kiro', 'trae',
+  'chatgpt', 'mscopilot', 'copilotapp', 'perplexity', 'lmstudio', 'ollama',
+
+  // Terminals and shells
+  'windowsterminal', 'powershell', 'pwsh', 'cmd', 'conhost',
+
+  // Communication
+  'discord', 'goofcord', 'spotify', 'slack', 'teams', 'zoom', 'telegram', 'signal',
+  'whatsapp', 'skype',
+
+  // Media players
+  'vlc', 'mpc-hc', 'mpc-hc64', 'mpv', 'wmplayer', 'potplayer', 'potplayermini64', 'foobar2000',
+
+  /*
+   * Performance overlays. These are the strongest case for exclusion: RTSS and
+   * Afterburner draw on top of whatever is running, so they are frequently the
+   * frontmost fullscreen window during a game and would otherwise win the
+   * detection outright.
+   */
+  'rtss', 'msiafterburner',
+
+  // Rewind and the capture stack it competes with
+  'electron', 'rewind', 'revidi', 'obs64', 'obs32', 'streamlabs',
+
+  // Shell and system
+  'explorer', 'dwm', 'shellexperiencehost', 'searchhost',
   'systemsettings', 'applicationframehost', 'textinputhost', 'lockapp',
   'startmenuexperiencehost', 'searchui', 'cortana', 'taskmgr', 'snippingtool', 'widgets',
-  'lightshot', 'powerpnt', 'excel', 'winword', 'acrobat', 'acrord32', 'mstsc', 'onenote',
-  'outlook', 'notepad', 'steam', 'steamwebhelper', 'epicgameslauncher', 'battle.net',
+  'lightshot',
+
+  // Office and documents
+  'powerpnt', 'excel', 'winword', 'acrobat', 'acrord32', 'mstsc', 'onenote', 'outlook', 'notepad',
+
+  // Game launchers, which sit fullscreen while a game is running
+  'steam', 'steamwebhelper', 'epicgameslauncher', 'battle.net',
   'galaxyclient', 'riotclientservices', 'eadesktop', 'origin', 'gogalaxy', 'ubisoftconnect',
   'bethesda.net_launcher',
 ])

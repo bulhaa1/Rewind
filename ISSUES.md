@@ -63,19 +63,21 @@ Three decisions still open:
    *is* the bug, so arming almost certainly means no capture at all until the
    window exists.
 
-### Game-capture hook waits 5s on any fullscreen non-game app
+### ~~Game-capture hook waits 5s on any fullscreen non-game app~~ — largely fixed
 
 The exclusion list is a denylist, so an unknown fullscreen app is treated as a
 game candidate. Auto-detect switches to `game_capture`, waits
 `TIMING.GAME_HOOK_TIMEOUT` (5000ms) for a frame, then falls back to the display.
 
-Seen on this machine with OpenChamber, which is a fullscreen app and not a game.
+On this machine OpenChamber was caught **16 times in one day**, each one costing
+the full timeout. The exclusion list has since been expanded from 85 to 105
+entries — AI tools, more editors, and performance overlays — and the latest
+launch logs `excluded=true candidate=false` for it.
 
-It does **not** block startup — that wait is not awaited — but it delays the
-capture source settling onto the display, and it recurs on every switch.
-
-Reducing the timeout is a behaviour call: it also bounds how long a genuinely
-slow game hook gets to produce its first frame.
+Still true, just much rarer: the denylist cannot cover apps nobody has thought of.
+An unknown fullscreen app will still be tried and will still cost 5s. Reducing
+`GAME_HOOK_TIMEOUT` would bound that, at the cost of giving genuinely slow game
+hooks less time to produce a first frame.
 
 ---
 
