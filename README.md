@@ -163,9 +163,7 @@ combined with GPL-3.0. OBS Studio and `obs-studio-node` are GPL-2.0.
 
 ## Relationship to other software
 
-Rewind is an independent reimplementation. It was written by observing the
-behaviour of another product and rebuilding the functionality from the OBS engine
-upwards; no third-party application code was copied into this repository.
+Huge thanks to [Revidi](https://revidi.app/) and its solo developer, @toasterfork, for inspiring this project. Rewind is an independent reimplementation built by observing Revidi’s behaviour and recreating its functionality from the OBS engine upwards. No third-party application code was copied into this repository.
 
 Bundled third-party components keep their own licences, including OBS Studio
 (GPL-2.0), ffmpeg (GPL), koffi (MIT), uiohook-napi (MIT) and Electron (MIT).
