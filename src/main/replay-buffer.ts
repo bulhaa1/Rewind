@@ -642,18 +642,28 @@ export class ReplayBuffer {
     }
 
     if (this.replayBuffer) {
-      const d = deferred<void>(TIMING.STOP_SIGNAL)
-      this.pendingStop = d
-      this.replayBuffer.stop(false)
-      try {
-        await d.promise
-      } catch {
-        /* the stop signal may never arrive; the destroy below is authoritative */
+      /*
+       * Only wait for a stop signal from a buffer that is actually running.
+       *
+       * `switchCaptureSource` stops the buffer before installing a new source, and
+       * at first startup that stop happens before the buffer has ever run. There is
+       * nothing to signal, so the await sat out the full STOP_SIGNAL every launch
+       * -- five seconds before anything could be captured. `wasActive` says whether
+       * there is a run to end; without it the wait is pure dead time.
+       */
+      if (wasActive) {
+        const d = deferred<void>(TIMING.STOP_SIGNAL)
+        this.pendingStop = d
+        this.replayBuffer.stop(false)
+        try {
+          await d.promise
+        } catch {
+          /* the stop signal may never arrive; the destroy below is authoritative */
+        }
       }
     }
 
     this.destroyReplayBufferInstances()
-    void wasActive
   }
 
   private destroyReplayBufferInstances(): void {
