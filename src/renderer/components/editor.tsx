@@ -7,6 +7,8 @@ interface ClipInfo {
   duration: number
   previewPath: string
   audioTracks: ClipAudioTrack[]
+  /** Source size in bytes; drives the trim savings estimate. 0 if unreadable. */
+  fileSize: number
 }
 
 /** Maps the clip path to the privileged scheme the renderer can stream from. */
@@ -267,6 +269,35 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 
   const selectionLength = Math.max(0, endSec - startSec)
 
+  /*
+   * What trimming is worth, in bytes.
+   *
+   * Arithmetic on duration, not a measurement: a trim is a stream copy, so what
+   * survives is the portion of the clip in time, and a constant bitrate is the
+   * only case where bytes and seconds scale exactly. Real clips have a variable
+   * bitrate, so this is an estimate and is labelled as one.
+   *
+   * Plain arithmetic, deliberately not a useMemo. This sits below the `if (loading)`
+   * early return above, and a hook added below an early return runs on some
+   * renders and not others -- React rejects that outright ("rendered more hooks
+   * than during the previous render") and the editor renders nothing at all. A
+   * multiplication and a division are not worth that hazard.
+   *
+   * Shown only once something is actually cut, because "0 MB saved" on an
+   * untouched clip is noise rather than information.
+   */
+  const savedBytes = (() => {
+    const size = info?.fileSize ?? 0
+    if (size <= 0 || duration <= 0) return 0
+    const kept = Math.max(0, Math.min(1, selectionLength / duration))
+    return size * (1 - kept)
+  })()
+
+  const savedLabel =
+    savedBytes >= 1_000_000
+      ? `${(savedBytes / 1_000_000).toFixed(savedBytes < 10_000_000 ? 1 : 0)} MB`
+      : `${Math.max(0, Math.round(savedBytes / 1000))} KB`
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-canvas text-ink">
       <header className="flex shrink-0 items-center gap-2 border-b border-line/60 px-5 py-3">
@@ -352,6 +383,11 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
                   stream={track.stream}
                   peaks={peaks[track.stream]}
                   volume={volumes[track.stream] ?? 1}
+                  startSec={startSec}
+                  endSec={endSec}
+                  currentSec={currentSec}
+                  duration={duration}
+                  onSeek={seek}
                   onVolumeChange={(v) => setVolumes((prev) => ({ ...prev, [track.stream]: v }))}
                 />
               ))}
@@ -367,6 +403,14 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             <span>
               Trim: {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(selectionLength)})
             </span>
+            {savedBytes > 0 ? (
+              <span
+                className="text-accent"
+                title="Estimated from the clip size and the trim length. A trim is a stream copy, so this assumes a constant bitrate."
+              >
+                ≈ {savedLabel} saved
+              </span>
+            ) : null}
           </div>
 
           {saveError ? <p className="text-[11px] text-danger">{saveError}</p> : null}
@@ -516,19 +560,72 @@ function AudioTrackLane({
   label,
   peaks,
   volume,
+  startSec,
+  endSec,
+  currentSec,
+  duration,
+  onSeek,
   onVolumeChange,
 }: {
   label: string
   stream: number
   peaks?: number[]
   volume: number
+  startSec: number
+  endSec: number
+  currentSec: number
+  duration: number
+  onSeek: (t: number) => void
   onVolumeChange: (v: number) => void
 }) {
+  const laneRef = useRef<HTMLDivElement>(null)
+
+  const toSeconds = useCallback(
+    (clientX: number) => {
+      const el = laneRef.current
+      if (!el) return 0
+      const r = el.getBoundingClientRect()
+      if (r.width <= 0) return 0
+      return Math.max(0, Math.min(duration, ((clientX - r.left) / r.width) * duration))
+    },
+    [duration],
+  )
+
+  const startPct = pct(startSec, duration)
+  const endPct = pct(endSec, duration)
+  const playheadPct = pct(currentSec, duration)
+
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 truncate text-xs text-ink-muted">{label}</span>
 
-      <div className="h-8 flex-1 overflow-hidden rounded bg-raised/40">
+      {/*
+        The waveform spans the whole clip, because that is what the engine
+        decoded. What the user is trimming is a window inside it, so the lane
+        shows that window the way the video timeline does: the kept range stays
+        bright and everything cut away is dimmed. Without this the lane looked
+        identical whether trimmed or not, and read as though the trim had not
+        been applied at all.
+      */}
+      <div
+        ref={laneRef}
+        role="slider"
+        tabIndex={0}
+        aria-label={`${label} playhead`}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(currentSec)}
+        aria-valuetext={`${formatDuration(currentSec)} of ${formatDuration(duration)}`}
+        onClick={(e) => onSeek(toSeconds(e.clientX))}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 5 : 1
+          if (e.key === 'ArrowRight') onSeek(Math.min(endSec, currentSec + step))
+          else if (e.key === 'ArrowLeft') onSeek(Math.max(startSec, currentSec - step))
+          else return
+          e.preventDefault()
+        }}
+        className="relative h-8 flex-1 cursor-pointer overflow-hidden rounded bg-raised/40"
+      >
         {peaks && peaks.length > 0 ? (
           <Waveform peaks={peaks} />
         ) : (
@@ -536,6 +633,31 @@ function AudioTrackLane({
             No waveform data
           </div>
         )}
+
+        {/* Cut away: dimmed, and not clickable-looking. */}
+        {startPct > 0 ? (
+          <div
+            className="absolute inset-y-0 left-0 bg-canvas/60"
+            style={{ width: `${startPct}%` }}
+            title={`Trimmed — ${formatDuration(startSec)}`}
+          />
+        ) : null}
+        {endPct < 100 ? (
+          <div
+            className="absolute inset-y-0 right-0 bg-canvas/60"
+            style={{ width: `${Math.max(0, 100 - endPct)}%` }}
+            title={`Trimmed — ${formatDuration(endSec)}`}
+          />
+        ) : null}
+
+        {/* Kept range, matching the accent of the video timeline's selection. */}
+        <div
+          className="pointer-events-none absolute inset-y-0 border-x border-accent/60 bg-accent/10"
+          style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
+        />
+
+        {/* Same playhead as the video lane, so the two read as one timeline. */}
+        <div className="absolute inset-y-0 w-px bg-ink" style={{ left: `${playheadPct}%` }} />
       </div>
 
       <input

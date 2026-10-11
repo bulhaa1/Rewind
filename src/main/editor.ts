@@ -74,6 +74,15 @@ export interface ClipInfoResult {
   duration: number
   previewPath: string
   audioTracks: AudioTrackInfo[]
+  /**
+   * Size of the source clip in bytes.
+   *
+   * Only used to estimate what trimming saves. The estimate is arithmetic on
+   * duration, not a measurement, because a stream copy trims by time and the
+   * bitrate is not uniform across a clip. Presented as approximate for that
+   * reason.
+   */
+  fileSize: number
 }
 
 interface ProbeAudioInfo {
@@ -124,6 +133,15 @@ export async function getClipInfo(file: string, trackLabels: string[]): Promise<
   const streamCount = info?.streams.filter((s) => s.codec_type === 'audio').length ?? 0
   const duration = await probeDuration(file)
 
+  // Best-effort: a missing size only costs the savings estimate, and failing the
+  // whole clip load over it would be a bad trade.
+  let fileSize = 0
+  try {
+    fileSize = fs.statSync(file).size
+  } catch (e) {
+    log.warn(`Could not read the size of ${path.basename(file)}:`, e)
+  }
+
   let previewPath = file
   const temps: string[] = []
 
@@ -163,7 +181,7 @@ export async function getClipInfo(file: string, trackLabels: string[]): Promise<
 
   trackPreviewFiles(temps.filter(Boolean))
 
-  return { duration, previewPath, audioTracks }
+  return { duration, previewPath, audioTracks, fileSize }
 }
 
 /**
