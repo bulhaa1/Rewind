@@ -508,9 +508,42 @@ function main(): void {
   // only exists after app-ready.
   app.whenReady().then(() => {
     const invalidateDisplays = () => invalidateDeviceCache()
+
+    /*
+     * Resolution changes also have to reach OBS.
+     *
+     * This used to be invalidateDisplays alone, which only refreshed the
+     * settings UI list. The capture canvas was sized once at startup and never
+     * again, so changing resolution left OBS rendering a canvas of the old size
+     * around a source of the new one -- which OBS resolves by scaling and
+     * cropping. That was the black half-screen, the zoomed-in crop, and the
+     * part of a virtual display going missing. Restarting appeared to fix it
+     * because startup re-runs the sizing.
+     *
+     * Debounced: Windows emits several metrics events for one resolution change
+     * (and one for changes that do not alter size at all), and each real sync
+     * resets the OBS video context.
+     */
+    let canvasSyncTimer: NodeJS.Timeout | null = null
+    const syncCanvasToDisplay = () => {
+      if (canvasSyncTimer) clearTimeout(canvasSyncTimer)
+      canvasSyncTimer = setTimeout(() => {
+        canvasSyncTimer = null
+        try {
+          services.capture?.syncCanvasToDisplay()
+        } catch (e) {
+          // Never let a display event take the app down with it.
+          console.error('Failed to sync the capture canvas to a display change:', e)
+        }
+      }, 750)
+    }
+
     screen.on('display-added', invalidateDisplays)
     screen.on('display-removed', invalidateDisplays)
-    screen.on('display-metrics-changed', invalidateDisplays)
+    screen.on('display-metrics-changed', () => {
+      invalidateDisplays()
+      syncCanvasToDisplay()
+    })
 
     if (process.env.REWIND_SELFTEST === '1') void runSelfTest()
     if (process.env.REWIND_SELFTEST_RECORD === '1') void runRecordSelfTest()

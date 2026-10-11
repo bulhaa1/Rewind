@@ -60,6 +60,8 @@ export class CaptureManager {
     isInitialized(): boolean
     setOutputScene?(scene: any): void
     ensureOutputScene?(): boolean
+    /** Resizes the OBS canvas to the display. Returns whether it changed. */
+    syncCanvasToDisplay?(): { changed: boolean; base: { width: number; height: number } }
   }) {}
 
   setReplayBuffer(rb: any): void {
@@ -231,6 +233,92 @@ export class CaptureManager {
     }
 
     this.obsCore.obs?.Global.setOutputSource(0, this.scene.source ?? this.scene)
+  }
+
+  /**
+   * Resizes the OBS canvas to the current display and re-fits the live source.
+   *
+   * Single entry point for a display change, because the two halves have to
+   * happen together and obsCore is private here: OBS's canvas and this
+   * manager's canvasWidth/Height are the same idea stored twice, and updating
+   * one without the other is what produced the mismatched scaling.
+   *
+   * Returns null when nothing actually changed, so a caller can stay quiet about
+   * an event that was not a real resolution change.
+   */
+  syncCanvasToDisplay(): { width: number; height: number } | null {
+    const core = this.obsCore
+    if (!core?.isInitialized?.()) return null
+    if (!core.syncCanvasToDisplay) return null
+    const result = core.syncCanvasToDisplay()
+    if (!result.changed) return null
+    this.refreshCanvasForDisplay()
+    return result.base
+  }
+
+  /**
+   * Re-reads the display and re-fits the live source, without rebuilding it.
+   *
+   * The canvas size was captured once, in initialize(), and the scene item's
+   * scale and offset were computed from it. After a resolution change that maths
+   * is stale: a source larger than the canvas is scaled and cropped, a smaller
+   * one is letterboxed into the middle of it, and the black half-screen and the
+   * zoomed crop both come from here.
+   *
+   * Only the transform is recomputed. The source object itself is untouched, so
+   * a recording already in flight keeps encoding the frames it was capturing and
+   * does not get dropped mid-clip -- an encode cannot change dimensions partway
+   * through, so the clip finishes at the size it started at and the next one
+   * picks up the new size.
+   *
+   * Returns the new canvas size, or null when the display did not actually
+   * change size.
+   */
+  refreshCanvasForDisplay(): { width: number; height: number } | null {
+    const primary = screen.getPrimaryDisplay()
+    const width = Math.round(primary.bounds.width * (primary.scaleFactor || 1))
+    const height = Math.round(primary.bounds.height * (primary.scaleFactor || 1))
+    if (width === this.canvasWidth && height === this.canvasHeight) return null
+
+    const previous = `${this.canvasWidth}x${this.canvasHeight}`
+    this.canvasWidth = width
+    this.canvasHeight = height
+
+    // A window or game source reports its own size, so it needs re-fitting.
+    // A display source is the canvas, and OBS sizes it to match.
+    if (this.displaySceneItem && this.captureMode !== 'display') {
+      const resolution =
+        this.captureMode === 'window' && this.currentWindowId
+          ? undefined
+          : this.getMonitorResolution(this.currentMonitor)
+      this.fitSceneItem(resolution)
+    } else if (this.displaySceneItem) {
+      this.displaySceneItem.scale = { x: 1, y: 1 }
+      this.displaySceneItem.position = { x: 0, y: 0 }
+    }
+
+    log.info(`Capture canvas ${previous} -> ${width}x${height}`)
+    return { width, height }
+  }
+
+  /** Recomputes a scene item's scale and centring against the current canvas. */
+  private fitSceneItem(resolution?: { width: number; height: number }): void {
+    const item = this.displaySceneItem
+    if (!item) return
+    const r = resolution && resolution.width > 0 && resolution.height > 0
+      ? resolution
+      : { width: this.canvasWidth, height: this.canvasHeight }
+    if (r.width <= 0 || r.height <= 0) return
+
+    const scale = Math.min(this.canvasWidth / r.width, this.canvasHeight / r.height)
+    item.scale = { x: scale, y: scale }
+    item.position = {
+      x: Math.round((this.canvasWidth - r.width * scale) / 2),
+      y: Math.round((this.canvasHeight - r.height * scale) / 2),
+    }
+    log.info(
+      `Source re-fitted: src=${r.width}x${r.height} canvas=${this.canvasWidth}x${this.canvasHeight} scale=${scale.toFixed(3)}`,
+    )
   }
 
   private removeCurrentSource(): void {

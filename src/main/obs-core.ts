@@ -264,6 +264,63 @@ export class ObsCore {
     }
   }
 
+  /**
+   * Resizes the OBS canvas to the primary display without reinitialising.
+   *
+   * configureVideo() sizes the canvas once, at initialize(). That is fine until
+   * the display changes -- 1080p to 720p, a laptop onto an external 4K, or a
+   * virtual display appearing at a smaller size -- after which the canvas keeps
+   * the size it was built with while the capture source reports the new one.
+   * OBS scales the mismatch, which is the black half-screen and the zoomed-in
+   * crop, and restarting used to be the only thing that cleared it.
+   *
+   * This is deliberately not a full reinit. reinitPipeline() costs about ten
+   * seconds and tears down the replay chain; all a resize needs is
+   * OBS_service_resetVideoContext(), which is the same call configureVideo()
+   * ends on.
+   *
+   * Frame rate is deliberately not re-applied. It goes through applyOutputFps,
+   * and OBS normalises FPSType on write -- the reason 60fps silently records at
+   * 30 -- so a resize must not reopen that.
+   *
+   * Returns whether anything actually changed, so the caller can skip a refit
+   * when a metrics event fires without a real resolution change (a scale-factor
+   * change, a colour-depth change, a spurious event).
+   */
+  syncCanvasToDisplay(): { changed: boolean; base: { width: number; height: number } } {
+    const primary = screen.getPrimaryDisplay()
+    const size = { width: physicalWidth(primary), height: physicalHeight(primary) }
+    const out = resolveOutputSize(size.width, size.height, this.config.outputResolution)
+
+    const baseStr = `${size.width}x${size.height}`
+    const outStr = `${out.width}x${out.height}`
+
+    if (!this.obs) return { changed: false, base: size }
+
+    const before = readSectionParams(getSettingSection('Video'))
+    if (before.Base === baseStr && before.Output === outStr) {
+      return { changed: false, base: size }
+    }
+
+    const section = getSettingSection('Video')
+    setSettingValue(section, 'Base', baseStr)
+    setSettingValue(section, 'Output', outStr)
+    saveSettingSection('Video', section)
+
+    log.info(
+      `Display changed: canvas ${before.Base ?? 'unset'} -> ${baseStr}, ` +
+        `output ${before.Output ?? 'unset'} -> ${outStr}`,
+    )
+
+    try {
+      this.obs.NodeObs.OBS_service_resetVideoContext()
+    } catch (e) {
+      log.warn('Could not reset video context after a resolution change:', e)
+    }
+
+    return { changed: true, base: size }
+  }
+
   private configureAudio(): void {
     const mod = this.obs
     if (!mod) return
