@@ -827,6 +827,7 @@ function QualitySection() {
 const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
   { action: 'save-replay', label: 'Save Replay' },
   { action: 'screenshot', label: 'Screenshot' },
+  { action: 'toggle-replay', label: 'Start / Stop Recording' },
 ]
 
 function HotkeysSection() {

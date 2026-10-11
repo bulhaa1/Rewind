@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS = {
   perDeviceAudioTracks: false,
   saveReplayHotkey: 'Alt+1',
   screenshotHotkey: 'Alt+2',
+  toggleReplayHotkey: 'Alt+3',
   bufferDuration: 60,
   outputPath: '',
   screenshotPath: '',

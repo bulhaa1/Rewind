@@ -214,6 +214,7 @@ async function initPipeline(): Promise<void> {
   installDefaultHotkeys({
     'save-replay': () => void saveFromHotkey(),
     screenshot: () => void saveScreenshotFromHotkey(),
+    'toggle-replay': () => void toggleReplayFromHotkey(),
   })
 
   try {
@@ -408,6 +409,79 @@ async function saveScreenshotFromHotkey(): Promise<void> {
   }
 }
 
+/**
+ * Starts or stops the replay buffer, from the panel button or the hotkey.
+ *
+ * One function for both, because the part that is easy to get wrong is
+ * stopping: a continuous recording in flight has to be finished and registered
+ * rather than dropped, and that has to happen identically whichever way the user
+ * asked for it. A hotkey-only copy of this is how a stopped recording ends up
+ * orphaned on disk with no entry in the library.
+ *
+ * Returns the resulting state so the panel can report it.
+ */
+async function toggleReplayForUser(): Promise<{ active: boolean }> {
+  const buffer = replay
+  if (!obsCore || !buffer || !capture) throw new Error('Recording not ready')
+
+  if (buffer.isReplayBufferActive()) {
+    await buffer.pauseReplayBuffer()
+    services.status.set(OBS_STATUS_MESSAGES.paused)
+
+    // Stopping while a continuous recording was running finishes that recording
+    // rather than discarding it. The stitching happens inside replay-buffer
+    // because it needs the output still alive; registering the file in the
+    // library and telling the renderer is this layer's job.
+    const finished = buffer.takeFinishedOnTeardown?.() ?? null
+    if (finished) {
+      try {
+        const sourceName = capture.getCurrentSourceName()
+        const { moveIntoSourceFolder } = require('./clip-manager.js')
+        const moved = moveIntoSourceFolder(finished, sourceName, obsCore.getConfig().outputPath)
+        setClipMeta(moved, {
+          recordedAt: Date.now(),
+          source: sourceName,
+          audioTracks: obsCore.audioTrackLabels(),
+        })
+        services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+        log.info(`Recording finished because the buffer stopped: ${moved}`)
+      } catch (e) {
+        log.error('Recording finished by buffer stop but could not be registered:', e)
+      }
+    }
+  } else {
+    await buffer.startReplayBuffer(true)
+    services.status.set(OBS_STATUS_MESSAGES.ready)
+  }
+
+  const win = services.getMainWindow()
+  win?.webContents.send('obs-status', services.status.get())
+  return { active: buffer.isReplayBufferActive() }
+}
+
+/**
+ * Hotkey wrapper around {@link toggleReplayForUser}.
+ *
+ * Guarded against re-entry: a held key delivers repeats, and a second
+ * startReplayBuffer() while one is still initialising races on the same OBS
+ * scene.
+ */
+let replayToggleInFlight = false
+
+async function toggleReplayFromHotkey(): Promise<void> {
+  if (replayToggleInFlight) return
+  replayToggleInFlight = true
+  try {
+    const { active } = await toggleReplayForUser()
+    showNotification(active ? 'buffer-on' : 'buffer-off')
+  } catch (e) {
+    log.error('Failed to toggle recording:', e)
+    showNotification('error', 'Recording not ready')
+  } finally {
+    replayToggleInFlight = false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Services handed to the IPC layer
 // ---------------------------------------------------------------------------
@@ -434,6 +508,8 @@ const services = {
   getMainWindow,
   saveClipHotkey: () => void saveFromHotkey(),
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
+  /** Shared by the panel's toggle and the start/stop hotkey. */
+  toggleReplay: () => toggleReplayForUser(),
   reinitPipeline,
   notify: (type: BufferStatus, message?: string) => showNotification(type, message),
   status: {
