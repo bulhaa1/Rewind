@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, formatDuration, messageOf } from '../lib/api'
-import { Button, CenteredSpinner } from './ui'
+import { Button, CenteredSpinner, cn } from './ui'
 import type { ClipAudioTrack } from '@shared/types.js'
 
 interface ClipInfo {
@@ -467,7 +467,16 @@ function Timeline({
   onChangeEnd: (t: number) => void
 }) {
   const laneRef = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState<'start' | 'end' | null>(null)
+  const [dragging, setDragging] = useState<'start' | 'end' | 'move' | null>(null)
+  /**
+   * Where the move gesture began.
+   *
+   * Held for the whole gesture rather than read from live props, because a drag
+   * that recomputed its origin from the current start/end on every mousemove
+   * would compound: each event would measure from where the last one landed, and
+   * the selection would run away from the cursor.
+   */
+  const moveOrigin = useRef<{ x: number; start: number; end: number; moved: boolean } | null>(null)
 
   const toSeconds = useCallback(
     (clientX: number) => {
@@ -484,10 +493,37 @@ function Timeline({
 
     const onMove = (e: MouseEvent) => {
       const t = toSeconds(e.clientX)
-      if (dragging === 'start') onChangeStart(Math.min(t, endSec - 0.1))
-      else onChangeEnd(Math.max(t, startSec + 0.1))
+      if (dragging === 'start') {
+        onChangeStart(Math.min(t, endSec - 0.1))
+        return
+      }
+      if (dragging === 'end') {
+        onChangeEnd(Math.max(t, startSec + 0.1))
+        return
+      }
+
+      const origin = moveOrigin.current
+      const rect = laneRef.current?.getBoundingClientRect()
+      if (!origin || !rect || rect.width <= 0) return
+      origin.moved = true
+
+      const length = origin.end - origin.start
+      let delta = ((e.clientX - origin.x) / rect.width) * duration
+      // Slide the window rather than resize it: clamp the travel so neither end
+      // can leave the clip, which keeps the selection length exactly as it was.
+      delta = Math.max(-origin.start, Math.min(duration - origin.end, delta))
+      onChangeStart(origin.start + delta)
+      onChangeEnd(origin.end + delta)
     }
-    const onUp = () => setDragging(null)
+
+    const onUp = () => {
+      // A press with no movement is a click, not a drag: scrub there rather than
+      // silently doing nothing, which is what swallowing it would look like.
+      const origin = moveOrigin.current
+      if (origin && !origin.moved) onSeek(toSeconds(origin.x))
+      moveOrigin.current = null
+      setDragging(null)
+    }
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -495,7 +531,13 @@ function Timeline({
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [dragging, toSeconds, startSec, endSec, onChangeStart, onChangeEnd])
+  }, [dragging, toSeconds, startSec, endSec, duration, onSeek, onChangeStart, onChangeEnd])
+
+  const beginMove = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    moveOrigin.current = { x: e.clientX, start: startSec, end: endSec, moved: false }
+    setDragging('move')
+  }
 
   const startPct = pct(startSec, duration)
   const endPct = pct(endSec, duration)
@@ -528,7 +570,13 @@ function Timeline({
         className="relative h-8 cursor-pointer rounded bg-raised/60"
       >
         <div
-          className="absolute inset-y-0 rounded bg-accent/15"
+          onMouseDown={beginMove}
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to move the whole selection"
+          className={cn(
+            'absolute inset-y-0 rounded bg-accent/15',
+            dragging === 'move' ? 'cursor-grabbing' : 'cursor-grab',
+          )}
           style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
         />
         <div
