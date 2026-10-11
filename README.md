@@ -37,6 +37,32 @@ ring filling — there is no red dot to misread.
 
 Clips, screenshots and the editor are all reachable from the tray menu.
 
+## How it compares
+
+| Tool | Price | Replay buffer | Any GPU | Standalone app | Instant share link |
+|---|---|---|---|---|---|
+| **Rewind** | **Free · open source** | **Yes** | **Yes** | **Yes** | No — deliberately: no cloud, no account, no telemetry |
+| Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes |
+| Revidi | Free (Premium $4.99/mo) | Yes | Yes | Yes | Yes |
+| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Part of the NVIDIA App | No |
+| AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | No |
+| Outplayed | Free | Yes | Yes | Runs on the Overwolf platform | Yes |
+| SteelSeries Moments | Free | Yes | Yes | Part of SteelSeries GG | Yes (in-app) |
+| OBS Studio | Free (open source) | Yes | Yes | Yes | No |
+| Xbox Game Bar | Free (built into Windows) | Yes (background recording) | Yes | Built into Windows | No |
+
+Rewind detects the encoder your GPU offers — NVENC, AMF or QSV — and falls back
+to CPU encoding when it finds none, so it runs on any of them rather than being
+tied to one vendor. It is also its own installer: no Overwolf, no Adrenalin, no
+NVIDIA App running underneath it.
+
+The share-link column is the one place Rewind is behind on purpose. Everyone
+else's version of that feature means your clips go through someone else's server.
+Rewind has no server.
+
+Competitor details are approximate and go stale — pricing and features change.
+Check the others before relying on them.
+
 ## Development
 
 ```bash
@@ -97,16 +123,9 @@ Stated plainly rather than discovered later:
 - **60 fps records at 30.** OBS normalises `FPSType` back to `FPSType=0` on
   shutdown and the profile write does not survive it. 30 and 120 both produce the
   rate they claim; 60 does not. The option is still offered and is wrong.
-- **The editor's audio waveform renders flat.** Audio capture and playback are
-  verified working — a tone measures −29.3 dB in a saved clip — so the fault is in
-  waveform generation, not in capture.
 - **Per-app audio mixing, extra device channels and `separateAudioTracks` are
   exposed in Settings but unverified.** They may work; they have not been tested.
-- **`Rewind.exe` keeps Electron's default icon.** `signAndEditExecutable` is off
-  because electron-builder's signing tool cannot be extracted on Windows without
-  Developer Mode. The app's own icons — panel, editor window, tray — are correct;
-  only the executable's own icon and version metadata are not stamped.
-- **Unsigned.** Windows SmartScreen will warn on first run.
+- **Unsigned.** Windows SmartScreen will warn on first run, and on every update.
 
 ## Licence
 
