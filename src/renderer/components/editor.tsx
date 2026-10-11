@@ -125,6 +125,14 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
    * per-track balance without redoing it by hand.
    */
   const [masterVolume, setMasterVolume] = useState(1)
+  /*
+   * Whether the whole clip is muted.
+   *
+   * Held up here rather than inside the row, because the save has to know: if
+   * only the row knew, a muted clip would still be written at full volume and
+   * the mute would be a lie that only exists on screen.
+   */
+  const [masterMuted, setMasterMuted] = useState(false)
   const [peaks, setPeaks] = useState<Record<number, number[]>>({})
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -243,11 +251,15 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
    * exists. Two sliders, one value.
    */
   const trackVolumes = useMemo(
-    () => tracks.map((t) => ({ stream: t.stream, volume: masterVolume * (volumes[t.stream] ?? 1) })),
-    [tracks, volumes, masterVolume],
+    () =>
+      tracks.map((t) => ({
+        stream: t.stream,
+        volume: masterMuted ? 0 : masterVolume * (volumes[t.stream] ?? 1),
+      })),
+    [tracks, volumes, masterVolume, masterMuted],
   )
 
-  const volumesChanged = masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
+  const volumesChanged = masterMuted || masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   const save = async (mode: 'overwrite' | 'copy') => {
     setSaving({ mode })
@@ -394,7 +406,12 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 
           {tracks.length > 0 ? (
             <>
-              <MasterVolumeRow value={masterVolume} onChange={setMasterVolume} />
+              <MasterVolumeRow
+                value={masterVolume}
+                muted={masterMuted}
+                onChange={setMasterVolume}
+                onMuteChange={setMasterMuted}
+              />
               <div className="flex flex-col gap-1">
                 {tracks.map((track) => (
                   <AudioTrackLane
@@ -636,8 +653,17 @@ function Timeline({
  * whole clip and saving that would be a destructive surprise with no obvious way
  * back, whereas reset is exactly what someone reaching for "undo that" wants.
  */
-function MasterVolumeRow({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const [muted, setMuted] = useState(false)
+function MasterVolumeRow({
+  value,
+  muted,
+  onChange,
+  onMuteChange,
+}: {
+  value: number
+  muted: boolean
+  onChange: (v: number) => void
+  onMuteChange: (v: boolean) => void
+}) {
   const shown = muted ? 0 : value
 
   return (
@@ -650,14 +676,11 @@ function MasterVolumeRow({ value, onChange }: { value: number; onChange: (v: num
           title="Applies to every audio track, on top of each track's own volume."
           level={{ volume: shown, muted }}
           onVolumeChange={(v) => {
-            setMuted(false)
+            // Dragging the slider is an instruction to hear something again.
+            onMuteChange(false)
             onChange(v)
           }}
-          onMuteToggle={() => {
-            if (shown === 1 && !muted) return
-            setMuted(false)
-            onChange(1)
-          }}
+          onMuteToggle={() => onMuteChange(!muted)}
         />
       </div>
     </div>
