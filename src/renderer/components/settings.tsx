@@ -32,6 +32,7 @@ import {
   BUFFER_DURATION_OPTIONS,
   CODEC_OPTIONS,
   FPS_OPTIONS,
+  MIC_GAIN,
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
   OUTPUT_RESOLUTION_OPTIONS,
@@ -353,6 +354,11 @@ function AudioChannelEditor({ channel, label }: { channel: AudioChannel; label: 
       return { devices: devices.data ?? [], bound: channels.data?.[channel] ?? 'default' }
     },
     retry: false,
+    // A plugged-in microphone has to appear without reopening Settings. The list was
+    // fetched exactly once, when the panel mounted, so a mic connected afterwards was
+    // invisible until an app restart -- and one unplugged mid-session stayed listed.
+    refetchOnWindowFocus: true,
+    refetchInterval: 5_000,
   })
 
   const levelsQuery = useQuery({
@@ -373,9 +379,16 @@ function AudioChannelEditor({ channel, label }: { channel: AudioChannel; label: 
     enabled: isOutput,
   })
 
+  const gainQuery = useQuery({
+    queryKey: SETTINGS.micGain.queryKey,
+    queryFn: async () => read(SETTINGS.micGain.get(), MIC_GAIN.DEFAULT),
+    enabled: !isOutput,
+  })
+
   const devices = devicesQuery.data?.devices ?? []
   const bound = devicesQuery.data?.bound ?? 'default'
   const level = levelsQuery.data ?? { volume: 1, muted: false }
+  const gain = gainQuery.data ?? MIC_GAIN.DEFAULT
 
   const ofKind = devices.filter((d) => d.kind === (isOutput ? 'output' : 'input'))
   const selectable = ofKind.filter((d) => d.available && !d.added && !d.coveredBy)
@@ -433,6 +446,19 @@ function AudioChannelEditor({ channel, label }: { channel: AudioChannel; label: 
         onVolumeChange={(v) => commit(() => api.setChannelVolume(channel, v), levelsQuery.refetch)}
         onMuteToggle={() => commit(() => api.setChannelMuted(channel, !level.muted), levelsQuery.refetch)}
       />
+      {isOutput ? null : (
+        <VolumeControl
+          label="Input gain"
+          level={{ volume: gain, muted: false }}
+          max={MIC_GAIN.MAX}
+          step={MIC_GAIN.STEP}
+          format={(v) => `${v.toFixed(2)}x`}
+          mutable={false}
+          ariaLabel="Microphone input gain"
+          title={`Multiplies the mic before the volume fader, so a volume of 0 is still silence. Stops at ${MIC_GAIN.MAX}x (about +6 dB), past which a boost clips the voice rather than making it easier to hear.`}
+          onVolumeChange={(v) => commit(() => api.setMicGain(v), gainQuery.refetch)}
+        />
+      )}
 
       {isOutput ? <AppMix apps={appsQuery.data ?? []} /> : null}
 

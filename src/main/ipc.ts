@@ -3,9 +3,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
-import { ALLOWED_FPS, DEFAULT_SETTINGS, SCREENSHOT_SUBDIR } from '@shared/constants.js'
+import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
-import { setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
+import { getClipMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
 import { defaultOutputPath } from './obs-core.js'
@@ -761,6 +761,14 @@ export function registerIpc(s: Services): void {
     }
   })
 
+  /**
+   * Mic input gain is a multiplier on an fader that already exists, so it lands live —
+   * the same tier as volume and mute. Rebuilding the audio graph is what costs a
+   * pipeline restart, and nothing here does that.
+   */
+  handle(IPC.getMicGain, () => ok(getSetting('micGain')))
+
+
   handle(IPC.getAudioSessions, () => ok(require('./audio.js').listAudioApps()))
 
   handle(IPC.setAppVolume, (exe: unknown, volume: unknown) => {
@@ -1157,7 +1165,10 @@ export function registerIpc(s: Services): void {
     if ('error' in resolved) return resolved
     if (!fs.existsSync(resolved.path)) return fail('Source clip not found')
     try {
-      return ok(await require('./editor.js').getClipInfo(resolved.path, obsCore().audioTrackLabels()))
+      // The clip's own recorded layout, not what the app is set to right now: turning
+      // separate tracks off afterwards must not collapse a multi-track clip to one mix.
+      const recorded = getClipMeta(resolved.path)?.audioTracks ?? ['Mix']
+      return ok(await require('./editor.js').getClipInfo(resolved.path, recorded))
     } catch (e) {
       replayLog.error('Failed to load clip info:', e)
       return fail(messageOf(e))
@@ -1410,6 +1421,8 @@ const messageOf = (e: unknown): string => (e instanceof Error ? e.message : Stri
 
 const isIndex = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
 const isUnitInterval = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= 1
+const isMicGain = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= MIC_GAIN.MIN && v <= MIC_GAIN.MAX
 const isChannel = (v: unknown): v is AudioChannel => v === 'desktop' || v === 'microphone'
 const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'local' || v === 'cloud'
 const isBufferDuration = (v: unknown): v is number => typeof v === 'number' && v >= 5 && v <= 300

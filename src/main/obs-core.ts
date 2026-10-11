@@ -360,6 +360,7 @@ export class ObsCore {
       settings: { device_id: getSetting('micDeviceId') },
       slot: 2,
       track: 3,
+      boostable: true,
     })
 
     this.applyChannelLevel('microphone')
@@ -377,8 +378,12 @@ export class ObsCore {
       return
     }
     if (!this.microphone) return
-    const { volume, muted } = readChannelLevel('microphone')
-    applyGain(this.microphone, muted ? 0 : volume, 'microphone')
+    const { muted } = readChannelLevel('microphone')
+    // Volume stays on the fader and gain goes through the filter, because only the
+    // filter can amplify. The order in the signal is the reverse of this line: gain
+    // first, volume second, so a zero volume is still complete silence.
+    applyGain(this.microphone, muted ? 0 : getSetting('micVolume'), 'microphone')
+    applyInputGain(this.microphone, getSetting('micGain'), 'microphone')
   }
 
   applyChannelDevice(channel: 'desktop' | 'microphone'): void {
@@ -601,7 +606,7 @@ function physicalHeight(d: Electron.Display): number {
 
 export function createAudioSource(
   mod: ObsModule,
-  spec: { type: string; name: string; settings: Record<string, unknown>; slot: number; track: number },
+  spec: { type: string; name: string; settings: Record<string, unknown>; slot: number; track: number; boostable?: boolean },
 ): any | null {
   try {
     const source = mod.InputFactory.create(spec.type, spec.name, spec.settings)
@@ -613,15 +618,69 @@ export function createAudioSource(
     mod.Global.setOutputSource(spec.slot, source)
     const fader = mod.FaderFactory.create(1)
     fader.attach(source)
-    return { source, fader, slot: spec.slot, track: spec.track }
+    // Boost has to be a filter, not a louder fader: `obs_fader_create` gives every
+    // fader type `max_db = 0.0f` and `obs_fader_set_db` clips to it, so a fader can
+    // attenuate to silence but can never amplify. The gain filter is OBS's own input
+    // gain stage and has no such ceiling. Only sources that expose a gain setting get
+    // one; the others never call applyInputGain, so a filter on them would be dead weight.
+    const gain = spec.boostable ? createInputGainFilter(mod, spec.name, source) : null
+    return { source, fader, gain, slot: spec.slot, track: spec.track }
   } catch (e) {
     log.error(`Failed to create audio source ${spec.name}:`, e)
     return null
   }
 }
 
+/** Below this the gain filter is inaudible; used as the floor for silence and for logs. */
+const MUTE_DB = -200
+
+/**
+ * OBS's built-in gain filter, the one piece of the audio chain that can amplify.
+ *
+ * `gain_db` is a plain dB offset with no ceiling, which is what an input-gain control
+ * needs. Failure is logged and returns null rather than throwing: a missing gain filter
+ * must degrade to a working recorder without boost, never to a dead source.
+ */
+function createInputGainFilter(mod: ObsModule, name: string, source: any): any | null {
+  try {
+    const filter = mod.FilterFactory.create('gain_filter', `${name}-gain`, {})
+    if (!filter) {
+      log.warn(`Gain filter unavailable for ${name}; input boost will not apply`)
+      return null
+    }
+    // Unity until something asks for a different level, so an untouched source is not
+    // left at whatever the filter happens to default to.
+    filter.update({ gain: 0 })
+    source.addFilter?.(filter)
+    // Whether the filter is genuinely attached decides whether boost works at all, and
+    // a filter that was created but never attached still accepts writes silently.
+    const attached = source.filters?.some?.((f: any) => f?.name === filter.name) ?? false
+    log.info(`Gain filter for ${name}: created, attached=${attached}`)
+    return filter
+  } catch (e) {
+    log.warn(`Failed to create gain filter for ${name}:`, e)
+    return null
+  }
+}
+
+/** Linear multiplier to the dB offset the gain filter expects. */
+function mulToDb(mul: number): number {
+  // The filter's own floor. Anything at or below it is silence, and log10 of zero has
+  // no answer, so this is the one value that has to be special-cased.
+  if (mul <= 0) return MUTE_DB
+  return Math.max(MUTE_DB, 20 * Math.log10(mul))
+}
+
 export function destroyAudioSource(mod: ObsModule | null, handle: any): void {
   if (!handle) return
+  try {
+    // The filter is owned by the source, so it has to be detached and released before
+    // the source goes or OBS keeps a dangling reference to a freed object.
+    handle.source?.removeFilter?.(handle.gain)
+    handle.gain?.release?.()
+  } catch {
+    /* noop */
+  }
   try {
     handle.fader?.detach?.()
   } catch {
@@ -670,11 +729,46 @@ export function applyGain(handle: any, mul: number, label: string): void {
   }
 }
 
+/**
+ * Input boost, in linear multipliers, applied through the source's gain filter.
+ *
+ * This cannot be a fader: `obs_fader_create` sets `max_db = 0.0f` for every fader type
+ * and `obs_fader_set_db` clips to it, so an OBS fader can attenuate to silence but can
+ * never amplify. Measured on this build, a fader handed 1.5 or 2.0 reports back 1 and the
+ * recorded audio does not move. Writing the source's own `volume` instead is not an
+ * escape either — it silences the source through this binding. The gain filter is OBS's
+ * own input-gain stage and has no such ceiling.
+ *
+ * A missing filter is not an error worth failing a recording over: the source still
+ * records, just without boost.
+ */
+export function applyInputGain(handle: any, mul: number, label: string): void {
+  if (!handle?.gain) return
+  try {
+    const db = mulToDb(mul)
+    handle.gain.update({ gain: db })
+    // Read back rather than assumed: a filter that failed to attach would accept the
+    // write silently, and a boost that was never applied is indistinguishable from a
+    // boost that was applied and measured wrong.
+    const applied = Number(handle.gain.settings?.['gain'])
+    log.info(`${label} input gain: ${mul}x = ${db.toFixed(1)}dB (filter reports ${applied}dB)`)
+  } catch (e) {
+    log.warn(`Failed to apply ${label} input gain:`, e)
+  }
+}
+
 /** Human-readable state of one bound audio source, for diagnostics. */
 export function describeAudioSource(handle: any): string {
   if (!handle?.source) return 'none'
   try {
-    return `${handle.source.name}(mixers=0b${(handle.source.audioMixers >>> 0).toString(2)}, mul=${handle.fader?.mul ?? '?'})`
+    // The fader reads back 1 for any value at or above unity, because OBS clamps a
+    // fader at 0 dB. That is correct for this field — it reports the fader — but it
+    // means a boost cannot be diagnosed here, so the gain filter is reported too. The
+    // filter is read as a dB offset directly rather than round-tripped through the
+    // multiplier, so a default that was never set still reads as unity.
+    const boostDb = Number(handle.gain?.settings?.['gain'] ?? 0)
+    const boost = handle.gain ? `, boost=${boostDb.toFixed(1)}dB` : ''
+    return `${handle.source.name}(mixers=0b${(handle.source.audioMixers >>> 0).toString(2)}, mul=${handle.fader?.mul ?? '?'}${boost})`
   } catch {
     return 'unknown'
   }

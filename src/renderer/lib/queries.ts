@@ -70,6 +70,7 @@ export const SETTINGS = defineSettings({
     set: api.setNotificationSoundEnabled,
   },
   launchOnStartup: { queryKey: QK.setting('launchOnStartup'), get: api.getLaunchOnStartup, set: api.setLaunchOnStartup },
+  micGain: { queryKey: QK.setting('micGain'), get: api.getMicGain, set: api.setMicGain },
   separateAudioTracks: {
     queryKey: QK.setting('separateAudioTracks'),
     get: api.getSeparateAudioTracks,

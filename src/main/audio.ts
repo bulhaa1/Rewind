@@ -268,6 +268,7 @@ export class AudioMix {
       settings: { device_id: getSetting('desktopDeviceId') },
       slot: SLOT.DESKTOP,
       track: TRACK.DESKTOP,
+      boostable: true,
     })
     if (this.loopback) this.applyMaster()
   }

@@ -124,6 +124,8 @@ export interface RewindApi {
   getAudioLevels(): Promise<IpcResult<{ desktop: AudioLevel; microphone: AudioLevel }>>
   setChannelVolume(channel: AudioChannel, volume: number): Promise<IpcResult>
   setChannelMuted(channel: AudioChannel, muted: boolean): Promise<IpcResult>
+  getMicGain(): Promise<IpcResult<number>>
+  setMicGain(gain: number): Promise<IpcResult>
   getAudioSessions(): Promise<IpcResult<AudioApp[]>>
   setAppVolume(exe: string, volume: number): Promise<IpcResult>
   setAppMuted(exe: string, muted: boolean): Promise<IpcResult>
