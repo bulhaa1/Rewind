@@ -77,6 +77,8 @@ to CPU encoding when it finds none, so it runs on any of them rather than being
 tied to one vendor. It is also its own installer: no Overwolf, no Adrenalin, no
 NVIDIA App running underneath it.
 
+Rewind is the least system resource taking app out of them all. Its purposly built with simple ui to make it lightweight so anyone even on a potato PC can clip there favorite moments without major fps hit.
+
 The share-link column is the one place Rewind is behind on purpose. Everyone
 else's version of that feature means your clips go through someone else's server.
 Rewind has no server.
