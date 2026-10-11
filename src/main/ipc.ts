@@ -487,6 +487,66 @@ export function registerIpc(s: Services): void {
     return ok()
   })
 
+  /**
+   * Reveals a folder that belongs to Rewind rather than to the output setting.
+   *
+   * The existing openFolder handler deliberately confines paths to outputPath,
+   * so it cannot reach userData or the log directory. Those are two fixed,
+   * caller-known locations, so this takes no path from the renderer at all --
+   * there is nothing here to validate and nothing to traverse.
+   */
+  handle(IPC.openAppFolder, async (which?: unknown) => {
+    let dir: string
+    if (which === 'logs') dir = path.join(app.getPath('userData'), 'logs')
+    else if (which === 'data' || which === undefined || which === null) {
+      dir = app.getPath('userData')
+    } else {
+      return fail('Unknown folder')
+    }
+
+    try {
+      await fs.promises.mkdir(dir, { recursive: true })
+    } catch (e) {
+      // The log directory may not exist yet on a very first run; mkdir covers it,
+      // but a failure here should not stop us from revealing what does exist.
+      note(`Could not create ${dir}: ${messageOf(e)}`)
+    }
+
+    // openPath reports failures in its return value rather than by throwing.
+    const err = await shell.openPath(dir)
+    if (err) return fail(err)
+    return ok()
+  })
+
+  /**
+   * Writes the process exclusion list to disk and reveals it.
+   *
+   * The list itself is compiled in (see EXCLUDED_PROCESSES in game-detector.ts)
+   * and is not read back at runtime -- this is an export, so there is a file for
+   * the user to see, keep a copy of, or reference when reporting an app that is
+   * wrongly treated as a game.
+   */
+  handle(IPC.openExclusionList, async () => {
+    const { EXCLUDED_PROCESSES } = require('./game-detector.js')
+    const dir = app.getPath('userData')
+    const file = path.join(dir, 'exclusion-list.json')
+
+    const payload = { excludedProcesses: [...EXCLUDED_PROCESSES] }
+    // Tabs, matching the file format the app already writes elsewhere.
+    const text = JSON.stringify(payload, null, '\t') + '\n'
+
+    try {
+      await fs.promises.mkdir(dir, { recursive: true })
+      await fs.promises.writeFile(file, text, 'utf8')
+    } catch (e) {
+      return fail(`Could not write the exclusion list: ${messageOf(e)}`)
+    }
+
+    const err = await shell.openPath(file)
+    if (err) return fail(err)
+    return ok()
+  })
+
   handle(IPC.openFile, async (file: unknown) => {
     const resolved = resolveVideo(file, s, 'open-file')
     if ('error' in resolved) return resolved

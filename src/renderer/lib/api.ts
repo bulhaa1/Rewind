@@ -93,6 +93,10 @@ export interface RewindApi {
 
   // Paths
   openFolder(target?: string): Promise<IpcResult>
+  /** Reveals Rewind's own folder. 'data' (default) or 'logs'. No path is taken. */
+  openAppFolder(which?: 'data' | 'logs'): Promise<IpcResult>
+  /** Writes the process exclusion list to the data folder and reveals it. */
+  openExclusionList(): Promise<IpcResult>
   openFile(file: string): Promise<IpcResult>
   showClipInFolder(file: string): Promise<IpcResult>
   getOutputPath(): Promise<IpcResult<string>>

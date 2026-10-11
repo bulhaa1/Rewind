@@ -57,6 +57,8 @@ api.getCurrentSourceName = invoke(IPC.getCurrentSourceName)
 
 // Files & folders
 api.openFolder = invoke(IPC.openFolder)
+api.openAppFolder = invoke(IPC.openAppFolder)
+api.openExclusionList = invoke(IPC.openExclusionList)
 api.openFile = invoke(IPC.openFile)
 api.showClipInFolder = invoke(IPC.showClipInFolder)
 api.getOutputPath = invoke(IPC.getOutputPath)

@@ -4,10 +4,14 @@ import {
   Bell,
   Camera,
   Crosshair,
+  Database,
+  FileText,
   Film,
+  FolderOpen,
   Gauge,
   Gamepad2,
   Keyboard,
+  ListFilter,
   Mic,
   Monitor,
   Power,
@@ -33,7 +37,7 @@ import {
   OUTPUT_RESOLUTION_OPTIONS,
   VISUAL_QUALITY_OPTIONS,
 } from '@shared/constants.js'
-import type { AudioChannel, AudioDevice, HotkeyAction } from '@shared/types.js'
+import type { AudioChannel, AudioDevice, HotkeyAction, IpcResult } from '@shared/types.js'
 
 /** Sentinel selecting "Auto detect launched game". */
 const AUTO_GAME = '__auto_game_capture__'
@@ -55,6 +59,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
           <ScreenshotsSection />
           <QualitySection />
           <HotkeysSection />
+          <DataSection />
           <VersionFooter />
         </div>
       </div>
@@ -866,4 +871,45 @@ function VersionFooter() {
     staleTime: Infinity,
   })
   return <div className="pb-4 pt-2 text-center text-[11px] text-ink-faint">Rewind v{data}</div>
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+/**
+ * Reveals the folders Rewind writes to, plus the process exclusion list.
+ *
+ * None of these take a path from the renderer. The app's own directories are
+ * the only ones reachable here, which is why they are a separate handler from
+ * `openFolder` rather than an extension of it.
+ */
+function DataSection() {
+  const { runAction } = useBackgroundAction()
+
+  const open = (run: () => Promise<IpcResult>) => {
+    void runAction(async () => {
+      const res = await run()
+      if (!res.success) throw new Error(res.error)
+    })
+  }
+
+  return (
+    <Section icon={<Database className="h-4 w-4" />} title="Data">
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => open(() => api.openAppFolder('data'))}>
+          <FolderOpen className="h-3.5 w-3.5" />
+          Open Data Directory
+        </Button>
+        <Button size="sm" onClick={() => open(() => api.openAppFolder('logs'))}>
+          <FileText className="h-3.5 w-3.5" />
+          Open Logs
+        </Button>
+        <Button size="sm" onClick={() => open(() => api.openExclusionList())}>
+          <ListFilter className="h-3.5 w-3.5" />
+          Open Exclusion List
+        </Button>
+      </div>
+    </Section>
+  )
 }

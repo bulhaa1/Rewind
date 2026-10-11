@@ -40,6 +40,10 @@ export const IPC = {
 
   // files & folders
   openFolder: 'open-folder',
+  // Rewind's own directories. These take a fixed keyword rather than a path,
+  // so the renderer can never ask main to open something outside the app's data.
+  openAppFolder: 'open-app-folder',
+  openExclusionList: 'open-exclusion-list',
   openFile: 'open-file',
   showClipInFolder: 'show-clip-in-folder',
   getOutputPath: 'get-output-path',
