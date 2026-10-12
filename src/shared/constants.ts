@@ -30,8 +30,6 @@ export const DEFAULT_SETTINGS = {
   micDeviceId: 'default',
   appAudioLevels: {},
   deviceChannels: {},
-  separateAudioTracks: false,
-  perDeviceAudioTracks: false,
   saveReplayHotkey: 'Alt+1',
   screenshotHotkey: 'Alt+2',
   toggleReplayHotkey: 'Alt+3',

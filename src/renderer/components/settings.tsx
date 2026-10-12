@@ -306,37 +306,11 @@ function SelectableCard({
  * an OBS restart, which the shared background-action layer reports on failure.
  */
 function AudioSection() {
-  const { data: separate } = useQuery({
-    queryKey: SETTINGS.separateAudioTracks.queryKey,
-    queryFn: async () => read(SETTINGS.separateAudioTracks.get(), false),
-    staleTime: 30_000,
-  })
-  const perDeviceUnlocked = !!separate
-
   return (
     <Section icon={<Volume2 />} title="Audio">
       <AudioChannelEditor channel="desktop" label="Output source" />
       <div className="border-t border-line" />
       <AudioChannelEditor channel="microphone" label="Input source" />
-      <div className="border-t border-line" />
-      <div className="space-y-3">
-        <SettingSwitchRow
-          binding={SETTINGS.separateAudioTracks}
-          label="Record separate audio tracks"
-          description="Adds desktop, mic and extra devices as their own tracks after the full mix, for editing in other programs."
-        />
-        <SettingSwitchRow
-          binding={SETTINGS.perDeviceAudioTracks}
-          label="Give each extra device its own track"
-          description="Up to three devices get their own track; any more share the last one."
-          disabled={!perDeviceUnlocked}
-          subline={
-            perDeviceUnlocked ? undefined : (
-              <p className="mt-0.5 text-[11px] text-ink-faint">Turn on separate audio tracks first</p>
-            )
-          }
-        />
-      </div>
     </Section>
   )
 }

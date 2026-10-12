@@ -85,10 +85,6 @@ export const IPC = {
   removeAudioDeviceChannel: 'remove-audio-device-channel',
   setDeviceVolume: 'set-device-volume',
   setDeviceMuted: 'set-device-muted',
-  getSeparateAudioTracks: 'get-separate-audio-tracks',
-  setSeparateAudioTracks: 'set-separate-audio-tracks',
-  getPerDeviceAudioTracks: 'get-per-device-audio-tracks',
-  setPerDeviceAudioTracks: 'set-per-device-audio-tracks',
 
   // hotkeys
   getHotkeys: 'get-hotkeys',

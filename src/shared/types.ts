@@ -45,8 +45,6 @@ export interface PersistedSettings {
   micDeviceId: string
   appAudioLevels: Record<string, { volume: number; muted: boolean }>
   deviceChannels: Record<string, { label: string; kind: DeviceKind; volume: number; muted: boolean }>
-  separateAudioTracks: boolean
-  perDeviceAudioTracks: boolean
   saveReplayHotkey: string
   screenshotHotkey: string
   toggleReplayHotkey: string

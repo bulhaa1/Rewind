@@ -71,16 +71,6 @@ export const SETTINGS = defineSettings({
   },
   launchOnStartup: { queryKey: QK.setting('launchOnStartup'), get: api.getLaunchOnStartup, set: api.setLaunchOnStartup },
   micGain: { queryKey: QK.setting('micGain'), get: api.getMicGain, set: api.setMicGain },
-  separateAudioTracks: {
-    queryKey: QK.setting('separateAudioTracks'),
-    get: api.getSeparateAudioTracks,
-    set: api.setSeparateAudioTracks,
-  },
-  perDeviceAudioTracks: {
-    queryKey: QK.setting('perDeviceAudioTracks'),
-    get: api.getPerDeviceAudioTracks,
-    set: api.setPerDeviceAudioTracks,
-  },
 })
 
 // ---------------------------------------------------------------------------

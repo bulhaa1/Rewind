@@ -1,12 +1,16 @@
 /**
  * End-to-end test for separate audio tracks.
  *
- * Forces `separateAudioTracks` on for one real recording while a known tone plays
- * through the default output device, then measures the saved file: how many audio
- * streams it has, and how loud each one is.
+ * Records with the default configuration while a known tone plays through the
+ * default output device, then measures the saved file: how many audio streams it
+ * has, and how loud each one is.
  *
- *   node scripts/audiotracktest.js          # the setting on
- *   node scripts/audiotracktest.js control  # the same recording with it off
+ *   node scripts/audiotracktest.js         # default: mix + desktop + microphone
+ *   node scripts/audiotracktest.js absent  # no capturable mic: mix + desktop only
+ *
+ * The two runs are judged by opposite counts, and both can fail. The `absent`
+ * case is what proves the microphone gate is a real condition rather than a
+ * constant: a gate that always set the bit would also produce three streams.
  *
  * Stream count alone is the pass/fail gate. Two streams that measure the same loudness
  * are a failed split, not a pass, so both numbers are printed together and the split
@@ -24,11 +28,11 @@ import os from 'node:os'
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// The control run gets its own directory so it cannot be mistaken for the real one,
-// or overwrite its report.
-const CONTROL = process.argv[2] === 'control'
-const OUT = CONTROL
-  ? path.join(os.tmpdir(), 'rewind-audiotracktest-control')
+// The absent-microphone run gets its own directory so it cannot be mistaken for
+// the real one, or overwrite its report.
+const MIC_ABSENT = process.argv[2] === 'absent'
+const OUT = MIC_ABSENT
+  ? path.join(os.tmpdir(), 'rewind-audiotracktest-absent')
   : path.join(os.tmpdir(), 'rewind-audiotracktest')
 const TONE = path.join(OUT, 'tone.wav')
 const REPORT = path.join(OUT, 'audiotracks-report.json')
@@ -82,7 +86,7 @@ const child = spawn(electron, ['.'], {
   env: {
     ...process.env,
     REWIND_SELFTEST_AUDIOTRACKS: '1',
-    REWIND_SELFTEST_AUDIOTRACKS_ON: CONTROL ? '0' : '1',
+    REWIND_SELFTEST_MIC: MIC_ABSENT ? 'absent' : 'present',
     REWIND_SELFTEST_OUT: OUT,
     REWIND_SELFTEST_AUDIO: '1',
   },
@@ -123,7 +127,7 @@ function report() {
   }
 
   const r = JSON.parse(fs.readFileSync(REPORT, 'utf8'))
-  log(`separate=${r.separate}`)
+  log(`micAbsent=${r.micAbsent}`)
   log(JSON.stringify(r, null, 2))
 
   // The app's own numbers, plus the raw container layout behind them.
@@ -153,23 +157,28 @@ function report() {
   if (r.measurementFailed) {
     log('FAIL: at least one stream could not be measured, so the volumes above are not evidence either way')
     verdict = 2
-  } else if (r.separate) {
-    log(r.streamCount >= 2 ? `PASS: separateAudioTracks produced ${r.streamCount} audio streams` : `FAIL: separateAudioTracks produced ${r.streamCount} audio stream(s)`)
-    verdict = r.streamCount >= 2 ? 0 : 1
-  } else {
-    // The control's whole job is to show the count depends on the setting. If it still
-    // splits with the setting off, the count has stopped being evidence of anything.
+  } else if (r.micAbsent) {
+    // Without a capturable microphone the file must carry exactly two streams --
+    // mix and desktop -- and no third. This is what proves the gate is a real
+    // condition: a constant microphone bit would also produce three here.
     log(
-      r.streamCount === 1
-        ? `CONTROL OK: with the setting off the same recording produced ${r.streamCount} audio stream`
-        : `CONTROL FAIL: with the setting off the same recording produced ${r.streamCount} audio stream(s) - the setting is not what changes the count`,
+      r.streamCount === 2
+        ? 'PASS: no capturable microphone produced exactly 2 audio streams'
+        : `FAIL: no capturable microphone produced ${r.streamCount} audio stream(s), expected 2`,
     )
-    verdict = r.streamCount === 1 ? 0 : 1
+    verdict = r.streamCount === 2 ? 0 : 1
+  } else {
+    log(
+      r.streamCount >= 3
+        ? `PASS: split tracks produced ${r.streamCount} audio streams`
+        : `FAIL: split tracks produced ${r.streamCount} audio stream(s), expected at least 3`,
+    )
+    verdict = r.streamCount >= 3 ? 0 : 1
   }
 
   // Not a gate. Identical volumes mean the tracks carry the same content, which the
   // stream count alone cannot distinguish from a split that worked.
-  if (r.separate && r.streamCount >= 2 && !r.measurementFailed) {
+  if (!r.micAbsent && r.streamCount >= 2 && !r.measurementFailed) {
     const known = r.meanVolumes.filter((v) => typeof v === 'number')
     const spread = known.length >= 2 ? Math.max(...known) - Math.min(...known) : null
     log(

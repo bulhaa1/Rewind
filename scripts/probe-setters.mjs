@@ -13,8 +13,6 @@ export default async function ({ evaluate, drainErrors }) {
     ['setNotificationsEnabled', false, null],
     ['setNotificationSoundEnabled', true, null],
     ['setLaunchOnStartup', false, null],
-    ['setSeparateAudioTracks', false, null],
-    ['setPerDeviceAudioTracks', false, null],
   ]
 
   let bad = 0

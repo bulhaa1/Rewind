@@ -580,7 +580,6 @@ export class AudioDeviceChannels {
   getDevices(): AudioDevice[] {
     const stored = getSetting('deviceChannels')
     const available = this.ready ? listDevices(this.deps.obs()) : []
-    const separate = getSetting('separateAudioTracks')
     const map = new Map<string, AudioDevice>()
 
     for (const d of available) {
@@ -591,7 +590,9 @@ export class AudioDeviceChannels {
         coveredBy: this.coveredBy(d),
         volume: cfg?.volume ?? DEFAULT_SOUND.volume,
         muted: cfg?.muted ?? DEFAULT_SOUND.muted,
-        track: separate ? this.channels.get(d.id)?.track : undefined,
+        // Split tracks are unconditional, so every added channel reports the
+        // track it actually occupies rather than a conditional one.
+        track: this.channels.get(d.id)?.track,
         error: this.errors.get(d.id),
       })
     }
@@ -757,13 +758,15 @@ export class AudioDeviceChannels {
 }
 
 /**
- * Per-device tracks are 1-based starting at TRACK.DEVICE_BASE, clamped to TRACK.MAX
- * so enabling more devices than tracks collapses onto the last one.
+ * Every extra device shares TRACK.DEVICE_BASE.
+ *
+ * This was conditional on `perDeviceAudioTracks`, which gave each device its own
+ * track. That setting is gone; sharing one track is what it produced when off,
+ * and it is the only layout with evidence behind it. Devices beyond
+ * TRACK.MAX collapse onto the last track rather than being dropped.
  */
-export function deviceTrack(index: number): number {
-  return getSetting('perDeviceAudioTracks')
-    ? Math.min(TRACK.DEVICE_BASE + index, TRACK.MAX)
-    : TRACK.DEVICE_BASE
+export function deviceTrack(_index: number): number {
+  return TRACK.DEVICE_BASE
 }
 
 function findFreeSlot(used: number[], base: number, count: number): number | null {

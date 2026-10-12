@@ -778,14 +778,15 @@ async function runRecordSelfTest(): Promise<void> {
 }
 
 /**
- * Records with `separateAudioTracks` forced on and measures the saved file.
+ * Records with the default audio layout and measures the saved file.
  *
- * Every clip in the library has exactly one audio stream, because the setting has
- * never been on during a recording. "The toggle exists in Settings" is therefore not
- * evidence that it does anything, and the editor work planned on top of it assumes it
- * does. This forces it on for one recording, plays a tone so the desktop track has
- * something measurable in it, and reports the stream layout and per-stream loudness.
+ * Split tracks are unconditional as of 1.1.0, so there is nothing to force: this
+ * asserts what a normal recording produces, and `REWIND_SELFTEST_MIC=absent` runs
+ * the same thing with a microphone that cannot resolve, which is how the
+ * "one fewer track" branch is exercised without unplugging hardware.
  *
+ * A tone is played during the window so the desktop track has something
+ * measurable in it, and the stream layout and per-stream loudness are reported.
  * Exit code: 0 when the file has at least two audio streams, 1 when it has fewer, 2 on
  * a harness failure. Only the stream count gates it — whether the tracks hold
  * *different* audio is a judgement the caller makes from the two numbers together.
@@ -803,20 +804,27 @@ async function runAudioTrackSelfTest(): Promise<void> {
   // value would outlive the run: the app would keep splitting tracks, keep saving to
   // the temp directory, or keep capturing a display the user did not choose.
   const realOutputPath = getSetting('outputPath')
-  const realSeparate = getSetting('separateAudioTracks')
   const realCaptureMode = getSetting('captureMode')
   const realDisplayIndex = getSetting('displayIndex')
+  const realMicDeviceId = getSetting('micDeviceId')
 
-  // `0` runs the same recording with the setting off, as a control: without it, "3
-  // streams" could just be what this machine always produces.
-  const separate = process.env.REWIND_SELFTEST_AUDIOTRACKS_ON !== '0'
+  /*
+   * There is no longer a setting to force. The test asserts what the default
+   * configuration produces, which is the only thing worth asserting now: split
+   * tracks are unconditional.
+   *
+   * `REWIND_SELFTEST_MIC=absent` points the microphone at a device id that does
+   * not resolve, which is how the "no capturable microphone means one fewer
+   * track" case gets exercised without unplugging hardware.
+   */
+  const micAbsent = process.env.REWIND_SELFTEST_MIC === 'absent'
 
   let exitCode = 0
 
   try {
     log.info(`AUDIO TRACK TEST: redirecting output to ${outDir}`)
     setSetting('outputPath', outDir)
-    setSetting('separateAudioTracks', separate)
+    if (micAbsent) setSetting('micDeviceId', '__rewind_selftest_no_such_device__')
     // Auto-detect rewrites the capture source every few seconds and each switch
     // rebuilds the replay chain, which would measure the detector instead of the
     // encoder.
@@ -872,10 +880,10 @@ async function runAudioTrackSelfTest(): Promise<void> {
       log.info(`AUDIO TRACK TEST: audio stream ${i}: mean=${v.meanDb ?? '-inf'} dB max=${v.maxDb ?? '-inf'} dB`)
     }
 
-    // `separate` is what was requested, not what came out: the stream count is the
-    // evidence, and collapsing the two would hide a broken setting behind a true flag.
+    // `micAbsent` is what was requested, not what came out: the stream count is the
+    // evidence, and collapsing the two would hide a broken gate behind a true flag.
     const report = {
-      separate,
+      micAbsent,
       streamCount: audio.length,
       streamLabels: audio.map((s) => s.tags?.handler_name ?? s.tags?.title ?? null),
       meanVolumes,
@@ -887,18 +895,17 @@ async function runAudioTrackSelfTest(): Promise<void> {
     fs.writeFileSync(path.join(outDir, 'AUDIOTRACKS_DONE'), file)
     log.info(`AUDIO TRACK TEST: ${JSON.stringify(report)}`)
 
-    // The split run and the control run are judged by *opposite* expectations, and both
-    // can fail. A split run that stops splitting is the regression this gates on; a
-    // control that still splits means the count stopped depending on the setting at
-    // all, which makes every "3 streams" reading meaningless. The control therefore
-    // cannot be a pass-by-construction: hardcoding 0 for it would let that second
-    // regression through green.
+    // Both cases are judged by a count, and both can fail. With a capturable
+    // microphone the file must carry at least two streams; without one it must
+    // carry exactly two (mix + desktop) and no third. The second is what proves
+    // the gate is a real condition rather than a constant: if the microphone bit
+    // were always set, "no microphone" would also produce three.
     if (measurementFailed) {
       exitCode = 2
-    } else if (separate) {
-      exitCode = audio.length >= 2 ? 0 : 1
+    } else if (micAbsent) {
+      exitCode = audio.length === 2 ? 0 : 1
     } else {
-      exitCode = audio.length === 1 ? 0 : 1
+      exitCode = audio.length >= 3 ? 0 : 1
     }
   } catch (e) {
     log.error('AUDIO TRACK TEST failed:', e)
@@ -910,10 +917,10 @@ async function runAudioTrackSelfTest(): Promise<void> {
     exitCode = 2
   } finally {
     log.info(
-      `AUDIO TRACK TEST: restoring separateAudioTracks=${realSeparate} output=${realOutputPath ?? 'UNDEFINED'} ` +
-        `captureMode=${realCaptureMode} displayIndex=${realDisplayIndex}`,
+      `AUDIO TRACK TEST: restoring output=${realOutputPath ?? 'UNDEFINED'} ` +
+        `captureMode=${realCaptureMode} displayIndex=${realDisplayIndex} micDeviceId=${realMicDeviceId}`,
     )
-    setSetting('separateAudioTracks', realSeparate)
+    if (micAbsent) setSetting('micDeviceId', realMicDeviceId)
     // The capture source was switched the same way the other two were, through the
     // same persisted store, so it is restored the same way. Skipping these two left a
     // user on 'game' or on their second monitor permanently recording display 0.

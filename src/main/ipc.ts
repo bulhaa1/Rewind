@@ -952,58 +952,6 @@ export function registerIpc(s: Services): void {
     }
   })
 
-  // Separate-track toggles change the mixer mask, which requires a chain rebuild.
-  const applyTrackFlags = async (next: { separateAudioTracks: boolean; perDeviceAudioTracks: boolean }, label: string) => {
-    const store = require('./store.js')
-    const prev = {
-      separateAudioTracks: store.getSetting('separateAudioTracks') as boolean,
-      perDeviceAudioTracks: store.getSetting('perDeviceAudioTracks') as boolean,
-    }
-    if (prev.separateAudioTracks === next.separateAudioTracks && prev.perDeviceAudioTracks === next.perDeviceAudioTracks) {
-      return ok()
-    }
-
-    store.setSetting('separateAudioTracks', next.separateAudioTracks)
-    store.setSetting('perDeviceAudioTracks', next.perDeviceAudioTracks)
-
-    try {
-      await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => obsCore().applyAudioTracks())
-      log.info(`${label}: separate=${next.separateAudioTracks} perDevice=${next.perDeviceAudioTracks}`)
-      return ok()
-    } catch (e) {
-      // Roll back so the UI never shows a state the engine didn't accept.
-      store.setSetting('separateAudioTracks', prev.separateAudioTracks)
-      store.setSetting('perDeviceAudioTracks', prev.perDeviceAudioTracks)
-      try {
-        await obsCore().applyAudioTracks()
-      } catch (rollbackErr) {
-        log.error('Failed to restore audio tracks after rollback:', rollbackErr)
-      }
-      return fail(`Failed to apply ${label}: ${messageOf(e)}`)
-    }
-  }
-
-  handle(IPC.getSeparateAudioTracks, () => ok(getSetting('separateAudioTracks')))
-  handle(IPC.setSeparateAudioTracks, async (value: unknown) => {
-    if (typeof value !== 'boolean') return fail('Invalid value for Separate audio tracks')
-    const store = require('./store.js')
-    const perDevice = value ? (store.getSetting('perDeviceAudioTracks') as boolean) : false
-    return applyTrackFlags({ separateAudioTracks: value, perDeviceAudioTracks: perDevice }, 'Separate audio tracks')
-  })
-
-  handle(IPC.getPerDeviceAudioTracks, () => ok(getSetting('perDeviceAudioTracks')))
-  handle(IPC.setPerDeviceAudioTracks, async (value: unknown) => {
-    if (typeof value !== 'boolean') return fail('Invalid value for Per-device audio tracks')
-    const store = require('./store.js')
-    if (value && !(store.getSetting('separateAudioTracks') as boolean)) {
-      return fail('Per-device audio tracks need separate audio tracks on')
-    }
-    return applyTrackFlags(
-      { separateAudioTracks: store.getSetting('separateAudioTracks') as boolean, perDeviceAudioTracks: value },
-      'Per-device audio tracks',
-    )
-  })
-
   // -------------------------------------------------------------------------
   // Quality / encoder
   // -------------------------------------------------------------------------

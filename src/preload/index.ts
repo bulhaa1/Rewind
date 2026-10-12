@@ -100,10 +100,6 @@ api.addAudioDeviceChannel = invoke(IPC.addAudioDeviceChannel)
 api.removeAudioDeviceChannel = invoke(IPC.removeAudioDeviceChannel)
 api.setDeviceVolume = invoke(IPC.setDeviceVolume)
 api.setDeviceMuted = invoke(IPC.setDeviceMuted)
-api.getSeparateAudioTracks = invoke(IPC.getSeparateAudioTracks)
-api.setSeparateAudioTracks = invoke(IPC.setSeparateAudioTracks)
-api.getPerDeviceAudioTracks = invoke(IPC.getPerDeviceAudioTracks)
-api.setPerDeviceAudioTracks = invoke(IPC.setPerDeviceAudioTracks)
 
 // Hotkeys
 api.getHotkeys = invoke(IPC.getHotkeys)
