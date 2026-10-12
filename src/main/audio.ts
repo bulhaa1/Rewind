@@ -644,12 +644,30 @@ export class AudioDeviceChannels {
       throw new Error(`Cannot capture more than ${SLOT.DEVICE_MAX} extra audio devices`)
     }
 
-    setSetting('deviceChannels', {
-      ...stored,
-      [id]: { kind: known.kind, label: known.label, ...DEFAULT_SOUND },
-    })
+    /*
+     * Built once and used for both the write and `createChannel`. This used to
+     * read `stored[id]` after the write, which was the pre-write snapshot, so
+     * `createChannel` dereferenced `undefined` and threw on `cfg.kind` -- while
+     * the device had already been persisted. The user got a lane in Settings
+     * that did nothing until the next launch, which reads as a broken control
+     * rather than a failed add.
+     */
+    const cfg = { kind: known.kind, label: known.label, ...DEFAULT_SOUND }
+
+    if (this.ready) {
+      try {
+        this.createChannel(id, cfg)
+      } catch (e) {
+        // Do not persist a channel that could not be created. A row the user
+        // can see but cannot use is worse than an outright failure, and it
+        // survives until they restart.
+        log.error(`Could not create channel for "${known.label}", not saving it:`, e)
+        throw e
+      }
+    }
+
+    setSetting('deviceChannels', { ...stored, [id]: cfg })
     log.info(`Device channel added: "${known.label}"`)
-    if (this.ready) this.createChannel(id, stored[id])
   }
 
   removeChannel(id: string): void {

@@ -861,7 +861,7 @@ export function registerIpc(s: Services): void {
     return ok()
   })
 
-  handle(IPC.getAudioDevices, () => ok(require('./audio.js').listDevices(obsCore().obs)))
+  handle(IPC.getAudioDevices, () => ok(audioDevices().getDevices()))
 
   handle(IPC.getChannelDevices, () => ok(require('./audio.js').channelDevices()))
 
