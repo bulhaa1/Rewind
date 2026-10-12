@@ -21,6 +21,20 @@ Status values:
 
 ## Open
 
+### A screenshot records the wrong source, and names the file after it
+
+Found 2026-10-12 while verifying the screenshot-metadata fix. One screenshot
+on disk carries `source: "exclusion-list.json"` in its metadata — the source
+name recorded at capture time was a filename, not an application. The PNG
+itself is named `Screenshot 2026-10-11 19-08-02.png`, so the filename is
+correct and only the recorded source is wrong.
+
+**Why this is worth chasing:** `getCurrentSourceName()` is the same call the
+panel's "Capturing" field uses. If it can return a filename, it can return a
+stale or wrong value in the panel too, and the only reason this surfaced is
+that a stray `exclusion-list.json` happened to be sitting in the output root
+at the moment of capture. Not yet reproduced deliberately.
+
 ### Black video with live microphone when the selected window is gone
 
 **Reproduce:** Settings → Capture Source → a window → the game is running →
