@@ -32,7 +32,6 @@ import {
   BUFFER_DURATION_OPTIONS,
   CODEC_OPTIONS,
   FPS_OPTIONS,
-  MEMORY_WARN_OPTIONS,
   MIC_GAIN,
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
@@ -647,82 +646,18 @@ function useFolderPicker(
   }, [client, runAction, binding, kind, invalidate])
 }
 
-/**
- * How much RAM the rolling buffer is expected to hold, and the threshold above
- * which that is worth warning about.
- *
- * Always labelled as an estimate. The buffer lives in a separate OBS process and
- * OBS exposes no size for it, so this is derived from bitrate times duration
- * rather than measured -- and on a GPU encoder the bitrate is only known after a
- * clip has been recorded, which is why the subline says which of the two sources
- * produced the number.
- */
-function BufferMemoryRow({ onThresholdChange }: { onThresholdChange: () => void | Promise<void> }) {
-  const { data } = useQuery({
-    queryKey: QK.bufferMemory,
-    queryFn: async () => read(api.getBufferMemoryEstimate(), null),
-  })
-
-  const mb = data?.estimatedMb ?? 0
-  const exceeds = data?.exceeds ?? false
-  const basis =
-    data?.source === 'measured'
-      ? `From your recorded clips at this quality (${data.videoKbps} kbps video + ${data.audioKbps} kbps audio)`
-      : `Estimated from encoder defaults (${data?.videoKbps ?? 0} kbps video). Record a clip at this quality for a closer figure.`
-
-  return (
-    <>
-      <Row
-        label="Buffer Memory"
-        description="Estimated RAM held by the rolling buffer"
-        subline={
-          <>
-            <p className={`mt-0.5 text-[11px] ${exceeds ? 'text-warn' : 'text-ink-faint'}`}>
-              {exceeds
-                ? `This buffer is expected to hold about ${mb} MB, above your ${data?.warnMb} MB warning threshold.`
-                : basis}
-            </p>
-            {exceeds ? <p className="mt-0.5 text-[11px] text-ink-faint">{basis}</p> : null}
-          </>
-        }
-      >
-        <span className={`text-sm tabular-nums ${exceeds ? 'text-warn' : 'text-ink'}`}>
-          ≈ {mb} MB
-        </span>
-      </Row>
-
-      <Row label="Warn Above" description="Show a warning when the buffer estimate passes this">
-        <SettingSelect
-          binding={SETTINGS.memoryWarnMb}
-          initial={512}
-          options={MEMORY_WARN_OPTIONS}
-          label="Warn Above"
-          onSuccess={onThresholdChange}
-        />
-      </Row>
-    </>
-  )
-}
-
 function ReplaysSection() {
-  const client = useQueryClient()
   const { data } = useQuery({
     queryKey: SETTINGS.outputPath.queryKey,
     queryFn: async () => read(SETTINGS.outputPath.get(), ''),
   })
   const browse = useFolderPicker('replays', SETTINGS.outputPath, [QK.clips, QK.screenshots])
-  // The buffer memory readout lives in Quality but depends on this, so changing
-  // the duration here has to invalidate it or the estimate goes stale on screen.
-  const invalidateEstimate = useCallback(
-    async () => void (await client.invalidateQueries({ queryKey: QK.bufferMemory })),
-    [client],
-  )
 
   return (
     <Section icon={<Film />} title="Replays">
       <div className="space-y-4">
         <Row label="Buffer Length" description="How much footage to keep">
-          <SettingSelect binding={SETTINGS.bufferDuration} initial={60} options={BUFFER_DURATION_OPTIONS} label="Buffer Length" onSuccess={invalidateEstimate} />
+          <SettingSelect binding={SETTINGS.bufferDuration} initial={60} options={BUFFER_DURATION_OPTIONS} label="Buffer Length" />
         </Row>
         <PathRow label="Save Location" path={data ?? ''} onBrowse={() => void browse()} />
       </div>
@@ -799,12 +734,6 @@ function QualitySection() {
       : selectedVendor
   const onSoftwareFallback = activeVendor === 'x264' && resolvedVendor !== 'x264'
 
-  // Quality feeds the buffer-memory estimate, so changing it has to re-read that.
-  const invalidateEstimate = useCallback(
-    async () => void (await client.invalidateQueries({ queryKey: QK.bufferMemory })),
-    [client],
-  )
-
   const vendorOptions: Option<string>[] = vendors.map((v) => ({
     value: v.vendor,
     label: v.vendor === 'auto' ? v.label : `${v.label} (${v.isHardware ? 'GPU' : 'CPU'})`,
@@ -831,14 +760,12 @@ function QualitySection() {
         </Row>
 
         <Row label="Visual Quality" description="How much detail the encoder preserves per frame">
-          <SettingSelect binding={SETTINGS.visualQuality} initial="high" options={VISUAL_QUALITY_OPTIONS} label="Visual Quality" onSuccess={invalidateEstimate} />
+          <SettingSelect binding={SETTINGS.visualQuality} initial="high" options={VISUAL_QUALITY_OPTIONS} label="Visual Quality" />
         </Row>
 
         <Row label="Frame Rate" description="Frames per second encoded">
           <SettingSelect binding={SETTINGS.fps} initial={30} options={FPS_OPTIONS} label="Frame Rate" />
         </Row>
-
-        <BufferMemoryRow onThresholdChange={invalidateEstimate} />
 
         {activeVendor === 'nvenc' ? (
           <>

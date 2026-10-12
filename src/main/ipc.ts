@@ -3,8 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
-import { ALLOWED_FPS, AUDIO_BITRATE_ESTIMATE_KBPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
-import { estimateBufferMemoryMb, resolveVideoKbps } from '@shared/buffer-memory.js'
+import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
@@ -234,7 +233,7 @@ export function registerIpc(s: Services): void {
       s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
 
       void cm
-        .describeSavedClip(moved, replay().getActiveEncoderVendor(), replay().getActiveEncoder(), replay().getQualityTarget(), sourceName, replay().getQualityTier())
+        .describeSavedClip(moved, replay().getActiveEncoderVendor(), replay().getActiveEncoder(), replay().getQualityTarget(), sourceName)
         .then((info: { durationSec: number } | null) => cm.stampDuration(moved, info?.durationSec))
         .catch(() => {
           /* diagnostics only */
@@ -317,36 +316,6 @@ export function registerIpc(s: Services): void {
   handle(IPC.getBufferDuration, () =>
     ok(obsCore().isInitialized() ? obsCore().getConfig().bufferDuration : getSetting('bufferDuration')),
   )
-
-  // Read-only and computed here rather than in the renderer so the estimate has
-  // one home: the renderer draws what this returns and never re-derives it.
-  handle(IPC.getBufferMemoryEstimate, () => {
-    const quality = getSetting('visualQuality')
-    const durationSeconds = obsCore().isInitialized()
-      ? obsCore().getConfig().bufferDuration
-      : getSetting('bufferDuration')
-    const observed = getSetting('observedVideoKbpsByQuality')
-    const { videoKbps, source } = resolveVideoKbps(quality, observed?.[quality])
-    const warnMb = getSetting('memoryWarnMb')
-    const estimatedMb = Math.round(estimateBufferMemoryMb({ videoKbps, durationSeconds }))
-    return ok({
-      estimatedMb,
-      videoKbps: Math.round(videoKbps),
-      audioKbps: AUDIO_BITRATE_ESTIMATE_KBPS,
-      durationSeconds,
-      source,
-      warnMb,
-      exceeds: estimatedMb > warnMb,
-    })
-  })
-
-  handle(IPC.getMemoryWarnMb, () => ok(getSetting('memoryWarnMb')))
-
-  handle(IPC.setMemoryWarnMb, (mb: unknown) => {
-    if (!isMemoryWarnMb(mb)) return fail('Memory warning threshold must be between 64 and 8192 MB')
-    setSetting('memoryWarnMb', mb)
-    return ok()
-  })
 
   handle(IPC.setBufferDuration, async (seconds: unknown) => {
     if (!isBufferDuration(seconds)) return fail('Buffer duration must be between 5 and 300 seconds')
@@ -1321,7 +1290,7 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
   s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
 
   void cm
-    .describeSavedClip(moved, s.replay.getActiveEncoderVendor(), s.replay.getActiveEncoder(), s.replay.getQualityTarget(), sourceName, s.replay.getQualityTier())
+    .describeSavedClip(moved, s.replay.getActiveEncoderVendor(), s.replay.getActiveEncoder(), s.replay.getQualityTarget(), sourceName)
     .then(async (info: { durationSec: number } | null) => {
       const duration = await cm.stampDuration(moved, info?.durationSec)
       if (duration !== undefined) meta.setClipMeta(moved, { duration })
@@ -1490,16 +1459,6 @@ const isMicGain = (v: unknown): v is number =>
 const isChannel = (v: unknown): v is AudioChannel => v === 'desktop' || v === 'microphone'
 const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'local' || v === 'cloud'
 const isBufferDuration = (v: unknown): v is number => typeof v === 'number' && v >= 5 && v <= 300
-
-/**
- * Bounds for the buffer-memory warning threshold.
- *
- * The floor stops a user setting a threshold below their own estimate and
- * drowning the settings screen in a permanent warning; the ceiling keeps it
- * inside the range a 300 s buffer can plausibly reach, so it cannot be set to
- * a value that silently disables the warning forever.
- */
-const isMemoryWarnMb = (v: unknown): v is number => typeof v === 'number' && v >= 64 && v <= 8192
 
 function isSaveClipArgs(v: unknown): v is {
   clipPath: string

@@ -6,9 +6,6 @@ import { probeClip, probeDuration, probe, type ClipProbe } from './ffmpeg.js'
 import { clipMeta, type ClipMeta } from './store.js'
 import { setClipMeta } from './clip-meta.js'
 import { RECORDING_PREFIX, REPLAY_PREFIX, parseRecordingStamp, THUMBNAIL } from '@shared/constants.js'
-import { recordBitrateSample } from '@shared/buffer-memory.js'
-import { getSetting, setSetting } from './store.js'
-import { VBR_KBPS_BY_QUALITY, type VisualQuality } from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
 
 const log = scope('ClipManager')
@@ -297,11 +294,6 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
  * Probes a saved clip and logs the full description.
  * Returns the probe so the caller can stamp the measured duration without a
  * second ffprobe pass.
- *
- * `quality` is the diagnostic target string ("CQP 20") that goes in the log.
- * `qualityTier` is the actual tier ('high') and is what the bitrate observation
- * is filed under; it is separate because the two are not interchangeable and
- * conflating them silently files every observation under nothing.
  */
 export async function describeSavedClip(
   file: string,
@@ -309,7 +301,6 @@ export async function describeSavedClip(
   encoder: string,
   quality: string,
   sourceType: string,
-  qualityTier?: string,
 ): Promise<ClipProbe | null> {
   const sizeMB = (() => {
     try {
@@ -330,40 +321,10 @@ export async function describeSavedClip(
       `bitrate=${info.bitrateKbps}kbps codec=${info.codec} res=${info.width}x${info.height}@${info.fps}fps ` +
       `vendor=${vendor} encoder=${encoder} quality=${quality} source=${sourceType}`,
     )
-    recordAchievedBitrate(qualityTier ?? quality, info.bitrateKbps)
     return info
   } catch (e) {
     log.warn(`Failed to probe saved clip ${path.basename(file)}:`, e)
     return null
-  }
-}
-
-/**
- * Fold a saved clip's achieved bitrate into the per-quality running average.
- *
- * The settings screen's buffer-memory readout needs a bitrate, and the only one
- * that describes this machine's encoder is one it has actually produced.
- * `VBR_KBPS_BY_QUALITY` is an x264 target table, while every hardware encoder
- * here runs CQP/ICQ and emits whatever the content demands, so learning it from
- * real clips is the difference between a readout worth trusting and one that is
- * wrong by roughly 8x.
- *
- * Best effort by design: this runs after the clip is already saved and logged,
- * so a store failure here must never surface as a failed save.
- */
-function recordAchievedBitrate(quality: string, totalFileKbps: number): void {
-  if (!(quality in VBR_KBPS_BY_QUALITY)) return
-  const tier = quality as VisualQuality
-  try {
-    const observed = getSetting('observedVideoKbpsByQuality')
-    const previous = Array.isArray(observed?.[tier]) ? (observed[tier] as number[]) : []
-    const next = recordBitrateSample(previous, totalFileKbps)
-    // A rejected probe returns the history unchanged; writing it anyway would be
-    // indistinguishable from a real measurement.
-    if (next.length === previous.length && next.every((v, i) => v === previous[i])) return
-    setSetting('observedVideoKbpsByQuality', { ...observed, [tier]: next })
-  } catch (e) {
-    log.warn('Failed to record achieved bitrate:', e)
   }
 }
 
