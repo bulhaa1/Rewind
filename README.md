@@ -50,8 +50,8 @@ global hotkeys:
 
 | Key | Action |
 |---|---|
-| `Alt+1` | Open / close the panel |
-| `Alt+2` | Save the buffer as a clip |
+| `Alt+1` | Save the buffer as a clip |
+| `Alt+2` | Screenshot |
 
 The buffer keeps rolling while the panel is closed. Recording state is shown by the
 ring filling — there is no red dot to misread.
