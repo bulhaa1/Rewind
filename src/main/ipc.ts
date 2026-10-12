@@ -768,6 +768,18 @@ export function registerIpc(s: Services): void {
    */
   handle(IPC.getMicGain, () => ok(getSetting('micGain')))
 
+  handle(IPC.setMicGain, (value: unknown) => {
+    if (!isMicGain(value)) return fail(`Input gain must be between ${MIC_GAIN.MIN} and ${MIC_GAIN.MAX}`)
+    try {
+      setSetting('micGain', value)
+      // Live tier, same as volume and mute: the gain is an OBS filter on the
+      // existing mic source, so nothing about the audio graph is rebuilt.
+      obsCore().applyChannelLevel('microphone')
+      return ok()
+    } catch (e) {
+      return fail(`Failed to set microphone input gain: ${messageOf(e)}`)
+    }
+  })
 
   handle(IPC.getAudioSessions, () => ok(require('./audio.js').listAudioApps()))
 
