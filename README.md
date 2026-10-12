@@ -65,7 +65,7 @@ Clips, screenshots and the editor are all reachable from the tray menu.
 | **Rewind** | **Free · Open Source** | **Yes** | **Yes** | **Yes** | **None** | **None** |
 | Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes |
 | Revidi | Free (Premium $4.99/mo) | Yes | Yes | Yes | Minimal | Yes |
-| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Yes | No | Can Opt out |
+| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Yes | Yes | Can Opt out |
 | AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | Yes | — |
 | Outplayed | Free | Yes | Yes | Part of Overwolf | Yes | Yes |
 | SteelSeries Moments | Free | Yes | Yes | Part of SteelSeries GG | Yes | Yes |
