@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { ffmpegTo, probeDuration } from './ffmpeg.js'
+import { KEYINT_SEC } from '@shared/constants.js'
 
 const log = scope('Stitch')
 
@@ -75,8 +76,31 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
     // up at the front of the clip. Starting from max(startedAt, segStartMs)
     // drops it, because the first segment's lead is then measured from the
     // press rather than from the start of its file.
-    const cursor = i === 0 ? Math.max(opts.startedAt, segStartMs) : previousEnd
-    const windowEnd = Math.min(cursor + windowMs, opts.stoppedAt)
+    // Input-side `-ss` lands on the keyframe at or BEFORE the point asked for,
+    // which is up to one KEYINT_SEC early. Aimed exactly at the press it therefore
+    // produced a recording that began before it began: measured 41.73s for a 40.0s
+    // recording, the extra 1.73s being the snap-back.
+    //
+    // Aiming one interval later reverses the error: the cut now lands at or after
+    // the press, so a recording can be short but never long. The cost is up to
+    // KEYINT_SEC of real footage at the very start, which is the better of the two
+    // -- dropping the first couple of seconds is recoverable, opening the recording
+    // with footage the user never asked for is not.
+    //
+    // Only the first segment is compensated. Later seams aim at where the previous
+    // part ended, and overshooting there would punch a gap at every one of them,
+    // so a long recording would lose two seconds per segment.
+    const headroom = i === 0 ? KEYINT_SEC * 1000 : 0
+    // The window this segment is responsible for, measured from where the
+    // previous one ended. Deliberately NOT advanced by the headroom: doing that
+    // moved previousEnd later, which pushed the next segment's cut later too,
+    // and a 4-segment recording lost 8s instead of 2s because the headroom
+    // compounded once per segment.
+    const anchor = i === 0 ? Math.max(opts.startedAt, segStartMs) : previousEnd
+    const windowEnd = Math.min(anchor + windowMs, opts.stoppedAt)
+    // Where the cut is aimed, which is where the headroom applies: past the
+    // press on the first segment so the keyframe snap-back cannot land before it.
+    const cursor = Math.min(anchor + headroom, opts.stoppedAt - 200)
     const lead = Math.max(0, (cursor - segStartMs) / 1000)
     const dur = Math.min((windowEnd - cursor) / 1000, Math.max(0, actualSec - lead))
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -8,7 +8,7 @@ import { useClipEvents } from '../lib/hooks'
 import { Header } from '../components/layout'
 import { CaptureControls } from '../components/capture'
 import { ClipList, ScreenshotList } from '../components/library'
-import { Button, Dialog } from '../components/ui'
+import { Button, Dialog, cn } from '../components/ui'
 import type { DeleteScope } from '@shared/types.js'
 
 type View = 'clips' | 'screenshots'
@@ -208,7 +208,13 @@ export function HomePage() {
         )}
       </div>
 
-      <StatusStrip status={status} message={message} />
+      <StatusStrip
+        status={status}
+        message={message}
+        bufferActive={bufferActive}
+        bufferStartedAt={bufferState?.startedAt ?? 0}
+        bufferSeconds={config?.bufferDuration ?? 60}
+      />
 
       <ConfirmDelete
         target={deleteTarget}
@@ -231,9 +237,37 @@ export function HomePage() {
 }
 
 /** One line of engine state, kept out of the way at the bottom of the panel. */
-function StatusStrip({ status, message }: { status: string; message?: string }) {
+function StatusStrip({
+  status,
+  message,
+  bufferActive,
+  bufferStartedAt,
+  bufferSeconds,
+}: {
+  status: string
+  message?: string
+  bufferActive: boolean
+  bufferStartedAt: number
+  bufferSeconds: number
+}) {
+  // Counts seconds of footage that are recoverable right now, which is how long
+  // ago the buffer started, capped at its length -- once it is full the oldest
+  // footage falls out, so the number stops climbing there rather than running on.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!bufferActive) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [bufferActive])
+
+  const held =
+    bufferActive && bufferStartedAt
+      ? Math.min(Math.max(Math.floor((now - bufferStartedAt) / 1000), 0), bufferSeconds)
+      : 0
+  const full = held >= bufferSeconds
+
   return (
-    <div className="flex h-6 shrink-0 items-center justify-center border-t border-line px-3 text-[10px] text-ink-faint">
+    <div className="flex h-6 shrink-0 items-center justify-center gap-3 border-t border-line px-3 text-[10px] text-ink-faint">
       {status === 'initializing' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -247,7 +281,22 @@ function StatusStrip({ status, message }: { status: string; message?: string }) 
           Saving clip…
         </span>
       ) : status === 'ready' ? (
-        'Rolling buffer active'
+        <span className="flex items-center gap-3">
+          <span
+            className="flex items-center gap-1.5"
+            title={`${held} of ${bufferSeconds} seconds of footage recoverable`}
+          >
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                full ? 'bg-danger' : 'bg-ink-faint',
+              )}
+            />
+            <span className="tabular">
+              {held}s of {bufferSeconds}s buffered
+            </span>
+          </span>
+        </span>
       ) : status === 'error' ? (
         <span className="text-danger">{message ?? 'Engine not ready'}</span>
       ) : null}
