@@ -94,6 +94,11 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
         '-ss', lead.toFixed(3),
         '-i', seg.file,
         '-t', dur.toFixed(3),
+        // Without -map, ffmpeg keeps only the FIRST stream of each type. That
+        // silently reduced every trimmed segment to one audio track, so a
+        // recording arrived in the editor with the Desktop and Microphone lanes
+        // missing. Verified against a 3-stream clip: 1 stream without, 3 with.
+        '-map', '0',
         '-c', 'copy',
         '-avoid_negative_ts', 'make_zero',
         '-movflags', '+faststart',
@@ -125,7 +130,17 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
     // BOM makes it reject the very first line.
     const quoted = parts.map((f) => `file '${f.replace(/'/g, "'\\''")}'`)
     fs.writeFileSync(listFile, quoted.join('\n'), 'utf8')
-    await ffmpegTo(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart'], opts.outputPath)
+    await ffmpegTo(
+      [
+        '-f', 'concat', '-safe', '0', '-i', listFile,
+        // Same reason as the trim above: default mapping would take one audio
+        // stream out of the joined file however many the parts carry.
+        '-map', '0',
+        '-c', 'copy',
+        '-movflags', '+faststart',
+      ],
+      opts.outputPath,
+    )
   }
 
   const durationSec = (await probeDuration(opts.outputPath)) ?? 0

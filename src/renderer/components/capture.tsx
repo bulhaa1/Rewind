@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { Circle, Square, Camera, Save, Loader2, Play } from 'lucide-react'
 import { api } from '../lib/api'
 import { Button, cn } from './ui'
-import { ScannerSweep } from './mark'
 
 /** mm:ss for the continuous recorder; hh:mm:ss once past an hour. */
 function elapsed(ms: number): string {
@@ -224,26 +223,33 @@ export function CaptureControls({
     <div className="shrink-0 px-3 pb-3 pt-3">
       <div className="rounded-lg border border-line bg-surface">
         <div className="flex items-center gap-3 p-3">
-          <div
-            className={cn(
-              'relative shrink-0 text-accent transition-opacity duration-300',
-              // The record timer is drawn in the middle of the rings, so while it is
-              // up the sweep reads as clutter behind the digits rather than as a
-              // separate element. Fading it back makes the timer the figure and the
-              // sweep the ground. The blur is small on purpose: enough to stop the
-              // accent competing, not enough to turn it to mush.
-              recording && 'opacity-20 blur-[0.7px]',
+          {/*
+            The sweep this replaced drew the buffer as a filling arc, which had to
+            be fed a quantity to animate and so only ever approximated "is it on".
+            A blinking dot answers the only question actually being asked: is the
+            rolling buffer capturing right now. The record timer sits below it
+            rather than inside it, so the two never overlap.
+          */}
+          <div className="flex w-14 shrink-0 flex-col items-center gap-1.5">
+            {bufferActive ? (
+              <span
+                className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger"
+                title="The rolling buffer is running"
+                aria-label="Rolling buffer running"
+              />
+            ) : (
+              <span
+                className="h-2.5 w-2.5 rounded-full border border-line-strong"
+                title="The rolling buffer is stopped"
+                aria-label="Rolling buffer stopped"
+              />
             )}
-          >
-            <ScannerSweep active={ready || recording} size={72} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              {recording ? (
-                <>
-                  <span className="tabular text-sm font-medium text-danger">{elapsed(elapsedMs)}</span>
-                  <span className="text-[9px] uppercase tracking-wider text-ink-faint">rec</span>
-                </>
-              ) : null}
-            </div>
+            {recording ? (
+              <>
+                <span className="tabular text-xs font-medium text-danger">{elapsed(elapsedMs)}</span>
+                <span className="text-[9px] uppercase tracking-wider text-ink-faint">rec</span>
+              </>
+            ) : null}
           </div>
 
           <div className="min-w-0 flex-1">
