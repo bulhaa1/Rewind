@@ -60,17 +60,17 @@ Clips, screenshots and the editor are all reachable from the tray menu.
 
 ## How it compares
 
-| Tool | Price | Replay buffer | Any GPU | Standalone app | Extra Bloat | Data Collection |
-|---|---|---|---|---|---|
-| **Rewind** | **Free · open source** | **Yes** | **Yes** | **Yes** | **None** | **None**
-| Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes
+| Tool | Price | Replay Buffer | Any GPU | Standalone App | Extra Bloat | Data Collection |
+|---|---|---|---|---|---|---|
+| **Rewind** | **Free · Open Source** | **Yes** | **Yes** | **Yes** | **None** | **None** |
+| Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes |
 | Revidi | Free (Premium $4.99/mo) | Yes | Yes | Yes | Minimal | Yes |
-| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Yes | No |
-| AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | No | Yes | Yes
-| Outplayed | Free | Yes | Yes | Runs on the Overwolf platform | Yes | Yes |
+| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Yes | No | Can Opt out |
+| AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | Yes | — |
+| Outplayed | Free | Yes | Yes | Part of Overwolf | Yes | Yes |
 | SteelSeries Moments | Free | Yes | Yes | Part of SteelSeries GG | Yes | Yes |
-| OBS Studio | Free (open source) | Yes | Yes | Yes | Yes | No
-| Xbox Game Bar | Free (built into Windows) | Yes | Yes | Built into Windows | Yes | Obviously
+| OBS Studio | Free · Open Source | Yes | Yes | Yes | Yes | No |
+| Xbox Game Bar | Free · Built into Windows | Yes | Yes | Built into Windows | Yes | Obviously |
 
 Rewind detects the encoder your GPU offers — NVENC, AMF or QSV — and falls back
 to CPU encoding when it finds none, so it runs on any of them rather than being
