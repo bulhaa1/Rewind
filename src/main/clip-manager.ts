@@ -15,13 +15,32 @@ export function isVideoFile(p: string): boolean {
   return VIDEO_EXTENSIONS.includes(path.extname(p).toLowerCase())
 }
 
-/** Files the original created but never adopts (trim temporaries, editor previews). */
+/**
+ * A file the editor's "Save as Copy" produced: `<name>-edit.mp4`, or
+ * `<name>-edit-2.mp4` and onward when that name is taken.
+ */
 const EDIT_SUFFIX = /-edit(-\d+)?$/
+
+/**
+ * A trim in progress: the editor writes `<name>.trim-<timestamp>.mp4` beside the
+ * source clip and renames it over the original when ffmpeg finishes
+ * (`editor.ts:381`). It exists for the length of one encode, so the library must
+ * never surface it.
+ *
+ * The `.trim-` infix matters more than it looks. These files carry the `Replay`
+ * prefix, so the "written by Rewind, adopt by name" rule below would otherwise
+ * wave every one of them straight into the library while it is still growing.
+ */
+const TRIM_TEMP_INFIX = /\.trim-\d+\./
 
 export function isEditorCopy(fileName: string): boolean {
   const i = fileName.lastIndexOf('.')
   const stem = i > 0 ? fileName.slice(0, i) : fileName
   return EDIT_SUFFIX.test(stem)
+}
+
+export function isTrimTemporary(fileName: string): boolean {
+  return TRIM_TEMP_INFIX.test(fileName)
 }
 
 /**
@@ -132,11 +151,16 @@ export function repairTrailingDotFolders(root: string): void {
 /** Files the library should surface: real recordings and editor copies, not temporaries. */
 function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>, uploadKeys: Set<string>): boolean {
   if (!fileName.endsWith('.mp4') && !fileName.endsWith('.mkv')) return false
-  if (isEditorCopy(fileName)) return false
+  // A trim in progress is a half-written file that is about to be renamed over
+  // its source. Listing it would show a clip that is about to stop existing.
+  if (isTrimTemporary(fileName)) return false
+  // Editor copies ARE library items. They used to be excluded here, which made
+  // "Save as Copy" write a file the user could never open again.
   // Files Rewind wrote itself are recognised by name, so they survive even if the
   // metadata sidecar is lost or the user moves the file. Gating them on metadata
   // alone meant a continuous recording could silently vanish from the library.
   if (fileName.startsWith(REPLAY_PREFIX) || fileName.startsWith(RECORDING_PREFIX)) return true
+  if (isEditorCopy(fileName)) return true
   return metaKeys.has(fullPath) || uploadKeys.has(fullPath)
 }
 
