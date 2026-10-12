@@ -50,18 +50,26 @@ export function useNotificationSound(): void {
  * and closes itself, returning focus to the main panel on click. The timer that
  * used to live here raced the window teardown and cut the exit animation short.
  */
-export function usePopupWindow(): { type: string; onClick: () => void } | null {
-  const [state, setState] = useState<{ type: string; onClick: () => void } | null>(null)
-
-  useEffect(() => {
+export function usePopupWindow(): { type: string; message: string | null; onClick: () => void } | null {
+  /*
+   * Resolved synchronously, like `useEditorClipPath` below, and for the same
+   * reason. `App.tsx` states the popup must be known before the main panel
+   * mounts; resolving in an effect meant `Surface` returned the panel on the
+   * first render, so a 280x110 transparent popup briefly mounted the whole clip
+   * library -- firing six queries on the way past.
+   */
+  return useMemoOnce(() => {
     const params = new URLSearchParams(window.location.search)
     const type = params.get('notification')
-    if (!type) return
-
-    setState({ type, onClick: () => void api.notificationClick() })
-  }, [])
-
-  return state
+    if (!type) return null
+    return {
+      type,
+      // The main process has always sent this; it was simply never read, so
+      // every error popup showed a generic title and no explanation.
+      message: params.get('message'),
+      onClick: () => void api.notificationClick(),
+    }
+  }, null)
 }
 
 /** Reads the editor window's clip path from its query string. */

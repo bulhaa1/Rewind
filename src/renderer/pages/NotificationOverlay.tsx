@@ -6,14 +6,20 @@ import type { BufferStatus } from '@shared/types.js'
 /** How long the popup stays up, before its exit transition begins. */
 const LIFETIME_MS = 3400
 
-/** Presentation per notification kind. `error` is the odd one out visually. */
-const CONTENT: Record<BufferStatus, { title: string; tone: 'ok' | 'error' }> = {
-  saved: { title: 'Clip saved', tone: 'ok' },
-  screenshot: { title: 'Screenshot saved', tone: 'ok' },
-  error: { title: 'Something went wrong', tone: 'error' },
-  recorded: { title: 'Recording', tone: 'ok' },
-  'buffer-on': { title: 'Recording started', tone: 'ok' },
-  'buffer-off': { title: 'Recording paused', tone: 'ok' },
+/**
+ * Presentation per notification kind.
+ *
+ * `subtitle` is the fallback shown when the main process sent no `message`.
+ * It used to be a single hardcoded ternary on `type === 'screenshot'`, which
+ * meant every other kind -- including `error` -- claimed the clip was saved.
+ */
+const CONTENT: Record<BufferStatus, { title: string; subtitle: string; tone: 'ok' | 'error' }> = {
+  saved: { title: 'Clip saved', subtitle: 'Saved to your replays folder', tone: 'ok' },
+  screenshot: { title: 'Screenshot saved', subtitle: 'Saved to your screenshots folder', tone: 'ok' },
+  error: { title: 'Something went wrong', subtitle: '', tone: 'error' },
+  recorded: { title: 'Recording', subtitle: 'Saved to your replays folder', tone: 'ok' },
+  'buffer-on': { title: 'Recording started', subtitle: 'Buffer is rolling', tone: 'ok' },
+  'buffer-off': { title: 'Recording paused', subtitle: 'Buffer is not rolling', tone: 'ok' },
 }
 
 /**
@@ -23,9 +29,27 @@ const CONTENT: Record<BufferStatus, { title: string; tone: 'ok' | 'error' }> = {
  * games. Clicking it raises the main panel; the main process closes the window
  * after a fixed lifetime regardless.
  */
-export function NotificationOverlay({ type, onClick }: { type: string; onClick: () => void }) {
+export function NotificationOverlay({
+  type,
+  message,
+  onClick,
+}: {
+  type: string
+  message?: string | null
+  onClick: () => void
+}) {
   const content = CONTENT[type as BufferStatus] ?? CONTENT.saved
   const [leaving, setLeaving] = useState(false)
+
+  /*
+   * The main process puts a real diagnostic in the URL as `&message=...`
+   * (`notification.ts:132`) -- "Recording not ready", "Failed to save clip",
+   * "Recording stopped responding". It was never read, so every error popup read
+   * "Something went wrong" with no explanation. Prefer it; fall back to the
+   * kind's own subtitle, which for `error` is deliberately empty rather than a
+   * claim that something was saved.
+   */
+  const detail = (message ?? '').trim() || content.subtitle
 
   /*
     The exit transition belongs here rather than on `beforeunload`. Setting a flag
@@ -69,9 +93,7 @@ export function NotificationOverlay({ type, onClick }: { type: string; onClick: 
 
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{content.title}</span>
-        <span className="block truncate text-xs text-ink-muted">
-          {type === 'screenshot' ? 'Saved to your screenshots folder' : 'Saved to your replays folder'}
-        </span>
+        {detail ? <span className="block truncate text-xs text-ink-muted">{detail}</span> : null}
       </span>
 
       <Loader2 className="h-3 w-3 shrink-0 animate-spin text-ink-muted/40" />
