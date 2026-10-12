@@ -96,6 +96,19 @@ export function HomePage() {
   const startBuffer = useCallback(() => void setBuffer(true), [setBuffer])
   const stopBuffer = useCallback(() => void setBuffer(false), [setBuffer])
 
+  // The slider previews locally and calls this once on release, so this runs at
+  // most once per drag rather than once per pixel.
+  const setBufferSeconds = useCallback(
+    async (seconds: number) => {
+      await runAction(async () => {
+        const res = await api.setBufferDuration(seconds)
+        if (!res.success) throw new Error(res.error)
+      })
+      await client.invalidateQueries({ queryKey: QK.config })
+    },
+    [runAction, client],
+  )
+
   const openFolder = useCallback(() => {
     void runAction(async () => {
       const res = await api.openFolder()
@@ -137,10 +150,12 @@ export function HomePage() {
         lastSaved={lastSaved}
         bufferActive={bufferActive}
         bufferBusy={bufferBusy}
+        bufferSeconds={config?.bufferDuration ?? 60}
         onSaveReplay={saveClip}
         onScreenshot={takeScreenshot}
         onBufferStart={startBuffer}
         onBufferStop={stopBuffer}
+        onBufferSeconds={setBufferSeconds}
       />
 
       {status === 'error' ? (

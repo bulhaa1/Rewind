@@ -318,7 +318,9 @@ export function registerIpc(s: Services): void {
   )
 
   handle(IPC.setBufferDuration, async (seconds: unknown) => {
-    if (!isBufferDuration(seconds)) return fail('Buffer duration must be between 5 and 300 seconds')
+    if (!isBufferDuration(seconds)) {
+      return fail(`Buffer duration must be between ${BUFFER_DURATION_MIN} and ${BUFFER_DURATION_MAX} seconds`)
+    }
     const blocked = notReady()
     if (blocked) return blocked
     try {
@@ -1458,7 +1460,19 @@ const isMicGain = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= MIC_GAIN.MIN && v <= MIC_GAIN.MAX
 const isChannel = (v: unknown): v is AudioChannel => v === 'desktop' || v === 'microphone'
 const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'local' || v === 'cloud'
-const isBufferDuration = (v: unknown): v is number => typeof v === 'number' && v >= 5 && v <= 300
+/**
+ * Buffer length bounds, in seconds.
+ *
+ * The ceiling is 10 minutes because that is what the homepage slider offers.
+ * OBS has no byte ceiling on this output (see replay-buffer.ts), so the upper
+ * bound is the only thing standing between a user and an unbounded RAM
+ * allocation -- it is a deliberate limit, not an arbitrary one.
+ */
+const BUFFER_DURATION_MIN = 5
+const BUFFER_DURATION_MAX = 600
+
+const isBufferDuration = (v: unknown): v is number =>
+  typeof v === 'number' && v >= BUFFER_DURATION_MIN && v <= BUFFER_DURATION_MAX
 
 function isSaveClipArgs(v: unknown): v is {
   clipPath: string

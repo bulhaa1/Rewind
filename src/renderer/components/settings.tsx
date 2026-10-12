@@ -29,7 +29,6 @@ import { HotkeyDialog } from './record'
 import { Select, SettingSelect, SettingSwitchRow, type Option } from './controls'
 import { Button, Badge, InlineSpinner, Menu, MenuItem, PathRow, Row, Section, SectionHeading, cn } from './ui'
 import {
-  BUFFER_DURATION_OPTIONS,
   CODEC_OPTIONS,
   FPS_OPTIONS,
   MIC_GAIN,
@@ -656,9 +655,6 @@ function ReplaysSection() {
   return (
     <Section icon={<Film />} title="Replays">
       <div className="space-y-4">
-        <Row label="Buffer Length" description="How much footage to keep">
-          <SettingSelect binding={SETTINGS.bufferDuration} initial={60} options={BUFFER_DURATION_OPTIONS} label="Buffer Length" />
-        </Row>
         <PathRow label="Save Location" path={data ?? ''} onBrowse={() => void browse()} />
       </div>
     </Section>

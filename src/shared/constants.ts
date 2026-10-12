@@ -231,16 +231,6 @@ export const SCREENSHOT_FILENAME_ATTEMPTS = 100
 // UI option tables (verbatim from settings-page)
 // ---------------------------------------------------------------------------
 
-export const BUFFER_DURATION_OPTIONS = [
-  { value: 15, label: '15 seconds' },
-  { value: 30, label: '30 seconds' },
-  { value: 60, label: '60 seconds' },
-  { value: 90, label: '90 seconds' },
-  { value: 120, label: '2 minutes' },
-  { value: 180, label: '3 minutes' },
-  { value: 300, label: '5 minutes' },
-]
-
 export const OUTPUT_RESOLUTION_OPTIONS = [
   { value: 'native', label: 'Native' },
   { value: '1080p', label: '1080p' },
