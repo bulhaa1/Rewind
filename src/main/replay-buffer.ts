@@ -145,6 +145,8 @@ export class ReplayBuffer {
   private segmentTimer: NodeJS.Timeout | null = null
   private segmentFlush: Promise<void> | null = null
   private recordingActive = false
+  /** In-flight start, shared by callers that overlap one. See `startReplayBuffer`. */
+  private startInFlight: Promise<void> | null = null
   private recordingStartedAt = 0
   private scratchDir = ''
 
@@ -478,7 +480,29 @@ export class ReplayBuffer {
   // Lifecycle
   // -------------------------------------------------------------------------
 
+  /**
+   * Starts the rolling buffer, coalescing overlapping calls.
+   *
+   * OBS reports FAILED (code -4) when a second start lands while the first is
+   * still settling, and the recovery path then quietly rebuilds the chain on the
+   * software encoder. The user is left with a stopped buffer and CPU encoding
+   * they were never told about. Measured: two overlapping starts took a healthy
+   * NVENC buffer down and downgraded it to x264.
+   *
+   * So a call arriving while a start is in flight awaits that same start rather
+   * than issuing its own. The window is real, not theoretical: the pipeline starts
+   * the buffer at launch, and the panel's hotkey is live before that finishes.
+   */
   async startReplayBuffer(retry = false): Promise<void> {
+    if (this.startInFlight) return this.startInFlight
+    this.startInFlight = this.runStartReplayBuffer(retry).finally(() => {
+      this.startInFlight = null
+    })
+    return this.startInFlight
+  }
+
+  /** The actual start. Only `startReplayBuffer` should call this. */
+  private async runStartReplayBuffer(retry: boolean): Promise<void> {
     if (!this.obsCore.isInitialized()) throw new Error('OBS not initialized')
 
     const canRetryHardware = this.hardwareFailures < TIMING.HARDWARE_FAILURE_CAP
