@@ -136,7 +136,15 @@ export function registerIpc(s: Services): void {
   const audioMix = () => s.audioMix
   const audioDevices = () => s.audioDevices
 
-  /** Runs `fn` while broadcasting a transient status, restoring the previous one after. */
+  /**
+   * Runs `fn` while broadcasting a transient status, then reports the truth.
+   *
+   * The restore step used to be an unconditional `finally`, so a settings change
+   * that threw still left the panel reading "ready" over a dead buffer. Every
+   * caller reports the real outcome through its own return value, so the status
+   * now follows the same rule `reinitPipeline` already uses: `ready` only when
+   * there is genuinely a buffer running behind it, otherwise `paused`.
+   */
   const withStatus = async <T>(status: { status: ObsStatus; message?: string }, fn: () => Promise<T>): Promise<T> => {
     const win = s.getMainWindow()
     s.status.set(status)
@@ -144,9 +152,9 @@ export function registerIpc(s: Services): void {
     try {
       return await fn()
     } finally {
-      const ready = OBS_STATUS_MESSAGES.ready
-      s.status.set(ready)
-      win?.webContents.send('obs-status', ready)
+      const settled = replay().isReplayBufferActive() ? OBS_STATUS_MESSAGES.ready : OBS_STATUS_MESSAGES.paused
+      s.status.set(settled)
+      win?.webContents.send('obs-status', settled)
     }
   }
 
@@ -474,14 +482,17 @@ export function registerIpc(s: Services): void {
   handle(IPC.openFolder, async (target?: unknown) => {
     const root = getSetting('outputPath') as string
     if (target === undefined || target === null) {
-      await shell.openPath(root)
+      // openPath resolves with an error string rather than throwing.
+      const rootErr = await shell.openPath(root)
+      if (rootErr) return fail(rootErr)
       return ok()
     }
     if (typeof target !== 'string' || !isInsidePath(target, root)) {
       note('Attempted to open folder outside output directory')
       return fail('Invalid folder path')
     }
-    await shell.openPath(target)
+    const targetErr = await shell.openPath(target)
+    if (targetErr) return fail(targetErr)
     return ok()
   })
 
@@ -548,7 +559,8 @@ export function registerIpc(s: Services): void {
   handle(IPC.openFile, async (file: unknown) => {
     const resolved = resolveVideo(file, s, 'open-file')
     if ('error' in resolved) return resolved
-    await shell.openPath(resolved.path)
+    const openErr = await shell.openPath(resolved.path)
+    if (openErr) return fail(openErr)
     return ok()
   })
 
@@ -593,7 +605,8 @@ export function registerIpc(s: Services): void {
   })
 
   handle(IPC.openScreenshotFolder, async () => {
-    await shell.openPath(screenshotPath())
+    const shotErr = await shell.openPath(screenshotPath())
+    if (shotErr) return fail(shotErr)
     return ok()
   })
 
@@ -716,7 +729,8 @@ export function registerIpc(s: Services): void {
   handle(IPC.openScreenshot, async (file: unknown) => {
     const resolved = resolveScreenshot(file, s, 'open-screenshot')
     if ('error' in resolved) return resolved
-    await shell.openPath(resolved.path)
+    const shotErr = await shell.openPath(resolved.path)
+    if (shotErr) return fail(shotErr)
     return ok()
   })
 
