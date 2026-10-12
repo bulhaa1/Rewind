@@ -21,6 +21,7 @@
     "package:stamp": "node scripts/stamp-exe.mjs && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish never",
     "package:verify-exe": "node scripts/verify-exe.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "verify:channels": "node scripts/channel-check.mjs",
     "icons": "npm run icons:extract && npm run icons:sizes && node scripts/gen-ico.mjs && npm run icons:review",
     "icons:extract": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-extract.ps1",
     "icons:sizes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-sizes.ps1",
