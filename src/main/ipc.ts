@@ -1141,7 +1141,27 @@ export function registerIpc(s: Services): void {
     }
     const conflict = hk.conflictingAction(action as any, accelerator)
     if (conflict) return fail(`Already used by ${hk.HOTKEYS[conflict].label}`)
-    if (!hk.registerHotkey(action as any, accelerator, action === 'save-replay' ? s.saveClipHotkey : () => void s.takeScreenshotHotkey())) {
+
+    /*
+     * One callback per action, looked up by name.
+     *
+     * This used to be a binary ternary -- `save-replay` got its own callback and
+     * everything else got the screenshot one -- so rebinding Start / Stop
+     * Recording took a screenshot instead of toggling. The startup path
+     * (`index.ts:215-219`) always mapped all three correctly, which is why the
+     * bug was invisible until someone rebound a hotkey.
+     *
+     * Typed as an exhaustive Record rather than an index signature: adding a
+     * fourth hotkey then fails to compile here instead of silently inheriting
+     * someone else's callback a second time.
+     */
+    const HOTKEY_CALLBACKS: Record<import('./hotkey.js').HotkeyAction, () => void> = {
+      'save-replay': s.saveClipHotkey,
+      screenshot: () => void s.takeScreenshotHotkey(),
+      'toggle-replay': () => void s.toggleReplay(),
+    }
+
+    if (!hk.registerHotkey(action as any, accelerator, HOTKEY_CALLBACKS[action as import('./hotkey.js').HotkeyAction])) {
       return fail('Unsupported key combination')
     }
     setSetting(hk.HOTKEYS[action as any].setting, accelerator)
