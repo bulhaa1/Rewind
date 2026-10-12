@@ -1256,6 +1256,13 @@ class NotReadyError extends Error {
 
 /** Persist and notify. Shared by the IPC channel, the hotkey, and the tray. */
 export async function saveClipAndNotify(s: Services): Promise<string> {
+  // Guards here rather than only at the callers so the panel button, the hotkey
+  // and anything added later all refuse the same way. Without it the failure
+  // surfaces from deep inside the flush as an opaque error.
+  if (!s.replay.isReplayBufferActive()) {
+    throw new Error('The buffer is off - start it to save a clip')
+  }
+
   const sourceName = s.capture.getCurrentSourceName()
   const outputRoot = s.obsCore.getConfig().outputPath
   const cm = require('./clip-manager.js')

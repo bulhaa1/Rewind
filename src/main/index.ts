@@ -383,9 +383,21 @@ function showNotification(type: BufferStatus, message?: string): void {
 }
 
 async function saveFromHotkey(): Promise<void> {
-  if (!pipelineActive() || !obsCore || !replay || !capture) {
+  if (!obsCore?.isInitialized() || !replay || !capture) {
     log.warn('Shortcut save ignored: recording not ready')
     showNotification('error', 'Recording not ready')
+    return
+  }
+
+  // Kept separate from the guard above because the two mean different things and
+  // only one of them is the user's to fix. `pipelineActive()` folds "the engine
+  // is up" together with "the buffer is rolling", so a save with the buffer off
+  // used to report "Recording not ready" -- which sends you looking for a
+  // recording you never started. What actually happened is that you asked for a
+  // clip when there was nothing rolling to take it from.
+  if (!replay.isReplayBufferActive()) {
+    log.warn('Shortcut save ignored: the rolling buffer is stopped')
+    showNotification('error', 'Buffer is off - start it to save a clip')
     return
   }
 
