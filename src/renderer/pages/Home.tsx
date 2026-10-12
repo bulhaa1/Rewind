@@ -267,7 +267,7 @@ function StatusStrip({
   const full = held >= bufferSeconds
 
   return (
-    <div className="flex h-6 shrink-0 items-center justify-center gap-3 border-t border-line px-3 text-[10px] text-ink-faint">
+    <div className="flex h-9 shrink-0 items-center justify-center gap-3 border-t border-line px-3 text-[13px] text-ink-muted">
       {status === 'initializing' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -288,11 +288,11 @@ function StatusStrip({
           >
             <span
               className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                full ? 'bg-danger' : 'bg-ink-faint',
+                'h-2 w-2 rounded-full',
+                full ? 'bg-danger' : 'bg-ink-muted',
               )}
             />
-            <span className="tabular">
+            <span className="tabular font-medium text-ink">
               {held}s of {bufferSeconds}s buffered
             </span>
           </span>
