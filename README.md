@@ -32,7 +32,7 @@ Rewind — Play. Capture. Keep.
 
 ## Install
 
-Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
+Go to releases. Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
 account.
 
 Recording, editing and clips are all local files. Rewind contains no analytics,
@@ -41,7 +41,7 @@ the only way it ever contacts the network is if you press **Check for updates**
 in the header. Nothing polls, nothing downloads unasked, and quitting the app
 does not install an update you have not applied.
 
-**Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build.
+**Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build YET.
 
 ## Using it
 
@@ -104,54 +104,6 @@ npm run rebuild
 
 This is already done for `npm run dev` and `npm run package`; you only need it
 after a fresh `npm install` or an Electron upgrade.
-
-### Verification
-
-There are no unit tests. Verification is done by driving a real, running app:
-
-```bash
-npm run typecheck
-npm run test:ui                      # 16 CDP checks against the live panel
-npm run selftest                     # main-process self test
-node scripts\recordtest.js 60 30     # record 30s at 60fps, then probe the file
-node scripts\audiotest.js            # play a tone, measure the captured loudness
-```
-
-`scripts/probe-*.mjs` and `scripts/shot-*.mjs` are the harness. They connect to a
-running app over the Chrome DevTools Protocol (`--remote-debugging-port=9222`).
-
-Two rules learned the hard way, worth keeping:
-
-- **`ffprobe` reading a file is not the same as it decoding.** Always run
-  `ffmpeg -v error -i file -f null NUL` and check the exit code.
-- **ffmpeg's `volumedetect` writes to stderr.** `execFileSync` returns stdout only,
-  which will report a false PASS.
-
-### Icons and palette
-
-The brand artwork is generated into `assets/`:
-
-```bash
-npm run icons      # extract -> sizes -> .ico -> contact sheet
-npm run palette    # sample the artwork -> oklch -> palette sheet
-```
-
-The mark's geometry and the reasoning behind the accent hue are documented
-internally rather than in this file, so the repo carries no local paths.
-
-## Known limitations
-
-Stated plainly rather than discovered later:
-
-- **60 fps records at 30.** OBS normalises `FPSType` back to `FPSType=0` on
-  shutdown and the profile write does not survive it. 30 and 120 both produce the
-  rate they claim; 60 does not. The option is still offered and is wrong.
-- **Per-app audio mixing, extra device channels and `separateAudioTracks` are
-  exposed in Settings but unverified.** They may work; they have not been tested.
-- **Unsigned.** Windows SmartScreen will warn on first run, and on every update.
-
-The full list — open bugs, untested features, and decisions still pending — is
-in [ISSUES.md](ISSUES.md).
 
 ## Licence
 
