@@ -82,6 +82,14 @@ export interface Services {
   takeScreenshotHotkey: () => Promise<void>
   /** Starts or stops the replay buffer. Shared with the start/stop hotkey. */
   toggleReplay: () => Promise<{ active: boolean }>
+  /**
+   * Registers a recording the buffer finished on teardown.
+   *
+   * Called by `setReplayBufferActive(false)`, which the panel's Stop button
+   * uses. That path pauses the buffer directly rather than going through
+   * `toggleReplay`, so nothing else consumes `finishedOnTeardown` for it.
+   */
+  registerFinishedFromBufferStop: (finished: string) => void
   reinitPipeline: (reason?: string) => Promise<void>
   notify: (type: BufferStatus, message?: string) => void
   status: {
@@ -264,6 +272,26 @@ export function registerIpc(s: Services): void {
       } else {
         await replay().pauseReplayBuffer()
         s.status.set(OBS_STATUS_MESSAGES.paused)
+
+        /*
+         * Pausing finishes a continuous recording rather than discarding it, and
+         * parks the path in `finishedOnTeardown`. Registering it is this layer's
+         * job -- the stitching needs the output still alive and so happens inside
+         * replay-buffer. Without this the panel's Stop button leaves the finished
+         * clip in the library root, unregistered, and it surfaces only on a later
+         * rescan with its timestamp guessed from the filename.
+         *
+         * Read after the await: `destroyRunningChain` populates it during the
+         * pause, so reading before would always see null.
+         */
+        const finished = replay().takeFinishedOnTeardown?.() ?? null
+        if (finished) {
+          try {
+            s.registerFinishedFromBufferStop(finished)
+          } catch (e) {
+            bufferLog.error('Recording finished by buffer stop but could not be registered:', e)
+          }
+        }
       }
 
       s.getMainWindow()?.webContents.send('obs-status', s.status.get())

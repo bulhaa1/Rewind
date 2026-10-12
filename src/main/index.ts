@@ -421,6 +421,27 @@ async function saveScreenshotFromHotkey(): Promise<void> {
  *
  * Returns the resulting state so the panel can report it.
  */
+/**
+ * Registers a recording the buffer finished on teardown, and tells the renderer.
+ *
+ * Shared by the panel's Stop button (`setReplayBufferActive`) and the Start/Stop
+ * hotkey. Both end the buffer, and both leave a finished recording unregistered
+ * unless they say so here -- an unregistered recording sits in the library root
+ * with no source and a timestamp guessed from its filename.
+ */
+function registerFinishedFromBufferStop(finished: string): void {
+  if (!obsCore || !capture) throw new Error('Recording not ready')
+  const sourceName = capture.getCurrentSourceName()
+  const moved = require('./clip-manager.js').registerFinishedRecording(
+    finished,
+    sourceName,
+    obsCore.getConfig().outputPath,
+    obsCore.audioTrackLabels(),
+  )
+  services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+  log.info(`Recording finished because the buffer stopped: ${moved}`)
+}
+
 async function toggleReplayForUser(): Promise<{ active: boolean }> {
   const buffer = replay
   if (!obsCore || !buffer || !capture) throw new Error('Recording not ready')
@@ -436,16 +457,7 @@ async function toggleReplayForUser(): Promise<{ active: boolean }> {
     const finished = buffer.takeFinishedOnTeardown?.() ?? null
     if (finished) {
       try {
-        const sourceName = capture.getCurrentSourceName()
-        const { moveIntoSourceFolder } = require('./clip-manager.js')
-        const moved = moveIntoSourceFolder(finished, sourceName, obsCore.getConfig().outputPath)
-        setClipMeta(moved, {
-          recordedAt: Date.now(),
-          source: sourceName,
-          audioTracks: obsCore.audioTrackLabels(),
-        })
-        services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
-        log.info(`Recording finished because the buffer stopped: ${moved}`)
+        registerFinishedFromBufferStop(finished)
       } catch (e) {
         log.error('Recording finished by buffer stop but could not be registered:', e)
       }
@@ -511,6 +523,14 @@ const services = {
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
+  /**
+   * Registers a recording the buffer finished on teardown.
+   *
+   * `ipc.ts` needs this for the panel's Stop button, which pauses the buffer
+   * through `setReplayBufferActive` rather than going through
+   * `toggleReplayForUser`, and so never touched `finishedOnTeardown`.
+   */
+  registerFinishedFromBufferStop,
   reinitPipeline,
   notify: (type: BufferStatus, message?: string) => showNotification(type, message),
   status: {

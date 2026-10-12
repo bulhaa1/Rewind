@@ -4,6 +4,7 @@ import { scope } from './logger.js'
 import { isInside, isReservedDeviceName, nonEmptyString } from './util.js'
 import { probeClip, probeDuration, probe, type ClipProbe } from './ffmpeg.js'
 import { clipMeta, type ClipMeta } from './store.js'
+import { setClipMeta } from './clip-meta.js'
 import { RECORDING_PREFIX, REPLAY_PREFIX, parseRecordingStamp, THUMBNAIL } from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
 
@@ -118,6 +119,39 @@ export function moveIntoSourceFolder(file: string, sourceName: string, outputRoo
  * original can leave such folders behind when a source label trims oddly. Repair them
  * on scan rather than making those clips invisible forever.
  */
+/**
+ * Registers a recording the replay buffer finished on teardown.
+ *
+ * Stopping the buffer while a continuous recording is running finishes that
+ * recording rather than discarding it. The stitching happens in `replay-buffer`
+ * because it needs the output still alive; this puts the finished file where a
+ * user can find it, records what it is, and tells the renderer so the library
+ * updates without waiting for a rescan.
+ *
+ * This lives here rather than inline because two call sites need it: the
+ * panel's Stop button and the Start/Stop hotkey both end the buffer, and only
+ * one of them used to do this. A recording left unregistered is not lost, but
+ * it sits in the library root with no source and a timestamp guessed from its
+ * filename.
+ *
+ * `audioTracks` is passed in rather than read here: it describes the app's
+ * current audio layout, and this module has no handle on the OBS pipeline.
+ */
+export function registerFinishedRecording(
+  finished: string,
+  sourceName: string,
+  outputRoot: string,
+  audioTracks: string[] | undefined,
+): string {
+  const moved = moveIntoSourceFolder(finished, sourceName, outputRoot)
+  setClipMeta(moved, {
+    recordedAt: Date.now(),
+    source: sourceName,
+    ...(audioTracks ? { audioTracks } : {}),
+  })
+  return moved
+}
+
 export function repairTrailingDotFolders(root: string): void {
   let entries: fs.Dirent[]
   try {

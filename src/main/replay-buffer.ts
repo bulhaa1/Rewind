@@ -811,7 +811,23 @@ export class ReplayBuffer {
 
     const newest = written.sort((a, b) => mtimeOf(b) - mtimeOf(a))[0]
     const target = path.join(this.scratchDir, path.basename(newest))
-    fs.renameSync(newest, target)
+    /*
+     * Copy+unlink fallback, mirroring `moveIntoSourceFolder`. A bare rename
+     * fails with EXDEV whenever the scratch folder and the library are on
+     * different volumes -- which is the normal case, since scratch lives under
+     * os.tmpdir() (usually C:) while clips are usually written to a data disk.
+     * Without the fallback every segment flush threw, the recording produced no
+     * footage at all, and the buffer-written file was stranded in the library
+     * looking like a finished clip.
+     */
+    try {
+      fs.renameSync(newest, target)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'EXDEV') throw e
+      log.info('Scratch and library are on different volumes; copying the segment instead of renaming')
+      fs.copyFileSync(newest, target)
+      fs.unlinkSync(newest)
+    }
     return target
   }
 
