@@ -215,7 +215,7 @@ async function initPipeline(): Promise<void> {
   installDefaultHotkeys({
     'save-replay': () => void saveFromHotkey(),
     screenshot: () => void saveScreenshotFromHotkey(),
-    'toggle-replay': () => void toggleReplayFromHotkey(),
+    'toggle-record': () => void toggleRecordingFromHotkey(),
   })
 
   try {
@@ -442,6 +442,73 @@ function registerFinishedFromBufferStop(finished: string): void {
   log.info(`Recording finished because the buffer stopped: ${moved}`)
 }
 
+/**
+ * Stops the manual recording and puts the finished clip in the library.
+ *
+ * Lives here rather than in the IPC layer because the hotkey and the panel
+ * button both stop recordings, and they must not drift apart in what they do
+ * with the file afterwards.
+ */
+async function stopRecordingAndRegister(): Promise<string> {
+  if (!replay || !obsCore || !capture) throw new Error('Recording not ready')
+  const file = await replay.stopContinuousRecording()
+  const sourceName = capture.getCurrentSourceName()
+  const cm = require('./clip-manager.js')
+  const moved = cm.registerFinishedRecording(
+    file,
+    sourceName,
+    obsCore.getConfig().outputPath,
+    obsCore.audioTrackLabels(),
+  )
+  services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+
+  void cm
+    .describeSavedClip(moved, replay.getActiveEncoderVendor(), replay.getActiveEncoder(), replay.getQualityTarget(), sourceName)
+    .then((info: { durationSec: number } | null) => cm.stampDuration(moved, info?.durationSec))
+    .catch(() => {
+      /* diagnostics only */
+    })
+
+  log.info(`Recording saved: ${moved}`)
+  return moved
+}
+
+/**
+ * One key does both halves of manual recording: press once to start, again to
+ * stop. This is what Alt+3 drives now.
+ *
+ * It replaced the rolling-buffer toggle, so the buffer keeps running throughout a
+ * recording and is still there for clipping afterwards.
+ */
+let recordingToggleInFlight = false
+
+async function toggleRecordingForUser(): Promise<{ recording: boolean }> {
+  if (!replay || !obsCore) throw new Error('Recording not ready')
+
+  if (replay.isRecordingContinuously?.()) {
+    await stopRecordingAndRegister()
+    showNotification('saved')
+    return { recording: false }
+  }
+
+  await replay.startContinuousRecording()
+  showNotification('recorded')
+  return { recording: true }
+}
+
+async function toggleRecordingFromHotkey(): Promise<void> {
+  if (recordingToggleInFlight) return
+  recordingToggleInFlight = true
+  try {
+    await toggleRecordingForUser()
+  } catch (e) {
+    log.error('Failed to toggle recording:', e)
+    showNotification('error', 'Recording not ready')
+  } finally {
+    recordingToggleInFlight = false
+  }
+}
+
 async function toggleReplayForUser(): Promise<{ active: boolean }> {
   const buffer = replay
   if (!obsCore || !buffer || !capture) throw new Error('Recording not ready')
@@ -523,6 +590,7 @@ const services = {
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
+  toggleRecording: () => toggleRecordingForUser(),
   /**
    * Registers a recording the buffer finished on teardown.
    *

@@ -82,6 +82,8 @@ export interface Services {
   takeScreenshotHotkey: () => Promise<void>
   /** Starts or stops the replay buffer. Shared with the start/stop hotkey. */
   toggleReplay: () => Promise<{ active: boolean }>
+  /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
+  toggleRecording: () => Promise<{ recording: boolean }>
   /**
    * Registers a recording the buffer finished on teardown.
    *
@@ -1150,7 +1152,7 @@ export function registerIpc(s: Services): void {
     const HOTKEY_CALLBACKS: Record<import('./hotkey.js').HotkeyAction, () => void> = {
       'save-replay': s.saveClipHotkey,
       screenshot: () => void s.takeScreenshotHotkey(),
-      'toggle-replay': () => void s.toggleReplay(),
+      'toggle-record': () => void s.toggleRecording?.(),
     }
 
     if (!hk.registerHotkey(action as any, accelerator, HOTKEY_CALLBACKS[action as import('./hotkey.js').HotkeyAction])) {

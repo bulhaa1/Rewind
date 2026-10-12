@@ -10,7 +10,7 @@
 export type CaptureMode = 'display' | 'window' | 'game'
 
 /** Bindable actions the global keyboard hook can trigger. */
-export type HotkeyAction = 'save-replay' | 'screenshot' | 'toggle-replay'
+export type HotkeyAction = 'save-replay' | 'screenshot' | 'toggle-record'
 
 export type EncoderVendor = 'auto' | 'nvenc' | 'amf' | 'qsv' | 'x264'
 
@@ -47,7 +47,7 @@ export interface PersistedSettings {
   deviceChannels: Record<string, { label: string; kind: DeviceKind; volume: number; muted: boolean }>
   saveReplayHotkey: string
   screenshotHotkey: string
-  toggleReplayHotkey: string
+  toggleRecordHotkey: string
   bufferDuration: number
   outputPath: string
   screenshotPath: string

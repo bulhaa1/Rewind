@@ -8,7 +8,7 @@ import type { HotkeyAction } from '@shared/types.js'
 const LABELS: Record<HotkeyAction, string> = {
   'save-replay': 'Save Replay',
   screenshot: 'Screenshot',
-  'toggle-replay': 'Start / Stop Recording',
+  'toggle-record': 'Start / Stop Recording',
 }
 
 /**

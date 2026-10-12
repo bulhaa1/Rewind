@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS = {
   deviceChannels: {},
   saveReplayHotkey: 'Alt+1',
   screenshotHotkey: 'Alt+2',
-  toggleReplayHotkey: 'Alt+3',
+  toggleRecordHotkey: 'Alt+3',
   bufferDuration: 60,
   outputPath: '',
   screenshotPath: '',
