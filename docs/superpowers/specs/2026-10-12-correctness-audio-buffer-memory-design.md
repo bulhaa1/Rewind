@@ -117,22 +117,42 @@ and is the reason this change is safe.
 ### The microphone track
 
 `computeMixerMask` currently ORs in the desktop and microphone bits unconditionally, so
-every recording carries a microphone track even with no microphone. Measured on this
-machine: one clip's microphone stream carries **2,087 bps** — digital silence. That is
-this build's silence floor.
+every recording carries a microphone track even when nothing can be captured from it.
+Measured on this machine: one clip's microphone stream carries **2,087 bps** — digital
+silence, which is this build's silence floor. That is not a rounding artefact; it is a
+track that costs a header, a lane in the editor, and confusion.
 
-**The microphone track is included only when a microphone device is configured.**
+**The microphone track is included only when a microphone is actually capturable.**
 
-The gate is deliberately narrow, and this is a correction to an earlier reading of the
-requirement. Gating on mute or volume as well would be wrong: the mixer mask is only
-recomputed inside `applyAudioTracks`, and a stale mask triggers
-`rebuildAndRestart` (`replay-buffer.ts:1038`), which tears down and rebuilds the chain.
-Making mute recompute the mask would mean **every mute toggle empties the rolling buffer
-and costs up to 8 seconds** (`START_FIRST_ATTEMPT` 3s + `START_RETRY` 5s). Mute must stay
-a live-tier control. "A microphone is configured" is stable, changes rarely, and is the
-condition that actually predicts whether a track is worth writing.
+The gate must be a condition that can genuinely be false. Two candidates were considered
+and one rejected:
 
-Result: **2 audio streams with no microphone configured, 3 with one.**
+- *"Is a microphone device configured?"* — **rejected.** `setupAudioSources`
+  (`obs-core.ts:357`) always creates the source, and the device picker
+  (`settings.tsx:398-401`) offers only "Windows Default" plus real devices, with no
+  "None" entry. There is no UI state in which no microphone is configured, so this gate
+  would be true for every user and would never fire.
+- *"Is the bound microphone device present?"* — **chosen.** `deviceAvailable()`
+  (`audio.ts:155`) already answers exactly this, returning `false` when a bound device id
+  no longer resolves, and `true` for `'default'`. The renderer already models the same
+  state, showing "not connected" against an unavailable device
+  (`settings.tsx:429,472`). A machine with no capture-capable input, or one whose selected
+  microphone has been unplugged, produces 2 streams; a machine with a working microphone
+  produces 3.
+
+The gate deliberately does **not** consider mute or volume. The mixer mask is only
+recomputed inside `applyAudioTracks`, and a stale mask triggers `rebuildAndRestart`
+(`replay-buffer.ts:1038`), which tears down and rebuilds the chain. Making mute recompute
+the mask would mean **every mute toggle empties the rolling buffer and costs up to 8
+seconds** (`START_FIRST_ATTEMPT` 3s + `START_RETRY` 5s). Mute must stay a live-tier
+control. Device presence is stable, changes rarely, and is the condition that actually
+predicts whether a track is worth writing.
+
+Device presence changes only when hardware is plugged or unplugged, so the mask is
+recomputed at pipeline build time and when the device is re-selected. It is **not** polled
+on a timer; a microphone unplugged mid-session is picked up on the next buffer rebuild.
+
+Result: **2 audio streams when no microphone is capturable, 3 when one is.**
 
 ### Cost
 
@@ -145,7 +165,7 @@ is accepted.
 
 `scripts/audiotracktest.js` currently forces `separateAudioTracks` on. That flag is
 gone, so the harness is updated to assert the *default* configuration now produces the
-split, and to add the second case: with no microphone configured, exactly 2 streams.
+split, and to add the second case: with no capturable microphone, exactly 2 streams.
 
 ## Part 3 — Buffer memory
 
@@ -295,7 +315,7 @@ Each Part 1 fix has a named observable:
 | Mojibake | Zero U+00E2 characters in `src/` |
 
 Audio layout is verified with `scripts/audiotracktest.js`: default configuration produces
-3 streams with a microphone configured, 2 without. Stream counts and per-stream volumes
+3 streams with a capturable microphone, 2 without. Stream counts and per-stream volumes
 come from `ffprobe` and `volumedetect`.
 
 Known harness constraints, carried forward from the previous release:
@@ -311,7 +331,8 @@ Known harness constraints, carried forward from the previous release:
 | Risk | Response |
 |---|---|
 | Stripping CEF breaks OBS startup | Verified via import tables that neither `obs.dll` nor the node binding links it; the packaged build is exercised end to end before shipping. Reverted if not clean. |
-| Mic gating makes mute expensive | Avoided by design — the gate reads only whether a device is configured, never mute or volume. Mute stays live tier. |
+| Mic gating makes mute expensive | Avoided by design — the gate reads only device presence, never mute or volume. Mute stays live tier. |
+| Mic gate never fires | The chosen condition is device presence, which is false on a machine with no capture-capable input. The first candidate ("a device is configured") was rejected precisely because it is always true. |
 | Removing the toggles breaks an external caller | No external callers exist; the bridge is consumed only by this app's own renderer. |
 | Deleting `perDeviceAudioTracks` removes something users wanted | It is listed as **Untested** in ISSUES.md — no evidence it ever worked. Its off-state behaviour (extra devices share one track) is preserved. |
 | A masked defect surfaces only after release | The channel-coverage check in CI is designed to catch the whole class, not just this instance. |
