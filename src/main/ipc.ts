@@ -5,7 +5,7 @@ import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
 import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
-import { getClipMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
+import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
 import { defaultOutputPath } from './obs-core.js'
@@ -1331,7 +1331,16 @@ async function scanScreenshots(s: Services): Promise<ScreenshotInfo[]> {
   const dir = screenshotPath()
   if (!fs.existsSync(dir)) return []
 
-  const meta = require('./store.js').getScreenshotMeta?.() ?? {}
+  /*
+   * Metadata is keyed by absolute path, which is what `captureScreenshot` returns
+   * and what `setScreenshotMeta` writes. Reading it from the store's raw map means
+   * re-deriving that key by hand; `getScreenshotMeta` already does the lookup and
+   * lives beside the writer.
+   *
+   * This used to call `getScreenshotMeta` on `./store.js`, which does not export
+   * it. The optional call swallowed the TypeError and produced `{}`, so every
+   * screenshot rendered as "Unknown Source" with no error anywhere.
+   */
   const out: ScreenshotInfo[] = []
 
   for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
@@ -1349,13 +1358,15 @@ async function scanScreenshots(s: Services): Promise<ScreenshotInfo[]> {
       continue
     }
 
+    const meta = getScreenshotMeta(full)
+
     out.push({
       id: full,
       path: full,
       name: entry.name,
       size,
-      capturedAt: meta[full]?.capturedAt ?? mtimeMs,
-      source: meta[full]?.source ?? null,
+      capturedAt: meta?.capturedAt ?? mtimeMs,
+      source: meta?.source ?? null,
       localExists: true,
     })
   }
