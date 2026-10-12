@@ -24,7 +24,7 @@ async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string
  * The main panel.
  *
  * Three bands: capture controls, the media library, and a status strip. Everything
- * is local â€” Rewind has no account, no sync state and no network calls.
+ * is local — Rewind has no account, no sync state and no network calls.
  */
 export function HomePage() {
   const client = useQueryClient()
@@ -222,14 +222,14 @@ function StatusStrip({ status, message }: { status: string; message?: string }) 
       {status === 'initializing' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          {message ?? 'Starting engineâ€¦'}
+          {message ?? 'Starting engine…'}
         </span>
       ) : status === 'paused' ? (
         'Buffer paused'
       ) : status === 'saving' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Saving clipâ€¦
+          Saving clip…
         </span>
       ) : status === 'ready' ? (
         'Rolling buffer active'

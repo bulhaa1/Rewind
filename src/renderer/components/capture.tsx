@@ -17,7 +17,7 @@ function elapsed(ms: number): string {
 /**
  * The capture controls.
  *
- * The arc shows how much of the rolling buffer is filled â€” the one thing a user
+ * The arc shows how much of the rolling buffer is filled — the one thing a user
  * needs before deciding a moment is still recoverable. Instant replay and
  * continuous recording are separate affordances because they answer different
  * questions: "keep that second" versus "record the next twenty minutes".
@@ -136,7 +136,7 @@ export function CaptureControls({
           <div className="min-w-0 flex-1">
             <p className="label">Capturing</p>
             <p className="truncate text-[13px] font-medium" title={sourceName}>
-              {sourceName || 'â€”'}
+              {sourceName || '—'}
             </p>
             {sourceInactive ? (
               <span className="mt-0.5 inline-block text-[10px] text-warn">Window not available</span>
@@ -147,7 +147,7 @@ export function CaptureControls({
         {/*
           Two actions on the first row, and Screenshot spanning the second. It was
           the third cell of a two-column grid, so a hole the width of a button sat
-          beside it â€” a gap in the middle of the panel's primary controls read as a
+          beside it — a gap in the middle of the panel's primary controls read as a
           control that failed to load.
         */}
         <div className="grid grid-cols-2 gap-1.5 border-t border-line p-2">
