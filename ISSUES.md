@@ -211,9 +211,6 @@ architecturally sound, not on a machine without an NVIDIA card having run it.
 
 Verified behaviour, shipped this way on purpose.
 
-- **60 fps records at 30.** OBS normalises `FPSType` back to `FPSType=0` on
-  shutdown and the profile write does not survive it. 30 and 120 both produce the
-  rate they claim; 60 does not. The option is still offered and is wrong.
 - **Unsigned.** Windows SmartScreen warns on first run and on **every update**.
   Unsigned auto-updates are the shape Defender flags, so this is the biggest
   adoption risk in the product and needs a code-signing certificate.
