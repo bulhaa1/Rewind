@@ -59,6 +59,24 @@ export interface PersistedSettings {
   nvencPreset: 'p3' | 'p4' | 'p5'
   outputResolution: 'native' | '1080p' | '720p'
   visualQuality: 'low' | 'standard' | 'high' | 'highest'
+  /**
+   * Where the settings screen warns about replay-buffer RAM, in MB.
+   *
+   * A setting rather than a constant because the right threshold depends on the
+   * machine, and 512 MB is only a guess about someone else's.
+   */
+  memoryWarnMb: number
+  /**
+   * Achieved video bitrate in kbps, per quality tier, most recent last.
+   *
+   * This exists because `VBR_KBPS_BY_QUALITY` does not describe a hardware
+   * encoder. Every GPU path here runs CQP/ICQ, where the bitrate is a *result*
+   * of the content rather than a target; clips measured at 'high' come out near
+   * 1700 kbps against the table's 12000, and anywhere between 300 and 28000
+   * depending on what was on screen. The readout takes the median of the last
+   * few, which is why this holds samples rather than a single running figure.
+   */
+  observedVideoKbpsByQuality: Record<'low' | 'standard' | 'high' | 'highest', number[]>
   videoCodec: VideoCodec
   videoEncoder: EncoderVendor
 }
@@ -196,3 +214,23 @@ export interface RewindEvents {
 }
 
 export type RewindEventName = keyof RewindEvents
+
+/**
+ * What the replay buffer is expected to cost, and how much that number can be
+ * trusted.
+ *
+ * `source` is not decoration. A GPU encoder runs CQP, so its bitrate is a
+ * property of the content being recorded and no static table can predict it;
+ * until this machine has recorded a clip at the current quality, `source` is
+ * `'table'` and `videoKbps` is an x264 target that will not hold. The UI shows
+ * this so a precise-looking number is not mistaken for a measured one.
+ */
+export interface BufferMemoryEstimate {
+  estimatedMb: number
+  videoKbps: number
+  audioKbps: number
+  durationSeconds: number
+  source: 'measured' | 'table'
+  warnMb: number
+  exceeds: boolean
+}

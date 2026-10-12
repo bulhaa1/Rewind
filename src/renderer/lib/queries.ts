@@ -28,6 +28,7 @@ export const QK = {
   captureState: ['capture-state'] as const,
   encoderState: ['encoder-state'] as const,
   appVersion: ['app-version'] as const,
+  bufferMemory: ['buffer-memory-estimate'] as const,
   setting: (key: string) => ['setting', key] as const,
 }
 
@@ -71,6 +72,7 @@ export const SETTINGS = defineSettings({
   },
   launchOnStartup: { queryKey: QK.setting('launchOnStartup'), get: api.getLaunchOnStartup, set: api.setLaunchOnStartup },
   micGain: { queryKey: QK.setting('micGain'), get: api.getMicGain, set: api.setMicGain },
+  memoryWarnMb: { queryKey: QK.setting('memoryWarnMb'), get: api.getMemoryWarnMb, set: api.setMemoryWarnMb },
 })
 
 // ---------------------------------------------------------------------------

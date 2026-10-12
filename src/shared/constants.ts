@@ -15,6 +15,19 @@ export const OBS_SOURCE_NAMES = {
   streamingService: 'rewind-stream-service',
 } as const
 
+/**
+ * Buffer-memory estimate above which the settings screen warns, in MB.
+ *
+ * Kept at 512 because that is comfortably above the largest buffer a normal
+ * machine should be running, so the warning fires on a genuinely surprising
+ * choice rather than on ordinary use. A setting rather than a constant because
+ * the right threshold depends on the machine.
+ *
+ * Declared above DEFAULT_SETTINGS, which reads it -- `const` has no hoisting and
+ * the default object is built while this module evaluates.
+ */
+export const MEMORY_WARN_MB_DEFAULT = 512
+
 export const DEFAULT_SETTINGS = {
   captureMode: 'game' as CaptureMode,
   displayIndex: 0,
@@ -47,6 +60,8 @@ export const DEFAULT_SETTINGS = {
   nvencPreset: 'p4',
   outputResolution: 'native',
   visualQuality: 'high',
+  memoryWarnMb: MEMORY_WARN_MB_DEFAULT,
+  observedVideoKbpsByQuality: { low: [], standard: [], high: [], highest: [] },
   videoCodec: 'h264' as VideoCodec,
   videoEncoder: 'auto' as EncoderVendor,
 } satisfies Omit<import('./types.js').PersistedSettings, never> as import('./types.js').PersistedSettings
@@ -100,6 +115,35 @@ export const VBR_KBPS_BY_QUALITY: Record<VisualQuality, number> = {
   high: 12000,
   highest: 20000,
 }
+
+/**
+ * Total audio bitrate in kbps, summed across every track a recording carries.
+ *
+ * Measured rather than assumed: ffprobe on real 3-stream clips from this machine
+ * reports 257876-258364 bps for all three AAC streams together.
+ */
+export const AUDIO_BITRATE_ESTIMATE_KBPS = 259
+
+/**
+ * Weight of a newly saved clip in the running bitrate average.
+ *
+ * Low on purpose. CQP bitrate is content-dependent, so one busy clip or one idle
+ * clip is not representative; the readout should drift with the machine's actual
+ * output rather than jump to whatever the last save happened to contain.
+ */
+/**
+ * How many clips are remembered per quality tier for the median.
+ *
+ * Eight is enough that neither a busy stretch nor a quiet one is the whole story,
+ * and short enough that a real change in quality shows up within a few saves
+ * instead of a dozen.
+ *
+ * A median rather than a running average because CQP output varies by nearly two
+ * orders of magnitude with content alone -- 303 kbps on a static desktop against
+ * 28681 kbps during app startup, at identical settings. An average lets either
+ * tail dominate; a median ignores it and needs no smoothing constant.
+ */
+export const BITRATE_OBSERVATION_HISTORY = 8
 
 /** NVENC quality-preset index (settings.nvencPreset). */
 export const NVENC_PRESET_INDEX: Record<'p3' | 'p4' | 'p5', string> = {
@@ -239,6 +283,21 @@ export const BUFFER_DURATION_OPTIONS = [
   { value: 120, label: '2 minutes' },
   { value: 180, label: '3 minutes' },
   { value: 300, label: '5 minutes' },
+]
+
+/**
+ * Choices for the buffer-memory warning threshold.
+ *
+ * Discrete rather than free-entry because these are the sizes that actually
+ * decide the question -- a laptop and a workstation want different answers, and
+ * a slider invites tuning a number that is already an estimate.
+ */
+export const MEMORY_WARN_OPTIONS = [
+  { value: 128, label: '128 MB' },
+  { value: 256, label: '256 MB' },
+  { value: 512, label: '512 MB' },
+  { value: 1024, label: '1 GB' },
+  { value: 2048, label: '2 GB' },
 ]
 
 export const OUTPUT_RESOLUTION_OPTIONS = [

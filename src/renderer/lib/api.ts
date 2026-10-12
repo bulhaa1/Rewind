@@ -3,6 +3,7 @@ import type {
   AudioChannel,
   AudioDevice,
   AudioLevel,
+  BufferMemoryEstimate,
   CaptureMode,
   CaptureSourceState,
   ClipEditorInfo,
@@ -75,6 +76,9 @@ export interface RewindApi {
   setReplayBufferActive(active: boolean): Promise<IpcResult<{ active: boolean; changed: boolean }>>
   isReplayBufferActive(): Promise<IpcResult<{ active: boolean; startedAt: number }>>
   setBufferDuration(seconds: number): Promise<IpcResult>
+  getBufferMemoryEstimate(): Promise<IpcResult<BufferMemoryEstimate>>
+  getMemoryWarnMb(): Promise<IpcResult<number>>
+  setMemoryWarnMb(mb: number): Promise<IpcResult>
   recoverReplayBuffer(): Promise<IpcResult>
   reinitOBS(): Promise<IpcResult>
   retryOBSInit(): Promise<IpcResult<{ success?: boolean; alreadyReady?: boolean }>>

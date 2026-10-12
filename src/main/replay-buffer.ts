@@ -23,6 +23,7 @@ import {
   VENDOR_PREFERENCE,
   X264_ENCODER,
   X264_PRESET,
+  type VisualQuality,
 } from '@shared/constants.js'
 import type { CaptureMode, EncoderVendor, VideoCodec } from '@shared/types.js'
 
@@ -252,11 +253,24 @@ export class ReplayBuffer {
     return this.usingSoftwareEncoder ? X264_ENCODER : this.desiredHardwareEncoder()
   }
 
-  /** Human-readable quality target, used in the "Clip saved:" diagnostics line. */
+  /**
+   * Human-readable quality target, used in the "Clip saved:" diagnostics line.
+   */
   getQualityTarget(): string {
     return this.getActiveEncoder() === X264_ENCODER
       ? `VBR ${VBR_KBPS_BY_QUALITY[getSetting('visualQuality')]}kbps`
       : `CQP ${CQP_BY_QUALITY[getSetting('visualQuality')]}`
+  }
+
+  /**
+   * The quality *tier* ('low' ... 'highest'), not the CQP or VBR number.
+   *
+   * Separate from `getQualityTarget` because that is a diagnostic string for the
+   * log -- "CQP 20" -- and anything keying off it needs the tier. Keying a
+   * setting lookup on the human string silently matched nothing.
+   */
+  getQualityTier(): VisualQuality {
+    return getSetting('visualQuality')
   }
 
   // -------------------------------------------------------------------------
@@ -356,8 +370,14 @@ export class ReplayBuffer {
     const encoderId = this.getActiveEncoder()
 
     try {
-      // Any truthy value signals "use the streaming output" to OBS, which is what makes
-      // the replay buffer roll instead of writing continuously.
+      // Any truthy value signals "use the streaming output" to OBS.
+      //
+      // It does NOT make the buffer roll. Rolling comes from the replay_buffer
+      // output built further down (`AdvancedReplayBufferFactory` + `.duration`).
+      // `usesStream` only decides *which encoder* does the work: it points the
+      // replay buffer at the streaming output, which is why the real encoder
+      // settings go to `this.streaming` while `replayConfig` and `videoEncoder`
+      // below are placeholders that are never started.
       this.streaming = obs.AdvancedStreamingFactory.create()
       this.streaming.audioTrack = 1
       this.streaming.enforceServiceBitrate = false
@@ -403,6 +423,12 @@ export class ReplayBuffer {
       this.replayBuffer.recording = this.replayConfig
       this.replayBuffer.streaming = this.streaming
       this.replayBuffer.usesStream = true
+      // The only bound this output is given is time. obs-studio-node exposes no
+      // `max_size_mb` on the replay buffer -- introspecting the live native object
+      // returns only `duration`, `usesStream` and `streaming` -- so there is no byte
+      // ceiling to set here and the buffer's RAM grows with duration times whatever
+      // the encoder actually emits. That is what the settings screen's memory
+      // readout exists to make visible before a user picks 5 minutes.
       this.replayBuffer.duration = config.bufferDuration
       this.replayBuffer.path = config.outputPath
       this.replayBuffer.format = 'mp4'
