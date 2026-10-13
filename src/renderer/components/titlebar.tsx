@@ -1,6 +1,12 @@
 import { Settings as SettingsIcon } from 'lucide-react'
+import { api } from '../lib/api'
+import { DiscordIcon, GitHubIcon } from './brand-icons'
 import { RewindMark } from './mark'
 import { UpdateButton } from './update-button'
+
+/** Where the titlebar's community links go. */
+const DISCORD_URL = 'https://discord.gg/mh8NQrVkY'
+const GITHUB_URL = 'https://github.com/bulhaa1/Rewind'
 
 /**
  * The window's own bar.
@@ -8,7 +14,7 @@ import { UpdateButton } from './update-button'
  * The window is frameless with a native `titleBarOverlay`, so Windows draws the
  * real caption buttons at the top-right and keeps snap layouts, the window menu
  * and double-click-to-maximize working. This bar supplies what the overlay cannot:
- * the identity on the left and the two app actions beside the caption buttons.
+ * the identity on the left and the app actions beside the caption buttons.
  *
  * The bar is the drag region. Anything clickable inside it opts out with
  * `no-drag`, or the window swallows the click. The right padding reserves the
@@ -26,6 +32,26 @@ export function Titlebar() {
       <h1 className="text-[13px] font-semibold tracking-tight">Rewind</h1>
 
       <div className="no-drag ml-auto flex items-center gap-1">
+        <button
+          type="button"
+          data-testid="titlebar-discord"
+          onClick={() => void api.openExternal(DISCORD_URL)}
+          aria-label="Discord"
+          title="Discord"
+          className="flex h-7 w-7 items-center justify-center rounded text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+        >
+          <DiscordIcon className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          data-testid="titlebar-github"
+          onClick={() => void api.openExternal(GITHUB_URL)}
+          aria-label="GitHub"
+          title="GitHub"
+          className="flex h-7 w-7 items-center justify-center rounded text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+        >
+          <GitHubIcon className="h-4 w-4" />
+        </button>
         <UpdateButton />
         <button
           type="button"
