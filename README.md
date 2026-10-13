@@ -63,17 +63,17 @@ Clips, screenshots and the editor are all reachable from the tray menu.
 
 ## How it compares
 
-| Tool | Price | Replay Buffer | Any GPU | Standalone App | Extra Bloat | Data Collection |
-|---|---|---|---|---|---|---|
-| **Rewind** | **Free · Open Source** | **Yes** | **Yes** | **Yes** | **None** | **None** |
-| Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes |
-| Revidi | Free (Premium $4.99/mo) | Yes | Yes | Yes | Minimal | Yes |
-| NVIDIA ShadowPlay | Free | Yes (Instant Replay) | No | Yes | Yes | Can Opt out |
-| AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | Yes | — |
-| Outplayed | Free | Yes | Yes | Part of Overwolf | Yes | Yes |
-| SteelSeries Moments | Free | Yes | Yes | Part of SteelSeries GG | Yes | Yes |
-| OBS Studio | Free · Open Source | Yes | Yes | Yes | Yes | No |
-| Xbox Game Bar | Free · Built into Windows | Yes | Yes | Built into Windows | Yes | Obviously |
+| Tool | Price | Replay Buffer | Any GPU | Standalone App | Extra Bloat | Data Collection | Setup Difficulty | Customizability |
+|---|---|---|---|---|---|---|---|---|
+| **Rewind** | **Free · Open Source** | **Yes** | **Yes** | **Yes** | **None** | **None** | **Super Easy** | **9/10** |
+| Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes | Medium | 7/10 |
+| Revidi | Free (Premium available) | Yes | Yes | Yes | Minimal | Yes | Easy | 8/10 |
+| NVIDIA ShadowPlay | Free | Yes | No | Part of NVIDIA App | Yes | Can Opt Out | Easy | 7/10 |
+| AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | Yes | Can Opt Out | Easy | 6/10 |
+| Outplayed | Free | Yes | Yes | Part of Overwolf | Yes | Yes | Medium | 7.5/10 |
+| SteelSeries Moments | Free | Yes | Yes | Part of SteelSeries GG | Yes | Yes | Medium | 7/10 |
+| OBS Studio | Free · Open Source | Yes | Yes | Yes | None | None | Very Hard | 10/10 |
+| Xbox Game Bar | Free · Built into Windows | Yes | Yes | Built into Windows | Yes | Yes | done for u | 2/10 |
 
 Rewind detects the encoder your GPU offers — NVENC, AMF or QSV — and falls back
 to CPU encoding when it finds none, so it runs on any of them rather than being
@@ -118,9 +118,7 @@ GPL-2.0-or-later. See [LICENSE](LICENSE).
 GPL-3.0-or-later, and bare `GPL-2.0` in SPDX terms means *-only*, which cannot be
 combined with GPL-3.0. OBS Studio and `obs-studio-node` are GPL-2.0.
 
-## Relationship to other software
-
-Huge thanks to [Revidi](https://revidi.app/) and its solo developer, @toasterfork, for inspiring this project. Rewind is an independent reimplementation built by observing Revidi’s behaviour and recreating its functionality from the OBS engine upwards. No third-party application code was copied into this repository.
+Inspired by work from @toasterfork. Rewind is an entirely independent implementation designed by analyzing external software behavior and building equivalent functionality on top of the OBS engine.
 
 Bundled third-party components keep their own licences, including OBS Studio
 (GPL-2.0), ffmpeg (GPL), koffi (MIT), uiohook-napi (MIT) and Electron (MIT).
