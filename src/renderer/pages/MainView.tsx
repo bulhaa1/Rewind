@@ -2,15 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
-import { QK, bufferActiveQuery, clipsQuery, configQuery, screenshotsQuery, sourceNameQuery } from '../lib/queries'
+import { QK, bufferActiveQuery, configQuery, sourceNameQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
 import { useClipEvents } from '../lib/hooks'
 import { Titlebar } from '../components/titlebar'
 import { Deck } from '../components/deck'
-import { ClipList, ScreenshotList } from '../components/library'
-import { Button, Dialog, cn } from '../components/ui'
-import type { DeleteScope } from '@shared/types.js'
-
+import { Rail } from '../components/rail'
+import { Button, cn } from '../components/ui'
 type View = 'clips' | 'screenshots'
 
 /** Unwraps an IPC envelope, throwing its error so callers can catch uniformly. */
@@ -40,16 +38,12 @@ export function MainView() {
   const [isSaving, setIsSaving] = useState(false)
   const [isCapturing, setIsCapturing] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null)
   const [bufferBusy, setBufferBusy] = useState(false)
 
   const { data: config } = useQuery(configQuery)
   const { data: source } = useQuery(sourceNameQuery)
   const { data: bufferState } = useQuery(bufferActiveQuery)
   const bufferActive = bufferState?.active ?? false
-
-  const { data: clips = [], isPending: clipsPending } = useQuery(clipsQuery)
-  const { data: shots = [], isPending: shotsPending } = useQuery(screenshotsQuery)
 
   useClipEvents(() => setLastSaved(Date.now()))
 
@@ -118,27 +112,6 @@ export function MainView() {
     })
   }, [runAction])
 
-  const deleteClip = useCallback(
-    async (path: string, scope: DeleteScope) => {
-      await expect(api.deleteClip(path, scope), 'Failed to delete clip')
-      await client.invalidateQueries({ queryKey: QK.clips })
-    },
-    [client],
-  )
-
-  const deleteScreenshot = useCallback(
-    async (path: string) => {
-      await expect(api.deleteScreenshot(path), 'Failed to delete screenshot')
-      await client.invalidateQueries({ queryKey: QK.screenshots })
-    },
-    [client],
-  )
-
-  const renameClip = useCallback(async (path: string, name: string) => {
-    await expect(api.renameClip(path, name), 'Failed to rename clip')
-    await client.invalidateQueries({ queryKey: QK.clips })
-  }, [client])
-
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <Titlebar />
@@ -186,36 +159,9 @@ export function MainView() {
         {/* The rail: fixed width, and the only scrolling column in the panel. */}
         <aside
           data-testid="rail-pane"
-          className="flex w-[340px] shrink-0 flex-col overflow-hidden border-l border-line"
+          className="flex w-[340px] shrink-0 flex-col overflow-hidden border-l border-line px-3 pb-3 pt-2"
         >
-          <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3">
-            {view === 'clips' ? (
-              <ClipList
-                clips={clips}
-                loading={clipsPending}
-                view={view}
-                onViewChange={setView}
-                onDelete={(path) => {
-                  const clip = clips.find((c) => c.path === path)
-                  setDeleteTarget({ path, name: clip?.filename ?? 'this clip' })
-                }}
-                onRename={renameClip}
-                onOpenFolder={openFolder}
-              />
-            ) : (
-              <ScreenshotList
-                screenshots={shots}
-                loading={shotsPending}
-                view={view}
-                onViewChange={setView}
-                onDelete={(path) => {
-                  const shot = shots.find((s) => s.path === path)
-                  setDeleteTarget({ path, name: shot?.name ?? 'this screenshot' })
-                }}
-                onOpenFolder={openFolder}
-              />
-            )}
-          </div>
+          <Rail view={view} onViewChange={setView} onOpenFolder={openFolder} lastSavedAt={lastSaved} />
         </aside>
       </div>
 
@@ -225,23 +171,6 @@ export function MainView() {
         bufferActive={bufferActive}
         bufferStartedAt={bufferState?.startedAt ?? 0}
         bufferSeconds={config?.bufferDuration ?? 60}
-      />
-
-      <ConfirmDelete
-        target={deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={async (scope) => {
-          const target = deleteTarget
-          setDeleteTarget(null)
-          if (!target) return
-          await runAction(async () => {
-            if (view === 'clips') {
-              await deleteClip(target.path, scope)
-            } else {
-              await deleteScreenshot(target.path)
-            }
-          })
-        }}
       />
 
       {/* Fixed wash over everything; never inside a scrolling column. */}
@@ -310,38 +239,5 @@ function StatusStrip({
         <span className="text-danger">{message ?? 'Engine not ready'}</span>
       ) : null}
     </div>
-  )
-}
-
-/** Confirmation for destructive deletes. Rewind keeps no cloud copy to fall back on. */
-function ConfirmDelete({
-  target,
-  onClose,
-  onConfirm,
-}: {
-  target: { path: string; name: string } | null
-  onClose: () => void
-  onConfirm: (scope: DeleteScope) => void
-}) {
-  return (
-    <Dialog
-      open={!!target}
-      title="Delete"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="ghost" size="sm" className="flex-1" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="danger" size="sm" className="flex-1" onClick={() => onConfirm('local')}>
-            Delete
-          </Button>
-        </>
-      }
-    >
-      <p className="text-[13px] text-ink-muted">
-        Delete <span className="text-ink">{target?.name}</span>? This cannot be undone.
-      </p>
-    </Dialog>
   )
 }
