@@ -3,9 +3,9 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-11, after verifying `separateAudioTracks` end to end, the
-on-demand updater, the Data settings section, the resolution fix, the start/stop
-hotkey and the startup fix.
+Last updated: 2026-10-13, after making pause stop capture, fixing the NVENC
+preset mapping and the frame-rate profile write, and measuring the capture and
+idle cost (`docs/perf-testing.md`).
 
 Status values:
 
@@ -93,6 +93,24 @@ Still true, just much rarer: the denylist cannot cover apps nobody has thought o
 An unknown fullscreen app will still be tried and will still cost 5s. Reducing
 `GAME_HOOK_TIMEOUT` would bound that, at the cost of giving genuinely slow game
 hooks less time to produce a first frame.
+
+### The engine costs CPU in proportion to the frame rate, even idle
+
+Found 2026-10-13 while measuring the "5-10 fps just running" report. With the
+buffer paused and the capture source removed — nothing recording, nothing
+captured — obs64 still burns **~3.9% of one core at 30 fps, ~6.6% at 60 and
+~17.6% at 120** (RTX 5080, 2560x1440; numbers and method in
+`docs/perf-testing.md`). That is OBS's frame loop, not the encoder: the engine
+ticks at the video rate for as long as it is up. Pausing no longer adds capture
+cost on top of it (it used to — see the fixed table), but it does not remove
+this either, because pausing keeps the engine alive for instant resume.
+
+**Why it matters:** a 120 fps user pays a busy core alongside a CPU-bound game
+even when the buffer is off, and nothing in the UI shows it.
+
+**Possible fix, needs a product call:** auto-sleep that shuts the engine down
+after N minutes paused and rebuilds on resume (~10 s), trading resume latency
+for the idle cost. Not started; not obviously right for a replay tool.
 
 ---
 
@@ -288,6 +306,12 @@ Not bugs, but they accumulate and are easy to forget.
   `release/` but is not uploaded, so the updater 404s on it and falls back to a
   full 210 MB fetch every time. Uploading the blockmap alongside `latest.yml`
   would make updates ship only changed blocks.
+- **obs-studio-node's stats getters are garbage.** `Global.cpuPercentage`,
+  `currentFrameRate`, `averageFrameRenderTime` and `laggedFrames` — and the
+  `Video` info object — returned `"337769986 fps"` and `"3989852819 ms"` in
+  0.25.77. That is unchecked memory, not stats. Anything that wants to know
+  obs64's cost samples the process externally (`scripts/perf-sample.ps1`);
+  do not trust these bindings until a version returns sane numbers.
 
 ---
 
@@ -297,6 +321,10 @@ Kept so the same thing is not investigated twice.
 
 | Fix | Commit |
 |---|---|
+| Pause stopped only the encoder — the capture source and game hook stayed live, copying at up to 2× the video rate, and settings changes while paused silently resumed recording | `48cf9d5` |
+| NVENC preset never reached the encoder — `"hq"` was unparseable, so every choice (p3/p4/p5) encoded at P5 | `48cf9d5` |
+| A frame-rate request could silently never apply — the profile writer only rewrote existing keys and logged success anyway, so 60 recorded as 30 | `48cf9d5` |
+| Game capture copied at twice the video frame rate — `limit_framerate` was never set | `48cf9d5` |
 | Editor waveform rendered flat — bars were sized against absolute amplitude, so with typical peaks of 0.2–0.7 a 43% share sat on the 2px floor and the mean was ~2px in a 32px lane. Now normalised against the loudest bar | `5267a4e` |
 | Editor opened the wrong clip — `openEditorWindow` focused an existing window without loading the requested one, so editing clip B while clip A was open silently showed A | `5267a4e` |
 | Startup waited 5s on a buffer that had never run — `destroyRunningChain` awaited a stop signal that could never arrive | `e3a00f9` |
