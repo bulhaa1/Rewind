@@ -4,6 +4,7 @@ import { Camera, ChevronDown, ChevronUp, CircleDot, Save } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { api } from '../lib/api'
 import { QK, SETTINGS, hotkeysQuery } from '../lib/queries'
+import { useHeldSeconds } from '../lib/hooks'
 import { HotkeyChip } from './audio-controls'
 import { SettingSelect } from './controls'
 import { HotkeyDialog } from './record'
@@ -233,18 +234,9 @@ export function Deck({
   const { data: hotkeys } = useQuery(hotkeysQuery)
   const [editAction, setEditAction] = useState<HotkeyAction | null>(null)
 
-  // How much footage is recoverable right now: elapsed since the buffer started,
-  // capped at the window it keeps. Once full the oldest falls out, so the number
-  // stops climbing rather than running on.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!bufferActive) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [bufferActive])
-
-  const held =
-    bufferActive && startedAt ? Math.min(Math.max(Math.floor((now - startedAt) / 1000), 0), duration) : 0
+  // How much footage is recoverable right now, from the one implementation in
+  // lib/hooks.ts, so the dial and the status strip cannot disagree about it.
+  const held = useHeldSeconds(bufferActive, startedAt, duration)
 
   // Manual recording is a different thing from the buffer, and the engine is the
   // only authority on whether it is running.

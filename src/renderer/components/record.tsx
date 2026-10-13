@@ -28,7 +28,7 @@ export function HotkeyDialog({
   action: HotkeyAction | null
   current: string
   onClose: () => void
-  onSaved: (hotkey: string) => void
+  onSaved: () => void
 }) {
   const [value, setValue] = useState(current)
   const [error, setError] = useState<string | null>(null)
@@ -55,7 +55,7 @@ export function HotkeyDialog({
     setBusy(false)
 
     if (res.success) {
-      onSaved(value)
+      onSaved()
       onClose()
     } else {
       setError(res.error || 'Failed to set hotkey')

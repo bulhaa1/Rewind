@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, formatDuration, messageOf } from '../lib/api'
+import { api, clipUrl, formatBytes, formatDuration, messageOf } from '../lib/api'
 import { Button, CenteredSpinner, cn } from './ui'
 import { VolumeControl } from './audio-controls'
 import type { ClipAudioTrack } from '@shared/types.js'
@@ -10,11 +10,6 @@ interface ClipInfo {
   audioTracks: ClipAudioTrack[]
   /** Source size in bytes; drives the trim savings estimate. 0 if unreadable. */
   fileSize: number
-}
-
-/** Maps the clip path to the privileged scheme the renderer can stream from. */
-function clipUrl(filePath: string): string {
-  return `rewind-clip://local/${encodeURIComponent(filePath)}`
 }
 
 /**
@@ -323,10 +318,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     return size * (1 - kept)
   })()
 
-  const savedLabel =
-    savedBytes >= 1_000_000
-      ? `${(savedBytes / 1_000_000).toFixed(savedBytes < 10_000_000 ? 1 : 0)} MB`
-      : `${Math.max(0, Math.round(savedBytes / 1000))} KB`
+  const savedLabel = formatBytes(savedBytes)
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-canvas text-ink">
@@ -417,7 +409,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
                   <AudioTrackLane
                     key={track.stream}
                     label={track.label}
-                    stream={track.stream}
                     peaks={peaks[track.stream]}
                     volume={volumes[track.stream] ?? 1}
                     startSec={startSec}
@@ -700,7 +691,6 @@ function AudioTrackLane({
   onVolumeChange,
 }: {
   label: string
-  stream: number
   peaks?: number[]
   volume: number
   startSec: number

@@ -38,9 +38,11 @@ function sortNewest<T extends { path: string; recordedAt?: number; capturedAt?: 
 }
 
 /** Unwraps an IPC envelope, throwing its error so callers can catch uniformly. */
-async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string }>, fallback: string): Promise<T> {
+async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string; code?: string }>, fallback: string): Promise<T> {
   const res = await p
-  if (!res.success) throw new Error(res.error || fallback)
+  // Carry the code through. `isRecoverable` (lib/context.tsx) offers a Retry for a
+  // wedged engine, and a plain Error drops the one field that decision reads.
+  if (!res.success) throw Object.assign(new Error(res.error || fallback), { code: res.code })
   return res.data as T
 }
 

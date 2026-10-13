@@ -28,7 +28,7 @@ const RETRY_AFTER_MS = 20_000
  */
 export function RestartOverlay() {
   const { status, message } = useObsStatus()
-  const [elapsed, setElapsed] = elapsedWhile(status === 'initializing')
+  const elapsed = elapsedWhile(status === 'initializing')
   const [target, setTarget] = useState<HTMLElement | null>(null)
 
   useEffect(() => setTarget(document.body), [])
@@ -101,7 +101,7 @@ export function RestartOverlay() {
 }
 
 /** Ticks once a second while `active`, and resets the moment it turns false. */
-function elapsedWhile(active: boolean): [number, (n: number) => void] {
+function elapsedWhile(active: boolean): number {
   const [n, setN] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -123,5 +123,5 @@ function elapsedWhile(active: boolean): [number, (n: number) => void] {
     }
   }, [active])
 
-  return [n * 1000, setN]
+  return n * 1000
 }

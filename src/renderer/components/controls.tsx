@@ -152,8 +152,6 @@ export function SettingSelect<T extends string | number>({
     [runAction, client, binding, onSuccess],
   )
 
-  void reportError
-
   return (
     <Select
       value={(data as T | undefined) ?? initial}

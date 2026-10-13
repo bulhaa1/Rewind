@@ -38,12 +38,11 @@ const VARIANTS = {
 const SIZES = {
   sm: 'h-7 px-2.5 text-xs',
   md: 'h-8 px-3 text-[13px]',
-  lg: 'h-9 px-4 text-sm',
   icon: 'h-7 w-7 p-0',
   iconSm: 'h-6 w-6 p-0',
 } as const
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: keyof typeof VARIANTS
   size?: keyof typeof SIZES
 }
@@ -74,11 +73,10 @@ export function InlineSpinner({ className }: { className?: string }) {
 }
 
 /** Full-area spinner, for windows that have nothing else to show yet. */
-export function CenteredSpinner({ label }: { label?: string }) {
+export function CenteredSpinner() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Loader2 className="h-4 w-4 animate-spin text-ink-faint" />
-      {label ? <span className="text-[12px] text-ink-muted">{label}</span> : null}
     </div>
   )
 }
@@ -180,8 +178,6 @@ export function PathRow({ label, path, onBrowse }: { label: string; path: string
 const TONES = {
   neutral: 'bg-raised text-ink-muted',
   accent: 'bg-accent-soft text-accent',
-  danger: 'bg-danger/15 text-danger',
-  warn: 'bg-warn/15 text-warn',
 } as const
 
 export function Badge({ tone = 'neutral', children }: { tone?: keyof typeof TONES; children: ReactNode }) {
@@ -579,6 +575,3 @@ export function MenuItem({
   )
 }
 
-export function MenuSeparator() {
-  return <div className="my-0.5 h-px bg-line" />
-}

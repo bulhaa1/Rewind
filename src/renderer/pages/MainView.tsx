@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { QK, bufferActiveQuery, configQuery, sourceNameQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
-import { useClipEvents } from '../lib/hooks'
+import { useClipEvents, useHeldSeconds } from '../lib/hooks'
 import { Titlebar } from '../components/titlebar'
 import { Deck } from '../components/deck'
 import { Rail } from '../components/rail'
@@ -43,9 +43,11 @@ function clampRail(width: number, total: number): number {
 }
 
 /** Unwraps an IPC envelope, throwing its error so callers can catch uniformly. */
-async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string }>, fallback: string): Promise<T> {
+async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string; code?: string }>, fallback: string): Promise<T> {
   const res = await p
-  if (!res.success) throw new Error(res.error || fallback)
+  // Carry the code through. `isRecoverable` (lib/context.tsx) offers a Retry for a
+  // wedged engine, and a plain Error drops the one field that decision reads.
+  if (!res.success) throw Object.assign(new Error(res.error || fallback), { code: res.code })
   return res.data as T
 }
 
@@ -349,20 +351,9 @@ function StatusStrip({
   bufferStartedAt: number
   bufferSeconds: number
 }) {
-  // Counts seconds of footage that are recoverable right now, which is how long
-  // ago the buffer started, capped at its length -- once it is full the oldest
-  // footage falls out, so the number stops climbing there rather than running on.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!bufferActive) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [bufferActive])
-
-  const held =
-    bufferActive && bufferStartedAt
-      ? Math.min(Math.max(Math.floor((now - bufferStartedAt) / 1000), 0), bufferSeconds)
-      : 0
+  // The same number the dial shows, from the same implementation (lib/hooks.ts), so
+  // the two cannot disagree about how much footage is held right now.
+  const held = useHeldSeconds(bufferActive, bufferStartedAt, bufferSeconds)
   const full = held >= bufferSeconds
 
   return (
