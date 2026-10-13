@@ -26,6 +26,12 @@ export default async function ({ evaluate, send }) {
   await wait(1500)
 
   // card click opens the editor window
+  // The editor is a single window, so close any leftover from an earlier run:
+  // the click below has to be what opens it.
+  const leftover = (await (await fetch('http://127.0.0.1:9222/json/list')).json()).filter((t) => (t.url || '').includes('editor=1'))
+  for (const t of leftover) await fetch('http://127.0.0.1:9222/json/close/' + t.id)
+  await wait(900)
+
   const pagesBefore = (await (await fetch('http://127.0.0.1:9222/json/list')).json()).filter((t) => (t.url || '').includes('editor=1')).length
   await call('document.querySelector("[data-testid=\\"rail-card\\"]").click()')
   await wait(3000)

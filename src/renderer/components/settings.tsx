@@ -23,7 +23,6 @@ import {
 import { api, read } from '../lib/api'
 import { QK, SETTINGS, captureStateQuery, dedupeWindows, hotkeysQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
-import { Header } from './layout'
 import { HotkeyChip, VolumeControl } from './audio-controls'
 import { HotkeyDialog } from './record'
 import { Select, SettingSelect, SettingSwitchRow, type Option } from './controls'
@@ -41,31 +40,6 @@ import type { AudioChannel, AudioDevice, HotkeyAction, IpcResult } from '@shared
 
 /** Sentinel selecting "Auto detect launched game". */
 const AUTO_GAME = '__auto_game_capture__'
-
-export function SettingsPage({ onBack }: { onBack: () => void }) {
-  // Deliberately not gated on `isBusy`. Leaving a page must always work, and a
-  // back button that silently stops responding while a change is still being
-  // applied reads as a broken button rather than a busy one.
-  return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-canvas">
-      <Header title="Settings" onBack={onBack} />
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="h-full space-y-4 overflow-y-auto py-4 pl-3 pr-3">
-          <CaptureSection />
-          <AudioSection />
-          <NotificationsSection />
-          <StartupSection />
-          <ReplaysSection />
-          <ScreenshotsSection />
-          <QualitySection />
-          <HotkeysSection />
-          <DataSection />
-          <VersionFooter />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Capture source

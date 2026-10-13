@@ -83,6 +83,27 @@ export default async function ({ evaluate, drainErrors }) {
   const guard = await call(`window.electronAPI.openFile('C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\config\\\\\\\\SAM').then(r => r.success ? 'LEAKED' : 'blocked')`)
   check('path guard blocks outside files', guard === 'blocked', guard)
 
+  // 13. the redesigned shell is mounted
+  const dom = await call(`({
+    titlebar: !!document.querySelector('[data-testid="titlebar"]'),
+    dial: !!document.querySelector('[data-testid="dial"]'),
+    rail: !!document.querySelector('[data-testid="rail-pane"]'),
+    cards: document.querySelectorAll('[data-testid="rail-card"]').length,
+  })`)
+  check('titlebar present', dom.titlebar === true)
+  check('buffer dial present', dom.dial === true)
+  check('clips rail present', dom.rail === true, `cards: ${dom.cards}`)
+
+  // 14. the settings spine is reachable and complete, then back to the panel
+  await call(`window.location.hash = '/settings'`)
+  await new Promise((r) => setTimeout(r, 2000))
+  const spine = await call(
+    `[...document.querySelectorAll('[data-section]')].map((el) => el.getAttribute('data-section')).join(',')`,
+  )
+  check('settings spine reachable', spine === 'capture,audio,encoder,replay,hotkeys,system', spine)
+  await call(`window.location.hash = '/'`)
+  await new Promise((r) => setTimeout(r, 1500))
+
   const errs = drainErrors()
   check('no renderer exceptions', errs.length === 0, errs.join(' | '))
 

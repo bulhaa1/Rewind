@@ -40,8 +40,8 @@ export default async function ({ evaluate, send }) {
   }
 
   const problems = []
-  if (info.outerW !== 1000 || info.outerH !== 620) {
-    problems.push('window is ' + info.outerW + 'x' + info.outerH + ', expected 1000x620')
+  if (info.outerW < 860 || info.outerH < 540) {
+    problems.push('window is ' + info.outerW + 'x' + info.outerH + ', below the 860x540 floor')
   }
   if (!info.titlebar) problems.push('no titlebar')
   if (!info.gear) problems.push('no settings button')

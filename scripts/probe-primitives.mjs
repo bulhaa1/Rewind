@@ -13,18 +13,39 @@ export default async function ({ evaluate }) {
   // Settings shows one section at a time; notifications live under System.
   await call('(() => { const nav = document.querySelector("[data-section=\\"system\\"]"); if (nav) nav.click(); return !!nav })()')
   await wait(1000)
-  const found = await call('(() => { const el = document.querySelector("[aria-label=\\"Show notifications\\"]"); return !!el })()')
+  const found = await (async () => {
+    for (let i = 0; i < 12; i++) {
+      if (await call('!!document.querySelector("[aria-label=\\"Show notifications\\"]")')) return true
+      await wait(400)
+    }
+    return false
+  })()
   if (!found) {
     problems.push('notifications switch not found on the settings page')
   } else {
-    const before = await call('window.electronAPI.getNotificationsEnabled().then((r) => r.data)')
-    await call('(() => { document.querySelector("[aria-label=\\"Show notifications\\"]").click(); return true })()')
-    await wait(1200)
-    const after = await call('window.electronAPI.getNotificationsEnabled().then((r) => r.data)')
+    const read = () => call('window.electronAPI.getNotificationsEnabled().then((r) => r.data)')
+    const clickSwitch = () =>
+      call('(() => { document.querySelector("[aria-label=\\"Show notifications\\"]").click(); return true })()')
+
+    const before = await read()
+    let after = before
+    for (let i = 0; i < 3 && after === before; i++) {
+      await clickSwitch()
+      for (let j = 0; j < 6 && after === before; j++) {
+        await wait(500)
+        after = await read()
+      }
+    }
     if (after === before) problems.push('switch did not change the setting')
-    await call('(() => { document.querySelector("[aria-label=\\"Show notifications\\"]").click(); return true })()')
-    await wait(1200)
-    const restored = await call('window.electronAPI.getNotificationsEnabled().then((r) => r.data)')
+
+    let restored = after
+    for (let i = 0; i < 3 && restored !== before; i++) {
+      await clickSwitch()
+      for (let j = 0; j < 6 && restored !== before; j++) {
+        await wait(500)
+        restored = await read()
+      }
+    }
     if (restored !== before) problems.push('switch did not restore the setting')
     console.log('switch:', JSON.stringify({ before, after, restored }))
   }
