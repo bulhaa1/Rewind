@@ -864,6 +864,7 @@ function main(): void {
     if (process.env.REWIND_SELFTEST_RECORD === '1') void runRecordSelfTest()
     if (process.env.REWIND_SELFTEST_SETTINGS === '1') void runSettingsSelfTest()
     if (process.env.REWIND_SELFTEST_AUDIOTRACKS === '1') void runAudioTrackSelfTest()
+    if (process.env.REWIND_SELFTEST_DISPLAY === '1') void runDisplaySelfTest()
   })
 
 /**
@@ -907,6 +908,116 @@ async function runSettingsSelfTest(): Promise<void> {
     log.error('SETTINGS TIMING failed:', e)
     app.exit(1)
   }
+}
+
+/** Waits for the replay buffer to report active, or gives up. */
+async function waitForBuffer(buffer: ReplayBuffer, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (buffer.isReplayBufferActive()) return
+    await sleep(500)
+  }
+  throw new Error(`Replay buffer did not become active within ${timeoutMs}ms`)
+}
+
+/**
+ * Measures what OBS does with a canvas change while the replay chain is live.
+ *
+ * A clip's dimensions are the only honest readback of which canvas OBS actually
+ * rendered: the settings section says whatever was written to it, whether or not
+ * OBS adopted it. Three phases, one clip each:
+ *
+ *   A  buffer running, canvas forced away from the display's size -- the clip must
+ *      come out at the display's size, which is what a refused reset looks like.
+ *   B  buffer stopped, canvas forced again -- the clip must come out at the forced
+ *      size, which proves the refusal is the live output and nothing else.
+ *   C  buffer running, canvas stale, the display-change path called -- the clip must
+ *      come out at the display's size. This is the phase the fix turns green; a
+ *      refused reset leaves it at the stale size.
+ *
+ * Clips and `result.json` land in `REWIND_SELFTEST_OUT`; scripts/displaytest.js
+ * probes them and decides. Exit code 0 when the run completed, 1 when it failed.
+ */
+async function runDisplaySelfTest(): Promise<void> {
+  const outDir = process.env.REWIND_SELFTEST_OUT ?? path.join(app.getPath('temp'), 'rewind-display-test')
+  if (!obsCore || !replay || !capture) {
+    log.error('REWIND_SELFTEST_DISPLAY set without a pipeline')
+    app.exit(2)
+    return
+  }
+
+  const realOutputPath = getSetting('outputPath')
+  const primary = screen.getPrimaryDisplay()
+  const real = {
+    width: Math.round(primary.bounds.width * (primary.scaleFactor || 1)),
+    height: Math.round(primary.bounds.height * (primary.scaleFactor || 1)),
+  }
+  const half = { width: Math.round(real.width / 2), height: Math.round(real.height / 2) }
+
+  const clips: Record<string, string> = {}
+  const saveClip = async (label: string) => {
+    // A save needs frames, and phase B and C start from a fresh chain.
+    await sleep(10_000)
+    const file = await replay!.saveReplayBuffer('display')
+    clips[label] = file
+    log.info(`DISPLAY-TEST clip=${label} path=${file}`)
+  }
+
+  let exitCode = 0
+  try {
+    fs.mkdirSync(outDir, { recursive: true })
+    log.info(`DISPLAY-TEST out=${outDir}`)
+
+    // The pipeline is still starting when this runs -- it is kicked off from the same
+    // ready callback. Touching the chain before it has settled races the boot's own
+    // start (measured: a source switch here left `active` true with no buffer object,
+    // and the save then threw "Replay buffer is not running").
+    await waitForBuffer(replay, 60_000)
+    await sleep(3_000)
+
+    // Redirect first: a chain built against the real output folder would put the test
+    // clips in the user's library.
+    setSetting('outputPath', outDir)
+    detector?.stop()
+    await obsCore.setOutputPath(outDir)
+    await waitForBuffer(replay, 30_000)
+
+    // Give the buffer frames to save.
+    await sleep(12_000)
+    log.info(
+      `DISPLAY-TEST real=${real.width}x${real.height} half=${half.width}x${half.height} ` +
+        `active=${replay.isReplayBufferActive()}`,
+    )
+
+    log.info('DISPLAY-TEST phase=A buffer running, canvas forced')
+    obsCore.forceCanvasSize(half.width, half.height)
+    await saveClip('with-buffer')
+
+    log.info('DISPLAY-TEST phase=B buffer stopped, canvas forced')
+    await replay.stopReplayBuffer(true)
+    obsCore.forceCanvasSize(half.width, half.height)
+    await replay.startReplayBuffer(true)
+    await saveClip('without-buffer')
+
+    log.info('DISPLAY-TEST phase=C buffer running, stale canvas, display-change path')
+    await capture.syncCanvasToDisplay()
+    await saveClip('after-fix')
+
+    fs.writeFileSync(path.join(outDir, 'result.json'), JSON.stringify({ real, half, clips }, null, 2))
+    log.info('DISPLAY-TEST complete')
+  } catch (e) {
+    log.error('DISPLAY-TEST failed:', e)
+    exitCode = 1
+  } finally {
+    // See runRecordSelfTest: the redirect persists, and an unrestored one leaves the
+    // app saving into temp forever.
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore.setOutputPath(realOutputPath).catch(() => {})
+    }
+  }
+
+  app.exit(exitCode)
 }
 
 /**

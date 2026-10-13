@@ -247,10 +247,27 @@ export class ObsCore {
     // authoritative readback; obs-studio-node's own stats getters (Global.cpuPercentage,
     // currentFrameRate, …) return garbage on this build (measured: 3.4e8 "fps").
 
+    this.resetVideoContext('startup')
+  }
+
+  /**
+   * Resets the video context and reports what OBS said.
+   *
+   * This is the only call that makes OBS adopt a new canvas size, and OBS refuses
+   * it while an output holds the video context -- so the result is the difference
+   * between "the canvas changed" and "the settings file changed". It used to be
+   * discarded, which is why a refused reset looked exactly like a successful one.
+   */
+  private resetVideoContext(why: string): unknown {
+    if (!this.obs) return undefined
     try {
-      mod.NodeObs.OBS_service_resetVideoContext()
+      const call = this.obs.NodeObs as unknown as { OBS_service_resetVideoContext: () => unknown }
+      const result = call.OBS_service_resetVideoContext()
+      log.info(`Video context reset (${why}) returned ${typeof result === 'number' ? result : String(result)}`)
+      return result
     } catch (e) {
-      log.warn('Could not reset video context:', e)
+      log.warn(`Could not reset video context (${why}):`, e)
+      return undefined
     }
   }
 
@@ -301,13 +318,29 @@ export class ObsCore {
         `output ${before.Output ?? 'unset'} -> ${outStr}`,
     )
 
-    try {
-      this.obs.NodeObs.OBS_service_resetVideoContext()
-    } catch (e) {
-      log.warn('Could not reset video context after a resolution change:', e)
-    }
+    this.resetVideoContext('display change')
 
     return { changed: true, base: size }
+  }
+
+  /**
+   * Test-only: forces the canvas to a size the display is not.
+   *
+   * A real resolution change is the only thing that normally moves the canvas, and
+   * a test cannot ask the machine to change resolution without disrupting whoever
+   * is using it. This writes Base and Output and then asks OBS to adopt them --
+   * exactly what a display change does -- so the display tests can put OBS on a
+   * stale canvas and watch what a save produces. Unreachable unless
+   * `REWIND_SELFTEST_DISPLAY=1`; see scripts/displaytest.js.
+   */
+  forceCanvasSize(width: number, height: number): unknown {
+    if (process.env.REWIND_SELFTEST_DISPLAY !== '1') throw new Error('forceCanvasSize is a test hook')
+    const section = getSettingSection('Video')
+    setSettingValue(section, 'Base', `${width}x${height}`)
+    setSettingValue(section, 'Output', `${width}x${height}`)
+    saveSettingSection('Video', section)
+    log.info(`Display test: canvas forced to ${width}x${height}`)
+    return this.resetVideoContext('forced by the display test')
   }
 
   private configureAudio(): void {
