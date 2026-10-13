@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, CircleDot, Save } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 import { api } from '../lib/api'
 import { QK, SETTINGS, hotkeysQuery } from '../lib/queries'
 import { HotkeyChip } from './audio-controls'
@@ -50,6 +50,10 @@ export function BufferDial({
   onToggle: () => void
 }) {
   const progress = duration > 0 ? Math.min(Math.max(seconds / duration, 0), 1) : 0
+  // Windows' "animations off" reaches us as prefers-reduced-motion. The dial still
+  // has to say it can be pressed, so nothing here leans on movement alone: the
+  // resting ring is drawn and visible whether or not it is breathing.
+  const still = useReducedMotion() ?? false
 
   return (
     <motion.button
@@ -59,9 +63,10 @@ export function BufferDial({
       disabled={busy}
       aria-pressed={active}
       aria-label={active ? 'Stop the replay buffer' : 'Start the replay buffer'}
+      title={active ? 'Click to stop the buffer' : 'Click to start the buffer'}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-      className="group relative grid h-[150px] w-[150px] shrink-0 place-items-center rounded-full outline-none disabled:opacity-60"
+      className="group relative grid h-[150px] w-[150px] shrink-0 cursor-pointer place-items-center rounded-full outline-none transition-colors hover:bg-raised/40 focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-default disabled:opacity-60"
     >
       <svg viewBox="0 0 150 150" className="h-[150px] w-[150px] -rotate-90">
         <circle cx="75" cy="75" r={DIAL_RADIUS} fill="none" stroke="var(--color-line)" strokeWidth={2} />
@@ -80,14 +85,31 @@ export function BufferDial({
         />
       </svg>
 
-      {/* The save ripple. Keyed so each save restarts it. */}
+      {/* At rest the ring breathes, and that is what says "press me" without a
+          label. With animation off it rests drawn and visible instead of only
+          mid-breath, because the invitation cannot be the movement itself. */}
+      {!active && !busy ? (
+        <motion.span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-full border border-accent/70 transition-colors group-hover:border-accent"
+          animate={still ? { opacity: 0.6, scale: 1 } : { opacity: [0.2, 0.65, 0.2], scale: [0.985, 1.05, 0.985] }}
+          transition={
+            still
+              ? { duration: 0.2 }
+              : { duration: 2.6, times: [0, 0.5, 1], repeat: Infinity, ease: 'easeInOut' }
+          }
+        />
+      ) : null}
+
+      {/* The save ripple. Keyed so each save restarts it. Without animation it
+          fades rather than expanding, so the confirmation stays movement-free. */}
       <motion.span
         key={pulseKey}
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-full border border-accent"
         initial={{ opacity: 0.5, scale: 0.97 }}
-        animate={{ opacity: 0, scale: 1.14 }}
-        transition={{ duration: 1.2, ease: 'easeOut' }}
+        animate={still ? { opacity: 0 } : { opacity: 0, scale: 1.14 }}
+        transition={{ duration: still ? 0.5 : 1.2, ease: 'easeOut' }}
       />
 
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-1">
@@ -99,7 +121,14 @@ export function BufferDial({
             <span className={cn('tabular text-[22px] font-semibold', active ? 'text-ink' : 'text-ink-faint')}>
               {active ? `${seconds}s` : '—'}
             </span>
-            <span className="text-[11px] text-ink-faint">{active ? `of ${duration}s` : 'click to start'}</span>
+            <span
+              className={cn(
+                'text-[11px] text-ink-faint',
+                !active && 'transition-colors group-hover:text-ink-muted',
+              )}
+            >
+              {active ? `of ${duration}s` : 'click to start'}
+            </span>
           </>
         )}
       </span>
