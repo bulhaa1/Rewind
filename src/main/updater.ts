@@ -79,15 +79,6 @@ function load(): typeof import('electron-updater').autoUpdater | null {
     // means the user presses the button, not that closing the window applies it.
     au.autoInstallOnAppQuit = false
 
-    // Test hook: an update can be exercised against a local server without publishing
-    // a release. Nobody sets this in normal use, and the feed it points at still has
-    // to serve a signed-by-version latest.yml for anything to happen.
-    const feed = process.env.REWIND_UPDATE_FEED
-    if (feed) {
-      log.warn(`Update feed overridden by REWIND_UPDATE_FEED: ${feed}`)
-      au.setFeedURL({ provider: 'generic', url: feed })
-    }
-
     au.logger = {
       info: (m: string) => log.info(m),
       warn: (m: string) => log.warn(m),
@@ -194,26 +185,16 @@ function updateCacheDir(): string {
   return path.join(base, updateCacheDirName())
 }
 
-function countFiles(dir: string): { files: number; bytes: number } {
-  let files = 0
-  let bytes = 0
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      const inner = countFiles(full)
-      files += inner.files
-      bytes += inner.bytes
-    } else {
-      files++
-      try {
-        bytes += fs.statSync(full).size
-      } catch {
-        /* vanished under us */
-      }
-    }
-  }
-  return { files, bytes }
-}
+/**
+ * Anything modified more recently than this is treated as a download in flight.
+ *
+ * Two minutes, not longer: an update's leftovers are already about four minutes old by
+ * the time the app comes back (measured: download, silent install, relaunch), so they
+ * are pruned on that start. A download writes continuously, so a fresh mtime is a
+ * reliable sign of one; a download stalled for two minutes would be deleted and simply
+ * re-downloaded.
+ */
+const CACHE_STALE_AFTER_MS = 2 * 60_000
 
 /**
  * Deletes what the updater left behind, once per start.
@@ -227,27 +208,64 @@ function countFiles(dir: string): { files: number; bytes: number } {
  * starts at `idle`, so a stale download is downloaded again rather than installed.
  * Deleting it costs a repeat download at worst, and it is the difference between an
  * install folder that stays the size it was installed at and one that grows forever.
+ *
+ * Anything modified in the last two minutes is left alone. That is not hypothetical:
+ * a second instance -- a portable copy, a dev build, another profile -- shares this
+ * directory, and the first version of this deleted a download that was in flight. The
+ * decision is made per file, so a stale installer beside a live download is still
+ * cleared; an update's own leftovers are older than two minutes by the time the app
+ * comes back, so they go on that start.
  */
 export function pruneUpdateCache(): { path: string; files: number; bytes: number } {
   const dir = updateCacheDir()
   let counted = { files: 0, bytes: 0 }
+  let kept = 0
   try {
     if (!fs.existsSync(dir)) {
       log.info(`Update cache: nothing to prune at ${dir}`)
       return { path: dir, ...counted }
     }
-    counted = countFiles(dir)
-    fs.rmSync(dir, { recursive: true, force: true })
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const result = pruneCacheEntry(path.join(dir, entry.name))
+      counted = { files: counted.files + result.files, bytes: counted.bytes + result.bytes }
+      kept += result.kept
+    }
   } catch (e) {
     // A locked installer (one is mid-run) or a permission problem. Never fatal.
     log.warn('Could not prune the update cache:', e)
   }
   if (counted.files > 0) {
     log.info(
-      `Update cache pruned: ${counted.files} file(s), ${(counted.bytes / 1024 / 1024).toFixed(1)} MB (${dir})`,
+      `Update cache pruned: ${counted.files} file(s), ${(counted.bytes / 1024 / 1024).toFixed(1)} MB (${dir})` +
+        (kept > 0 ? `, ${kept} fresh file(s) left alone` : ''),
     )
+  } else if (kept > 0) {
+    log.info(`Update cache: ${kept} fresh file(s) at ${dir}, nothing stale to prune`)
   }
   return { path: dir, ...counted }
+}
+
+/** Prunes one file or directory, keeping anything written in the last two minutes. */
+function pruneCacheEntry(target: string): { files: number; bytes: number; kept: number } {
+  const stat = fs.statSync(target)
+  if (!stat.isDirectory()) {
+    if (Date.now() - stat.mtimeMs < CACHE_STALE_AFTER_MS) return { files: 0, bytes: 0, kept: 1 }
+    fs.rmSync(target, { force: true })
+    return { files: 1, bytes: stat.size, kept: 0 }
+  }
+
+  let total = { files: 0, bytes: 0, kept: 0 }
+  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+    const inner = pruneCacheEntry(path.join(target, entry.name))
+    total = { files: total.files + inner.files, bytes: total.bytes + inner.bytes, kept: total.kept + inner.kept }
+  }
+  // An emptied directory goes with its contents; one holding a live download stays.
+  try {
+    if (fs.readdirSync(target).length === 0) fs.rmdirSync(target)
+  } catch {
+    /* leave it */
+  }
+  return total
 }
 
 /**

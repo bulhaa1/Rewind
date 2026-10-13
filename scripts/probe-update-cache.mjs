@@ -53,7 +53,14 @@ line(`before: ${before.files} file(s), ${(before.bytes / 1024 / 1024).toFixed(1)
 
 // Seed the two-copy shape an update leaves behind, plus the blockmap at the root.
 // Seeding overwrites whatever is already there, so say so: those bytes are a real
-// leftover, not something this test created.
+// leftover, not something this test created. The seeds are aged, because the prune
+// deliberately leaves anything modified in the last five minutes alone -- that is what
+// stops it deleting a download in flight.
+const AGE_MS = 30 * 60_000
+const age = (file) => {
+  const when = (Date.now() - AGE_MS) / 1000
+  fs.utimesSync(file, when, when)
+}
 fs.mkdirSync(PENDING, { recursive: true })
 for (const [file, size] of [
   [path.join(CACHE, 'installer.exe'), 2 * 1024 * 1024],
@@ -65,7 +72,14 @@ for (const [file, size] of [
     line(`note: seeding over ${path.basename(file)} (${(fs.statSync(file).size / 1024 / 1024).toFixed(1)} MB)`)
   }
   fs.writeFileSync(file, Buffer.alloc(size, 7))
+  age(file)
 }
+age(PENDING)
+age(CACHE)
+
+// One fresh file, to pin the other half of the rule: a download in flight must survive.
+const FRESH = path.join(PENDING, 'fresh-download.tmp')
+fs.writeFileSync(FRESH, Buffer.alloc(1024 * 1024, 7))
 
 fs.rmSync(PROFILE, { recursive: true, force: true })
 fs.mkdirSync(PROFILE, { recursive: true })
@@ -109,12 +123,14 @@ function report() {
   line(`after:  ${after.files} file(s), ${(after.bytes / 1024 / 1024).toFixed(1)} MB`)
 
   const freed = before.bytes - after.bytes
-  const ok = after.files === 0
-  line(`${ok ? 'PASS' : 'FAIL'}  cache emptied (${(freed / 1024 / 1024).toFixed(1)} MB freed)`)
-  if (!ok) {
-    exitCode = 1
-    for (const e of fs.readdirSync(CACHE, { recursive: true })) line(`  left: ${e}`)
-  }
+  // The aged seeds go; the fresh file stays. That is the whole rule: leftovers from a
+  // previous update are cleared, a download in flight is not touched.
+  const freshKept = fs.existsSync(FRESH)
+  const staleGone = !fs.existsSync(path.join(CACHE, 'installer.exe')) && !fs.existsSync(path.join(PENDING, 'Rewind-1.1.0-setup.exe'))
+  line(`${staleGone ? 'PASS' : 'FAIL'}  aged leftovers pruned`)
+  line(`${freshKept ? 'PASS' : 'FAIL'}  a download in flight was left alone`)
+  if (!staleGone || !freshKept) exitCode = 1
+  line(`      ${(freed / 1024 / 1024).toFixed(1)} MB freed, ${after.files} file(s) left`)
 
   if (fs.existsSync(LOG)) {
     const log = fs.readFileSync(LOG, 'utf8')
