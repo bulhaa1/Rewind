@@ -21,6 +21,20 @@ Status values:
 
 ## Open
 
+### A screenshot records the wrong source, and names the file after it
+
+Found 2026-10-12 while verifying the screenshot-metadata fix. One screenshot
+on disk carries `source: "exclusion-list.json"` in its metadata — the source
+name recorded at capture time was a filename, not an application. The PNG
+itself is named `Screenshot 2026-10-11 19-08-02.png`, so the filename is
+correct and only the recorded source is wrong.
+
+**Why this is worth chasing:** `getCurrentSourceName()` is the same call the
+panel's "Capturing" field uses. If it can return a filename, it can return a
+stale or wrong value in the panel too, and the only reason this surfaced is
+that a stray `exclusion-list.json` happened to be sitting in the output root
+at the moment of capture. Not yet reproduced deliberately.
+
 ### Black video with live microphone when the selected window is gone
 
 **Reproduce:** Settings → Capture Source → a window → the game is running →
@@ -176,6 +190,34 @@ recording with the relevant devices configured.
 
 ---
 
+## Fixed, unverified
+
+### Microphone input gain shipped with no handler
+
+**Root cause:** `set-mic-gain` was declared in `shared/ipc.ts`, exposed on the
+preload bridge, typed in the renderer API and called from Settings — with no
+`ipcMain` handler registered. The `isMicGain` validator was written and never
+called. The slider threw "No handler registered" on every drag, so the control
+was inert in every 1.0.1 install. It typechecked, built, and passed every
+existing check, because nothing compared the declared channel set against the
+handled set.
+
+**Fixed:** the handler, live tier, reusing the existing validator.
+`npm run verify:channels` now fails on any declared-but-unhandled channel and
+runs in CI, so this class of defect cannot ship silently again.
+
+**Verified:** probe 6/6 — set 1.5, read back 1.5, out-of-range 99 rejected with
+a clean failure rather than a throw, and the rejected write left the stored
+value alone. `main.log` confirms the gain reaches OBS rather than only the
+store: `microphone input gain: 1.5x = 3.5dB (filter reports 3.52dB)`.
+
+**Still not proven:** that a live microphone lands louder in a recorded clip.
+This machine's inputs all read -91.0 dB, which is digital silence, so the
+audible effect cannot be measured here. What is proven is that the control is
+wired to the OBS gain filter and reads back what OBS reports.
+
+---
+
 ## Untested
 
 Shipped, reachable in the UI, never actually exercised. Any of these could be
@@ -185,18 +227,19 @@ broken.
 |---|---|
 | Per-app audio mixing (`appAudioLevels`) | Settings → Audio |
 | Extra device channels (`deviceChannels`) | Settings → Audio |
-| `perDeviceAudioTracks` | Settings → Audio |
 | 120 fps yields genuinely distinct frames | Settings → Quality |
+
+`perDeviceAudioTracks` is removed in 1.1.0 rather than verified: it was never
+exercised, and its off-state (extra devices sharing one track) is what ships.
 
 The three audio rows share a track-splitting foundation with
 `separateAudioTracks`, which is now verified — the mixer mask and multi-track muxing
 are known to work. That is not a pass for them: each needs its own recording, with
 per-app levels set or devices actually attached, and none has been run.
 
-`perDeviceAudioTracks` in particular has a specific reason it could not be checked
-alongside the core split: it only changes the mask when extra device channels are
-configured, and a run with no devices shows an identical mask whether it works or
-not. Verifying it means attaching at least two endpoints and recording.
+Extra device channels now share a single track unconditionally, which is the
+behaviour `perDeviceAudioTracks: false` produced. No code path depends on it any
+more.
 
 **AMD and Intel GPUs.** Only ever run on an NVIDIA RTX 5080. The encoder is
 detected at runtime and `codecsByVendor` covers NVENC, AMF and QSV with an x264

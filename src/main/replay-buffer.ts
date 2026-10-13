@@ -145,6 +145,8 @@ export class ReplayBuffer {
   private segmentTimer: NodeJS.Timeout | null = null
   private segmentFlush: Promise<void> | null = null
   private recordingActive = false
+  /** In-flight start, shared by callers that overlap one. See `startReplayBuffer`. */
+  private startInFlight: Promise<void> | null = null
   private recordingStartedAt = 0
   private scratchDir = ''
 
@@ -356,8 +358,14 @@ export class ReplayBuffer {
     const encoderId = this.getActiveEncoder()
 
     try {
-      // Any truthy value signals "use the streaming output" to OBS, which is what makes
-      // the replay buffer roll instead of writing continuously.
+      // Any truthy value signals "use the streaming output" to OBS.
+      //
+      // It does NOT make the buffer roll. Rolling comes from the replay_buffer
+      // output built further down (`AdvancedReplayBufferFactory` + `.duration`).
+      // `usesStream` only decides *which encoder* does the work: it points the
+      // replay buffer at the streaming output, which is why the real encoder
+      // settings go to `this.streaming` while `replayConfig` and `videoEncoder`
+      // below are placeholders that are never started.
       this.streaming = obs.AdvancedStreamingFactory.create()
       this.streaming.audioTrack = 1
       this.streaming.enforceServiceBitrate = false
@@ -403,6 +411,11 @@ export class ReplayBuffer {
       this.replayBuffer.recording = this.replayConfig
       this.replayBuffer.streaming = this.streaming
       this.replayBuffer.usesStream = true
+      // The only bound this output is given is time. obs-studio-node exposes no
+      // `max_size_mb` on the replay buffer -- introspecting the live native object
+      // returns only `duration`, `usesStream` and `streaming` -- so there is no byte
+      // ceiling to set here and the buffer grows with duration times whatever the
+      // encoder actually emits.
       this.replayBuffer.duration = config.bufferDuration
       this.replayBuffer.path = config.outputPath
       this.replayBuffer.format = 'mp4'
@@ -467,7 +480,29 @@ export class ReplayBuffer {
   // Lifecycle
   // -------------------------------------------------------------------------
 
+  /**
+   * Starts the rolling buffer, coalescing overlapping calls.
+   *
+   * OBS reports FAILED (code -4) when a second start lands while the first is
+   * still settling, and the recovery path then quietly rebuilds the chain on the
+   * software encoder. The user is left with a stopped buffer and CPU encoding
+   * they were never told about. Measured: two overlapping starts took a healthy
+   * NVENC buffer down and downgraded it to x264.
+   *
+   * So a call arriving while a start is in flight awaits that same start rather
+   * than issuing its own. The window is real, not theoretical: the pipeline starts
+   * the buffer at launch, and the panel's hotkey is live before that finishes.
+   */
   async startReplayBuffer(retry = false): Promise<void> {
+    if (this.startInFlight) return this.startInFlight
+    this.startInFlight = this.runStartReplayBuffer(retry).finally(() => {
+      this.startInFlight = null
+    })
+    return this.startInFlight
+  }
+
+  /** The actual start. Only `startReplayBuffer` should call this. */
+  private async runStartReplayBuffer(retry: boolean): Promise<void> {
     if (!this.obsCore.isInitialized()) throw new Error('OBS not initialized')
 
     const canRetryHardware = this.hardwareFailures < TIMING.HARDWARE_FAILURE_CAP
@@ -811,7 +846,23 @@ export class ReplayBuffer {
 
     const newest = written.sort((a, b) => mtimeOf(b) - mtimeOf(a))[0]
     const target = path.join(this.scratchDir, path.basename(newest))
-    fs.renameSync(newest, target)
+    /*
+     * Copy+unlink fallback, mirroring `moveIntoSourceFolder`. A bare rename
+     * fails with EXDEV whenever the scratch folder and the library are on
+     * different volumes -- which is the normal case, since scratch lives under
+     * os.tmpdir() (usually C:) while clips are usually written to a data disk.
+     * Without the fallback every segment flush threw, the recording produced no
+     * footage at all, and the buffer-written file was stranded in the library
+     * looking like a finished clip.
+     */
+    try {
+      fs.renameSync(newest, target)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'EXDEV') throw e
+      log.info('Scratch and library are on different volumes; copying the segment instead of renaming')
+      fs.copyFileSync(newest, target)
+      fs.unlinkSync(newest)
+    }
     return target
   }
 

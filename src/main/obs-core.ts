@@ -11,7 +11,7 @@ import {
   withTimeout,
   type ObsModule,
 } from './obs-bind.js'
-import { MONITOR_LOG_INTERVAL_MS, TIMING } from '@shared/constants.js'
+import { APP_FOLDER, MONITOR_LOG_INTERVAL_MS, TIMING } from '@shared/constants.js'
 import { writeProfileVideoSettings } from './obs-profile.js'
 import { bindChildren, killChildren, OBS_EXE } from './process-lifetime.js'
 import { getSetting } from './store.js'
@@ -25,9 +25,29 @@ export interface ObsConfig {
   outputResolution: 'native' | '1080p' | '720p'
 }
 
-/** Default output root: `<Videos>/Rewind`. */
+/**
+ * The location the user picks; `rewindRoot` puts the app folder inside it.
+ */
 export function defaultOutputPath(): string {
-  return path.join(app.getPath('videos'), 'Rewind')
+  return app.getPath('videos')
+}
+
+/**
+ * The directory clips actually live in: `<chosen location>\Rewind`.
+ *
+ * Every consumer goes through this rather than through the stored setting, so
+ * the app owns one level of the chosen location instead of writing straight into
+ * it.
+ *
+ * A stored path that already ends in `Rewind` is used as the root rather than
+ * nested again. Without that, a user whose setting already pointed at the app
+ * folder -- which is what every pre-1.1.0 install has -- would get
+ * `...\Rewind\Rewind` the moment they upgraded.
+ */
+export function rewindRoot(configured?: string): string {
+  const base = configured && path.isAbsolute(configured) ? configured : defaultOutputPath()
+  if (path.basename(base).toLowerCase() === APP_FOLDER.toLowerCase()) return base
+  return path.join(base, APP_FOLDER)
 }
 
 /** Scales the canvas down to a 16:9 ceiling, preserving aspect and even dimensions. */
@@ -135,7 +155,7 @@ export class ObsCore {
       outputResolution: 'native',
       ...config,
       // An unset path means the user hasn't chosen one yet; fall back to the default.
-      outputPath: config?.outputPath || defaultOutputPath(),
+      outputPath: rewindRoot(config?.outputPath),
     }
   }
 
@@ -422,15 +442,43 @@ export class ObsCore {
     }
   }
 
-  /** Bitmask of active tracks: mix (1) plus, when split is on, desktop/mic/device tracks. */
+  /**
+   * Bitmask of active tracks: the mix and desktop audio, the microphone when one
+   * is capturable, and any extra device tracks.
+   *
+   * Split tracks are unconditional as of 1.1.0 -- there is no setting for it.
+   * The microphone bit is the one condition worth testing, because a machine with
+   * no capture-capable input otherwise writes a third AAC stream of digital
+   * silence into every clip.
+   */
   audioTrackMask(): number {
     const tracks = this.audioDeviceChannelService.channelTracks?.().map((t: any) => t.track) ?? []
-    return computeMixerMask(getSetting('separateAudioTracks'), tracks)
+    return computeMixerMask(this.hasCapturableMicrophone(), tracks)
+  }
+
+  /**
+   * Whether a microphone is actually capturable.
+   *
+   * Device *presence*, not configuration: `setupAudioSources` always creates the
+   * source and the picker offers only "Windows Default" plus real devices, so
+   * "is a microphone configured" is true for essentially every user and would
+   * gate nothing.
+   *
+   * Deliberately ignores mute and volume. The mask is only recomputed in
+   * `applyAudioTracks`, and a stale mask triggers `rebuildAndRestart`, which
+   * tears down and rebuilds the chain -- so gating on mute would empty the
+   * rolling buffer on every toggle. Mute stays a live-tier control.
+   */
+  hasCapturableMicrophone(): boolean {
+    if (!this.microphone) return false
+    // Lazy: audio.ts imports from this module, so a static import back would be
+    // circular. Same pattern the rest of the main process uses for audio.
+    return require('./audio.js').deviceAvailable(this.obs, getSetting('micDeviceId'), 'microphone')
   }
 
   audioTrackLabels(): string[] {
     const channelTracks = this.audioDeviceChannelService.channelTracks?.() ?? []
-    return buildTrackLabels(getSetting('separateAudioTracks'), channelTracks)
+    return buildTrackLabels(this.hasCapturableMicrophone(), channelTracks)
   }
 
   async setOutputPath(p: string): Promise<void> {
@@ -715,7 +763,7 @@ export function destroyAudioSource(mod: ObsModule | null, handle: any): void {
 export function setSourceTrack(handle: any, track: number): void {
   try {
     handle.track = track
-    handle.source.audioMixers = sourceTrackMask(track, getSetting('separateAudioTracks'))
+    handle.source.audioMixers = sourceTrackMask(track)
   } catch (e) {
     log.warn(`Failed to set audio tracks for ${handle.source?.name}:`, e)
   }
@@ -778,32 +826,38 @@ function trackMask(track: number): number {
   return 1 << (track - 1)
 }
 
-/** Bit 0 (the mix) plus the dedicated track when split tracks are on. */
-export function sourceTrackMask(dedicatedTrack: number, separate: boolean): number {
+/** Bit 0 (the mix) plus the source's dedicated track. */
+export function sourceTrackMask(dedicatedTrack: number): number {
   let mask = trackMask(1)
-  if (separate && dedicatedTrack > 1) mask |= trackMask(dedicatedTrack)
+  if (dedicatedTrack > 1) mask |= trackMask(dedicatedTrack)
   return mask
 }
 
-export function computeMixerMask(separate: boolean, deviceTracks: number[]): number {
-  let mask = trackMask(1) // Mix always present
-  if (!separate) return mask
-  mask |= trackMask(2) | trackMask(3)
+/**
+ * Mix and desktop are always present. The microphone track is included only
+ * when one is capturable -- see `ObsCore.hasCapturableMicrophone`.
+ */
+export function computeMixerMask(hasMicrophone: boolean, deviceTracks: number[]): number {
+  let mask = trackMask(1) | trackMask(2) // mix + desktop
+  if (hasMicrophone) mask |= trackMask(3)
   for (const t of deviceTracks) mask |= trackMask(t)
   return mask
 }
 
+/**
+ * Labels matching `computeMixerMask` exactly.
+ *
+ * A `Microphone` entry is emitted only when the microphone track exists,
+ * otherwise the editor would draw a lane for a track the file does not carry.
+ */
 export function buildTrackLabels(
-  separate: boolean,
+  hasMicrophone: boolean,
   channelTracks: { track: number; label: string }[],
 ): string[] {
-  const map = new Map<number, string[]>([[1, ['Mix']]])
-  if (separate) {
-    map.set(2, ['Desktop'])
-    map.set(3, ['Microphone'])
-    for (const { track, label } of channelTracks) {
-      map.set(track, [...(map.get(track) ?? []), label])
-    }
+  const map = new Map<number, string[]>([[1, ['Mix']], [2, ['Desktop']]])
+  if (hasMicrophone) map.set(3, ['Microphone'])
+  for (const { track, label } of channelTracks) {
+    map.set(track, [...(map.get(track) ?? []), label])
   }
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])

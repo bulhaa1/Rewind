@@ -124,6 +124,8 @@ export interface RewindApi {
   getAudioLevels(): Promise<IpcResult<{ desktop: AudioLevel; microphone: AudioLevel }>>
   setChannelVolume(channel: AudioChannel, volume: number): Promise<IpcResult>
   setChannelMuted(channel: AudioChannel, muted: boolean): Promise<IpcResult>
+  getQuickClipSeconds(): Promise<IpcResult<number>>
+  setQuickClipSeconds(seconds: number): Promise<IpcResult>
   getMicGain(): Promise<IpcResult<number>>
   setMicGain(gain: number): Promise<IpcResult>
   getAudioSessions(): Promise<IpcResult<AudioApp[]>>
@@ -137,10 +139,6 @@ export interface RewindApi {
   removeAudioDeviceChannel(deviceId: string): Promise<IpcResult>
   setDeviceVolume(deviceId: string, volume: number): Promise<IpcResult>
   setDeviceMuted(deviceId: string, muted: boolean): Promise<IpcResult>
-  getSeparateAudioTracks(): Promise<IpcResult<boolean>>
-  setSeparateAudioTracks(value: boolean): Promise<IpcResult>
-  getPerDeviceAudioTracks(): Promise<IpcResult<boolean>>
-  setPerDeviceAudioTracks(value: boolean): Promise<IpcResult>
 
   // Hotkeys
   getHotkeys(): Promise<IpcResult<Partial<Record<HotkeyAction, string>>>>

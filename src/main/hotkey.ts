@@ -3,17 +3,18 @@ import { getSetting, setSetting } from './store.js'
 
 const log = scope('Hotkey')
 
-export type HotkeyAction = 'save-replay' | 'screenshot' | 'toggle-replay'
+export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record'
 
 interface HotkeySpec {
-  setting: 'saveReplayHotkey' | 'screenshotHotkey' | 'toggleReplayHotkey'
+  setting: 'saveReplayHotkey' | 'quickClipHotkey' | 'screenshotHotkey' | 'toggleRecordHotkey'
   label: string
 }
 
 export const HOTKEYS: Record<HotkeyAction, HotkeySpec> = {
   'save-replay': { setting: 'saveReplayHotkey', label: 'Save Replay' },
+  'save-quick-clip': { setting: 'quickClipHotkey', label: 'Save Quick Clip' },
   screenshot: { setting: 'screenshotHotkey', label: 'Screenshot' },
-  'toggle-replay': { setting: 'toggleReplayHotkey', label: 'Start / Stop Recording' },
+  'toggle-record': { setting: 'toggleRecordHotkey', label: 'Start / Stop Recording' },
 }
 
 export const ACTIONS: HotkeyAction[] = Object.keys(HOTKEYS) as HotkeyAction[]

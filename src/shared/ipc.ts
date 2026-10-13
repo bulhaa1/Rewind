@@ -72,6 +72,8 @@ export const IPC = {
   getAudioLevels: 'get-audio-levels',
   setChannelVolume: 'set-channel-volume',
   setChannelMuted: 'set-channel-muted',
+  getQuickClipSeconds: 'get-quick-clip-seconds',
+  setQuickClipSeconds: 'set-quick-clip-seconds',
   getMicGain: 'get-mic-gain',
   setMicGain: 'set-mic-gain',
   getAudioSessions: 'get-audio-sessions',
@@ -85,10 +87,6 @@ export const IPC = {
   removeAudioDeviceChannel: 'remove-audio-device-channel',
   setDeviceVolume: 'set-device-volume',
   setDeviceMuted: 'set-device-muted',
-  getSeparateAudioTracks: 'get-separate-audio-tracks',
-  setSeparateAudioTracks: 'set-separate-audio-tracks',
-  getPerDeviceAudioTracks: 'get-per-device-audio-tracks',
-  setPerDeviceAudioTracks: 'set-per-device-audio-tracks',
 
   // hotkeys
   getHotkeys: 'get-hotkeys',

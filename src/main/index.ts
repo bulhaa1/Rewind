@@ -5,14 +5,21 @@ import path from 'node:path'
 import { scope } from './logger.js'
 import { bootstrap, getMainWindow, lifecycle, PRELOAD, RENDERER_DIR, showMainWindow } from './window.js'
 import { log as logger } from './logger.js'
-import { ObsCore, defaultOutputPath, killObsChildren } from './obs-core.js'
+import { ObsCore, defaultOutputPath, rewindRoot, killObsChildren } from './obs-core.js'
 import { ReplayBuffer } from './replay-buffer.js'
 import { CaptureManager } from './capture.js'
 import { GameDetector } from './game-detector.js'
 import { AudioDeviceChannels, AudioMix, invalidateDeviceCache } from './audio.js'
 import { notify, dismissPanel } from './notification.js'
 import { installDefaultHotkeys, shutdown as shutdownHotkeys, startCapture, stopCapture } from './hotkey.js'
-import { registerIpc, saveClipAndNotify, takeScreenshot, outputRoot, OBS_STATUS_MESSAGES } from './ipc.js'
+import {
+  registerIpc,
+  saveClipAndNotify,
+  saveQuickClipAndNotify,
+  takeScreenshot,
+  outputRoot,
+  OBS_STATUS_MESSAGES,
+} from './ipc.js'
 import { getClipMeta, setClipMeta } from './clip-meta.js'
 import { openEditorWindow, currentEditorClip, closeEditorWindow, cleanupEditor, saveClip } from './editor.js'
 import { getSetting, setSetting } from './store.js'
@@ -214,11 +221,15 @@ function buildPipeline(): void {
 async function initPipeline(): Promise<void> {
   installDefaultHotkeys({
     'save-replay': () => void saveFromHotkey(),
+    'save-quick-clip': () => void saveQuickClipFromHotkey(),
     screenshot: () => void saveScreenshotFromHotkey(),
-    'toggle-replay': () => void toggleReplayFromHotkey(),
+    'toggle-record': () => void toggleRecordingFromHotkey(),
   })
 
   try {
+    // Once at startup, before anything reads the library. Safe to repeat: the
+    // legacy folders stop existing after the first run.
+    require('./clip-manager.js').renameLegacySourceFolders(rewindRoot(getSetting('outputPath')))
     await startPipeline()
     setStatus(OBS_STATUS_MESSAGES.ready, getMainWindow())
     log.info('OBS initialized and replay buffer started')
@@ -383,9 +394,21 @@ function showNotification(type: BufferStatus, message?: string): void {
 }
 
 async function saveFromHotkey(): Promise<void> {
-  if (!pipelineActive() || !obsCore || !replay || !capture) {
+  if (!obsCore?.isInitialized() || !replay || !capture) {
     log.warn('Shortcut save ignored: recording not ready')
     showNotification('error', 'Recording not ready')
+    return
+  }
+
+  // Kept separate from the guard above because the two mean different things and
+  // only one of them is the user's to fix. `pipelineActive()` folds "the engine
+  // is up" together with "the buffer is rolling", so a save with the buffer off
+  // used to report "Recording not ready" -- which sends you looking for a
+  // recording you never started. What actually happened is that you asked for a
+  // clip when there was nothing rolling to take it from.
+  if (!replay.isReplayBufferActive()) {
+    log.warn('Shortcut save ignored: the rolling buffer is stopped')
+    showNotification('error', 'Buffer is off - start it to save a clip')
     return
   }
 
@@ -395,6 +418,33 @@ async function saveFromHotkey(): Promise<void> {
     await saveClipAndNotify(services)
   } catch (e) {
     log.error('Failed to save replay:', e)
+    const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
+    showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
+    if (wedged) scheduleWedgeRecovery()
+  }
+}
+
+/**
+ * Ctrl+Alt+1: saves the last N seconds rather than the whole buffer.
+ *
+ * Goes through the same buffer guard as the plain save so an off buffer says so
+ * plainly instead of surfacing whatever the flush would have thrown.
+ */
+async function saveQuickClipFromHotkey(): Promise<void> {
+  if (!obsCore?.isInitialized() || !replay || !capture) {
+    showNotification('error', 'Recording not ready')
+    return
+  }
+  if (!replay.isReplayBufferActive()) {
+    log.warn('Shortcut quick save ignored: the rolling buffer is stopped')
+    showNotification('error', 'Buffer is off - start it to save a clip')
+    return
+  }
+
+  try {
+    await saveQuickClipAndNotify(services, getSetting('quickClipSeconds'))
+  } catch (e) {
+    log.error('Failed to save quick clip:', e)
     const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
     showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
     if (wedged) scheduleWedgeRecovery()
@@ -421,6 +471,94 @@ async function saveScreenshotFromHotkey(): Promise<void> {
  *
  * Returns the resulting state so the panel can report it.
  */
+/**
+ * Registers a recording the buffer finished on teardown, and tells the renderer.
+ *
+ * Shared by the panel's Stop button (`setReplayBufferActive`) and the Start/Stop
+ * hotkey. Both end the buffer, and both leave a finished recording unregistered
+ * unless they say so here -- an unregistered recording sits in the library root
+ * with no source and a timestamp guessed from its filename.
+ */
+function registerFinishedFromBufferStop(finished: string): void {
+  if (!obsCore || !capture) throw new Error('Recording not ready')
+  const sourceName = capture.getCurrentSourceName()
+  const moved = require('./clip-manager.js').registerFinishedRecording(
+    finished,
+    sourceName,
+    obsCore.getConfig().outputPath,
+    obsCore.audioTrackLabels(),
+  )
+  services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+  log.info(`Recording finished because the buffer stopped: ${moved}`)
+}
+
+/**
+ * Stops the manual recording and puts the finished clip in the library.
+ *
+ * Lives here rather than in the IPC layer because the hotkey and the panel
+ * button both stop recordings, and they must not drift apart in what they do
+ * with the file afterwards.
+ */
+async function stopRecordingAndRegister(): Promise<string> {
+  if (!replay || !obsCore || !capture) throw new Error('Recording not ready')
+  const file = await replay.stopContinuousRecording()
+  const sourceName = capture.getCurrentSourceName()
+  const cm = require('./clip-manager.js')
+  const moved = cm.registerFinishedRecording(
+    file,
+    sourceName,
+    obsCore.getConfig().outputPath,
+    obsCore.audioTrackLabels(),
+  )
+  services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+
+  void cm
+    .describeSavedClip(moved, replay.getActiveEncoderVendor(), replay.getActiveEncoder(), replay.getQualityTarget(), sourceName)
+    .then((info: { durationSec: number } | null) => cm.stampDuration(moved, info?.durationSec))
+    .catch(() => {
+      /* diagnostics only */
+    })
+
+  log.info(`Recording saved: ${moved}`)
+  return moved
+}
+
+/**
+ * One key does both halves of manual recording: press once to start, again to
+ * stop. This is what Alt+3 drives now.
+ *
+ * It replaced the rolling-buffer toggle, so the buffer keeps running throughout a
+ * recording and is still there for clipping afterwards.
+ */
+let recordingToggleInFlight = false
+
+async function toggleRecordingForUser(): Promise<{ recording: boolean }> {
+  if (!replay || !obsCore) throw new Error('Recording not ready')
+
+  if (replay.isRecordingContinuously?.()) {
+    await stopRecordingAndRegister()
+    showNotification('saved')
+    return { recording: false }
+  }
+
+  await replay.startContinuousRecording()
+  showNotification('recorded')
+  return { recording: true }
+}
+
+async function toggleRecordingFromHotkey(): Promise<void> {
+  if (recordingToggleInFlight) return
+  recordingToggleInFlight = true
+  try {
+    await toggleRecordingForUser()
+  } catch (e) {
+    log.error('Failed to toggle recording:', e)
+    showNotification('error', 'Recording not ready')
+  } finally {
+    recordingToggleInFlight = false
+  }
+}
+
 async function toggleReplayForUser(): Promise<{ active: boolean }> {
   const buffer = replay
   if (!obsCore || !buffer || !capture) throw new Error('Recording not ready')
@@ -436,16 +574,7 @@ async function toggleReplayForUser(): Promise<{ active: boolean }> {
     const finished = buffer.takeFinishedOnTeardown?.() ?? null
     if (finished) {
       try {
-        const sourceName = capture.getCurrentSourceName()
-        const { moveIntoSourceFolder } = require('./clip-manager.js')
-        const moved = moveIntoSourceFolder(finished, sourceName, obsCore.getConfig().outputPath)
-        setClipMeta(moved, {
-          recordedAt: Date.now(),
-          source: sourceName,
-          audioTracks: obsCore.audioTrackLabels(),
-        })
-        services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
-        log.info(`Recording finished because the buffer stopped: ${moved}`)
+        registerFinishedFromBufferStop(finished)
       } catch (e) {
         log.error('Recording finished by buffer stop but could not be registered:', e)
       }
@@ -511,6 +640,16 @@ const services = {
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
+  toggleRecording: () => toggleRecordingForUser(),
+  saveQuickClip: () => saveQuickClipAndNotify(services, getSetting('quickClipSeconds')),
+  /**
+   * Registers a recording the buffer finished on teardown.
+   *
+   * `ipc.ts` needs this for the panel's Stop button, which pauses the buffer
+   * through `setReplayBufferActive` rather than going through
+   * `toggleReplayForUser`, and so never touched `finishedOnTeardown`.
+   */
+  registerFinishedFromBufferStop,
   reinitPipeline,
   notify: (type: BufferStatus, message?: string) => showNotification(type, message),
   status: {
@@ -758,14 +897,15 @@ async function runRecordSelfTest(): Promise<void> {
 }
 
 /**
- * Records with `separateAudioTracks` forced on and measures the saved file.
+ * Records with the default audio layout and measures the saved file.
  *
- * Every clip in the library has exactly one audio stream, because the setting has
- * never been on during a recording. "The toggle exists in Settings" is therefore not
- * evidence that it does anything, and the editor work planned on top of it assumes it
- * does. This forces it on for one recording, plays a tone so the desktop track has
- * something measurable in it, and reports the stream layout and per-stream loudness.
+ * Split tracks are unconditional as of 1.1.0, so there is nothing to force: this
+ * asserts what a normal recording produces, and `REWIND_SELFTEST_MIC=absent` runs
+ * the same thing with a microphone that cannot resolve, which is how the
+ * "one fewer track" branch is exercised without unplugging hardware.
  *
+ * A tone is played during the window so the desktop track has something
+ * measurable in it, and the stream layout and per-stream loudness are reported.
  * Exit code: 0 when the file has at least two audio streams, 1 when it has fewer, 2 on
  * a harness failure. Only the stream count gates it — whether the tracks hold
  * *different* audio is a judgement the caller makes from the two numbers together.
@@ -783,20 +923,27 @@ async function runAudioTrackSelfTest(): Promise<void> {
   // value would outlive the run: the app would keep splitting tracks, keep saving to
   // the temp directory, or keep capturing a display the user did not choose.
   const realOutputPath = getSetting('outputPath')
-  const realSeparate = getSetting('separateAudioTracks')
   const realCaptureMode = getSetting('captureMode')
   const realDisplayIndex = getSetting('displayIndex')
+  const realMicDeviceId = getSetting('micDeviceId')
 
-  // `0` runs the same recording with the setting off, as a control: without it, "3
-  // streams" could just be what this machine always produces.
-  const separate = process.env.REWIND_SELFTEST_AUDIOTRACKS_ON !== '0'
+  /*
+   * There is no longer a setting to force. The test asserts what the default
+   * configuration produces, which is the only thing worth asserting now: split
+   * tracks are unconditional.
+   *
+   * `REWIND_SELFTEST_MIC=absent` points the microphone at a device id that does
+   * not resolve, which is how the "no capturable microphone means one fewer
+   * track" case gets exercised without unplugging hardware.
+   */
+  const micAbsent = process.env.REWIND_SELFTEST_MIC === 'absent'
 
   let exitCode = 0
 
   try {
     log.info(`AUDIO TRACK TEST: redirecting output to ${outDir}`)
     setSetting('outputPath', outDir)
-    setSetting('separateAudioTracks', separate)
+    if (micAbsent) setSetting('micDeviceId', '__rewind_selftest_no_such_device__')
     // Auto-detect rewrites the capture source every few seconds and each switch
     // rebuilds the replay chain, which would measure the detector instead of the
     // encoder.
@@ -852,10 +999,10 @@ async function runAudioTrackSelfTest(): Promise<void> {
       log.info(`AUDIO TRACK TEST: audio stream ${i}: mean=${v.meanDb ?? '-inf'} dB max=${v.maxDb ?? '-inf'} dB`)
     }
 
-    // `separate` is what was requested, not what came out: the stream count is the
-    // evidence, and collapsing the two would hide a broken setting behind a true flag.
+    // `micAbsent` is what was requested, not what came out: the stream count is the
+    // evidence, and collapsing the two would hide a broken gate behind a true flag.
     const report = {
-      separate,
+      micAbsent,
       streamCount: audio.length,
       streamLabels: audio.map((s) => s.tags?.handler_name ?? s.tags?.title ?? null),
       meanVolumes,
@@ -867,18 +1014,17 @@ async function runAudioTrackSelfTest(): Promise<void> {
     fs.writeFileSync(path.join(outDir, 'AUDIOTRACKS_DONE'), file)
     log.info(`AUDIO TRACK TEST: ${JSON.stringify(report)}`)
 
-    // The split run and the control run are judged by *opposite* expectations, and both
-    // can fail. A split run that stops splitting is the regression this gates on; a
-    // control that still splits means the count stopped depending on the setting at
-    // all, which makes every "3 streams" reading meaningless. The control therefore
-    // cannot be a pass-by-construction: hardcoding 0 for it would let that second
-    // regression through green.
+    // Both cases are judged by a count, and both can fail. With a capturable
+    // microphone the file must carry at least two streams; without one it must
+    // carry exactly two (mix + desktop) and no third. The second is what proves
+    // the gate is a real condition rather than a constant: if the microphone bit
+    // were always set, "no microphone" would also produce three.
     if (measurementFailed) {
       exitCode = 2
-    } else if (separate) {
-      exitCode = audio.length >= 2 ? 0 : 1
+    } else if (micAbsent) {
+      exitCode = audio.length === 2 ? 0 : 1
     } else {
-      exitCode = audio.length === 1 ? 0 : 1
+      exitCode = audio.length >= 3 ? 0 : 1
     }
   } catch (e) {
     log.error('AUDIO TRACK TEST failed:', e)
@@ -890,10 +1036,10 @@ async function runAudioTrackSelfTest(): Promise<void> {
     exitCode = 2
   } finally {
     log.info(
-      `AUDIO TRACK TEST: restoring separateAudioTracks=${realSeparate} output=${realOutputPath ?? 'UNDEFINED'} ` +
-        `captureMode=${realCaptureMode} displayIndex=${realDisplayIndex}`,
+      `AUDIO TRACK TEST: restoring output=${realOutputPath ?? 'UNDEFINED'} ` +
+        `captureMode=${realCaptureMode} displayIndex=${realDisplayIndex} micDeviceId=${realMicDeviceId}`,
     )
-    setSetting('separateAudioTracks', realSeparate)
+    if (micAbsent) setSetting('micDeviceId', realMicDeviceId)
     // The capture source was switched the same way the other two were, through the
     // same persisted store, so it is restored the same way. Skipping these two left a
     // user on 'game' or on their second monitor permanently recording display 0.

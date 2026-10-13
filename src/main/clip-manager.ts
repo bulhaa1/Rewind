@@ -4,7 +4,16 @@ import { scope } from './logger.js'
 import { isInside, isReservedDeviceName, nonEmptyString } from './util.js'
 import { probeClip, probeDuration, probe, type ClipProbe } from './ffmpeg.js'
 import { clipMeta, type ClipMeta } from './store.js'
-import { RECORDING_PREFIX, REPLAY_PREFIX, parseRecordingStamp, THUMBNAIL } from '@shared/constants.js'
+import { setClipMeta } from './clip-meta.js'
+import {
+  DISPLAY_CAPTURE_FOLDER,
+  GAME_CAPTURE_FOLDER,
+  LEGACY_AUTO_GAME_FOLDER,
+  RECORDING_PREFIX,
+  REPLAY_PREFIX,
+  parseRecordingStamp,
+  THUMBNAIL,
+} from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
 
 const log = scope('ClipManager')
@@ -15,13 +24,32 @@ export function isVideoFile(p: string): boolean {
   return VIDEO_EXTENSIONS.includes(path.extname(p).toLowerCase())
 }
 
-/** Files the original created but never adopts (trim temporaries, editor previews). */
+/**
+ * A file the editor's "Save as Copy" produced: `<name>-edit.mp4`, or
+ * `<name>-edit-2.mp4` and onward when that name is taken.
+ */
 const EDIT_SUFFIX = /-edit(-\d+)?$/
+
+/**
+ * A trim in progress: the editor writes `<name>.trim-<timestamp>.mp4` beside the
+ * source clip and renames it over the original when ffmpeg finishes
+ * (`editor.ts:381`). It exists for the length of one encode, so the library must
+ * never surface it.
+ *
+ * The `.trim-` infix matters more than it looks. These files carry the `Replay`
+ * prefix, so the "written by Rewind, adopt by name" rule below would otherwise
+ * wave every one of them straight into the library while it is still growing.
+ */
+const TRIM_TEMP_INFIX = /\.trim-\d+\./
 
 export function isEditorCopy(fileName: string): boolean {
   const i = fileName.lastIndexOf('.')
   const stem = i > 0 ? fileName.slice(0, i) : fileName
   return EDIT_SUFFIX.test(stem)
+}
+
+export function isTrimTemporary(fileName: string): boolean {
+  return TRIM_TEMP_INFIX.test(fileName)
 }
 
 /**
@@ -99,7 +127,148 @@ export function moveIntoSourceFolder(file: string, sourceName: string, outputRoo
  * original can leave such folders behind when a source label trims oddly. Repair them
  * on scan rather than making those clips invisible forever.
  */
-export function repairTrailingDotFolders(root: string): void {
+/**
+ * Registers a recording the replay buffer finished on teardown.
+ *
+ * Stopping the buffer while a continuous recording is running finishes that
+ * recording rather than discarding it. The stitching happens in `replay-buffer`
+ * because it needs the output still alive; this puts the finished file where a
+ * user can find it, records what it is, and tells the renderer so the library
+ * updates without waiting for a rescan.
+ *
+ * This lives here rather than inline because two call sites need it: the
+ * panel's Stop button and the Start/Stop hotkey both end the buffer, and only
+ * one of them used to do this. A recording left unregistered is not lost, but
+ * it sits in the library root with no source and a timestamp guessed from its
+ * filename.
+ *
+ * `audioTracks` is passed in rather than read here: it describes the app's
+ * current audio layout, and this module has no handle on the OBS pipeline.
+ */
+export function registerFinishedRecording(
+  finished: string,
+  sourceName: string,
+  outputRoot: string,
+  audioTracks: string[] | undefined,
+): string {
+  const moved = moveIntoSourceFolder(finished, sourceName, outputRoot)
+  setClipMeta(moved, {
+    recordedAt: Date.now(),
+    source: sourceName,
+    ...(audioTracks ? { audioTracks } : {}),
+  })
+  return moved
+}
+
+/**
+ * Rewrites clip metadata keys that name a pre-1.1.0 source folder.
+ *
+ * Two things make this harder than it looks, and both failed silently the first
+ * time round.
+ *
+ * The library keys metadata by absolute path, so a folder rename orphans every
+ * record inside it: the clip loses its recorded source, its audio track layout and
+ * its edited flag, with nothing on screen saying why.
+ *
+ * Matching on the rooted prefix is not enough. This same release re-spells the root
+ * (`...\Captures\REWIND` becoming `...\Captures\Rewind`), and a string prefix
+ * compare is case-sensitive while the filesystem is not -- so every key missed and
+ * 82 clips silently lost their source and audio tracks. Matching the folder SEGMENT
+ * instead finds them regardless of how the root is spelled that day.
+ *
+ * Records are merged, not replaced: a re-scan may already have written a bare record
+ * at the new path, and the old one is the only copy that still knows the source and
+ * the tracks.
+ */
+function remapClipMetaFolder(root: string, from: string, to: string): void {
+  const meta = clipMeta.get('clips') ?? {}
+  const next: Record<string, ClipMeta> = { ...meta }
+  const needle = '\\' + from.toLowerCase() + '\\'
+  let moved = 0
+
+  for (const [key, record] of Object.entries(meta)) {
+    // lastIndexOf, not indexOf: a folder name could in principle repeat.
+    const at = key.toLowerCase().lastIndexOf(needle)
+    if (at < 0) continue
+
+    const relative = key.slice(at + needle.length)
+    const target = path.join(root, to, relative)
+    if (target === key) continue
+
+    next[target] = { ...next[target], ...record }
+    delete next[key]
+    moved++
+  }
+
+  if (!moved) return
+  clipMeta.set('clips', next)
+  log.info(`Carried metadata for ${moved} clip(s) from "${from}" to "${to}"`)
+}
+
+/**
+ * Renames the pre-1.1.0 source folders to their current names, and repairs the
+ * clip metadata that names them.
+ *
+ * Clips used to land in a folder named after the monitor (`Display 1 (Primary)`)
+ * and in `Auto Game Capture` while the detector had not yet locked a game. Both now
+ * use stable names.
+ *
+ * Legacy names are discovered from the metadata as well as from disk, on purpose.
+ * A run that moved the folder but failed at the metadata step would otherwise find
+ * nothing left to rename and leave the damage in place forever.
+ */
+export function renameLegacySourceFolders(root: string): void {
+  const meta = clipMeta.get('clips') ?? {}
+  const DISPLAY_NAMED = /^Display \d+( \(Primary\))?$/i
+
+  const legacy = new Set<string>()
+  const isLegacyName = (name: string) =>
+    name.toLowerCase() === LEGACY_AUTO_GAME_FOLDER.toLowerCase() || DISPLAY_NAMED.test(name)
+
+  for (const key of Object.keys(meta)) {
+    const parts = key.split(/[\\/]/)
+    const folder = parts[parts.length - 2]
+    if (folder && isLegacyName(folder)) legacy.add(folder)
+  }
+
+  if (fs.existsSync(root)) {
+    try {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (entry.isDirectory() && isLegacyName(entry.name)) legacy.add(entry.name)
+      }
+    } catch {
+      /* unreadable root; the metadata repair below still runs */
+    }
+  }
+
+  for (const name of legacy) {
+    const to = name.toLowerCase() === LEGACY_AUTO_GAME_FOLDER.toLowerCase() ? GAME_CAPTURE_FOLDER : DISPLAY_CAPTURE_FOLDER
+    const from = path.join(root, name)
+    const target = path.join(root, to)
+
+    if (fs.existsSync(from)) {
+      try {
+        if (fs.existsSync(target)) {
+          // The new folder already exists, so fold the old one into it rather than
+          // picking a winner. Clips inside carry timestamps, so same-volume renames
+          // cannot collide by filename.
+          for (const child of fs.readdirSync(from)) {
+            fs.renameSync(path.join(from, child), path.join(target, child))
+          }
+          fs.rmSync(from, { recursive: false, force: true })
+        } else {
+          fs.renameSync(from, target)
+        }
+        log.info(`Renamed source folder "${name}" -> "${to}"`)
+      } catch (e) {
+        log.warn(`Failed to rename source folder "${name}":`, e)
+      }
+    }
+
+    // Unconditional: the folder may already have been moved by an earlier run.
+    remapClipMetaFolder(root, name, to)
+  }
+}export function repairTrailingDotFolders(root: string): void {
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(root, { withFileTypes: true })
@@ -132,12 +301,17 @@ export function repairTrailingDotFolders(root: string): void {
 /** Files the library should surface: real recordings and editor copies, not temporaries. */
 function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>, uploadKeys: Set<string>): boolean {
   if (!fileName.endsWith('.mp4') && !fileName.endsWith('.mkv')) return false
-  if (isEditorCopy(fileName)) return false
+  // A trim in progress is a half-written file that is about to be renamed over
+  // its source. Listing it would show a clip that is about to stop existing.
+  if (isTrimTemporary(fileName)) return false
+  // Editor copies ARE library items. They used to be excluded here, which made
+  // "Save as Copy" write a file the user could never open again.
   // Files Rewind wrote itself are recognised by name, so they survive even if the
   // metadata sidecar is lost or the user moves the file. Gating them on metadata
   // alone meant a continuous recording could silently vanish from the library.
   if (fileName.startsWith(REPLAY_PREFIX) || fileName.startsWith(RECORDING_PREFIX)) return true
-  return metaKeys.has(fullPath) || uploadKeys.has(fullPath)
+  if (isEditorCopy(fileName)) return true
+  return metaKeys.has(fullPath.toLowerCase()) || uploadKeys.has(fullPath)
 }
 
 /**
@@ -152,7 +326,16 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
   repairTrailingDotFolders(outputRoot)
 
   const meta = clipMeta.get('clips') ?? {}
-  const metaKeys = new Set(Object.keys(meta))
+
+  // Windows paths are case-insensitive and this store is written with whatever
+  // spelling the configured root had at the time it was written. A case-sensitive
+  // lookup therefore misses records purely because the root was re-spelled -- which
+  // is exactly how 82 clips lost their recorded source and audio tracks once.
+  // Both the record lookup and the "is this file ours" test go through a lowercased
+  // index rather than comparing paths directly.
+  const metaByLower = new Map<string, ClipMeta>()
+  for (const [key, record] of Object.entries(meta)) metaByLower.set(key.toLowerCase(), record)
+  const metaKeys = new Set(metaByLower.keys())
   const uploadKeys = new Set<string>()
 
   const found: { fullPath: string; filename: string; sourceName?: string }[] = []
@@ -186,7 +369,7 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
       continue
     }
 
-    const record = meta[item.fullPath]
+    const record = metaByLower.get(item.fullPath.toLowerCase())
     const recordedAt =
       record?.recordedAt ?? parseRecordingStamp(item.filename) ?? Math.round(st.mtimeMs / 1000) * 1000
 

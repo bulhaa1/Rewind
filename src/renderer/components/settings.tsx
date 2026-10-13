@@ -29,7 +29,6 @@ import { HotkeyDialog } from './record'
 import { Select, SettingSelect, SettingSwitchRow, type Option } from './controls'
 import { Button, Badge, InlineSpinner, Menu, MenuItem, PathRow, Row, Section, SectionHeading, cn } from './ui'
 import {
-  BUFFER_DURATION_OPTIONS,
   CODEC_OPTIONS,
   FPS_OPTIONS,
   MIC_GAIN,
@@ -306,37 +305,11 @@ function SelectableCard({
  * an OBS restart, which the shared background-action layer reports on failure.
  */
 function AudioSection() {
-  const { data: separate } = useQuery({
-    queryKey: SETTINGS.separateAudioTracks.queryKey,
-    queryFn: async () => read(SETTINGS.separateAudioTracks.get(), false),
-    staleTime: 30_000,
-  })
-  const perDeviceUnlocked = !!separate
-
   return (
     <Section icon={<Volume2 />} title="Audio">
       <AudioChannelEditor channel="desktop" label="Output source" />
       <div className="border-t border-line" />
       <AudioChannelEditor channel="microphone" label="Input source" />
-      <div className="border-t border-line" />
-      <div className="space-y-3">
-        <SettingSwitchRow
-          binding={SETTINGS.separateAudioTracks}
-          label="Record separate audio tracks"
-          description="Adds desktop, mic and extra devices as their own tracks after the full mix, for editing in other programs."
-        />
-        <SettingSwitchRow
-          binding={SETTINGS.perDeviceAudioTracks}
-          label="Give each extra device its own track"
-          description="Up to three devices get their own track; any more share the last one."
-          disabled={!perDeviceUnlocked}
-          subline={
-            perDeviceUnlocked ? undefined : (
-              <p className="mt-0.5 text-[11px] text-ink-faint">Turn on separate audio tracks first</p>
-            )
-          }
-        />
-      </div>
     </Section>
   )
 }
@@ -682,9 +655,6 @@ function ReplaysSection() {
   return (
     <Section icon={<Film />} title="Replays">
       <div className="space-y-4">
-        <Row label="Buffer Length" description="How much footage to keep">
-          <SettingSelect binding={SETTINGS.bufferDuration} initial={60} options={BUFFER_DURATION_OPTIONS} label="Buffer Length" />
-        </Row>
         <PathRow label="Save Location" path={data ?? ''} onBrowse={() => void browse()} />
       </div>
     </Section>
@@ -852,8 +822,9 @@ function QualitySection() {
 
 const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
   { action: 'save-replay', label: 'Save Replay' },
+  { action: 'save-quick-clip', label: 'Save Quick Clip' },
   { action: 'screenshot', label: 'Screenshot' },
-  { action: 'toggle-replay', label: 'Start / Stop Recording' },
+  { action: 'toggle-record', label: 'Start / Stop Recording' },
 ]
 
 function HotkeysSection() {

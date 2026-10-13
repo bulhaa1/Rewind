@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { ffmpegTo, probeDuration } from './ffmpeg.js'
+import { KEYINT_SEC } from '@shared/constants.js'
 
 const log = scope('Stitch')
 
@@ -51,6 +52,8 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
   let trimmedCount = 0
   /** End of the slice the previous segment covered; the next one continues from here. */
   let previousEnd = opts.startedAt
+  /** Pre-press footage deliberately dropped at the head of the recording. */
+  let headroomLost = 0
 
   for (let i = 0; i < opts.segments.length; i++) {
     const seg = opts.segments[i]
@@ -75,12 +78,37 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
     // up at the front of the clip. Starting from max(startedAt, segStartMs)
     // drops it, because the first segment's lead is then measured from the
     // press rather than from the start of its file.
-    const cursor = i === 0 ? Math.max(opts.startedAt, segStartMs) : previousEnd
-    const windowEnd = Math.min(cursor + windowMs, opts.stoppedAt)
+    // Input-side `-ss` lands on the keyframe at or BEFORE the point asked for,
+    // which is up to one KEYINT_SEC early. Aimed exactly at the press it therefore
+    // produced a recording that began before it began: measured 41.73s for a 40.0s
+    // recording, the extra 1.73s being the snap-back.
+    //
+    // Aiming one interval later reverses the error: the cut now lands at or after
+    // the press, so a recording can be short but never long. The cost is up to
+    // KEYINT_SEC of real footage at the very start, which is the better of the two
+    // -- dropping the first couple of seconds is recoverable, opening the recording
+    // with footage the user never asked for is not.
+    //
+    // Only the first segment is compensated. Later seams aim at where the previous
+    // part ended, and overshooting there would punch a gap at every one of them,
+    // so a long recording would lose two seconds per segment.
+    const headroom = i === 0 ? KEYINT_SEC * 1000 : 0
+    // The window this segment is responsible for, measured from where the
+    // previous one ended. Deliberately NOT advanced by the headroom: doing that
+    // moved previousEnd later, which pushed the next segment's cut later too,
+    // and a 4-segment recording lost 8s instead of 2s because the headroom
+    // compounded once per segment.
+    const anchor = i === 0 ? Math.max(opts.startedAt, segStartMs) : previousEnd
+    const windowEnd = Math.min(anchor + windowMs, opts.stoppedAt)
+    // Where the cut is aimed, which is where the headroom applies: past the
+    // press on the first segment so the keyframe snap-back cannot land before it.
+    const cursor = Math.min(anchor + headroom, opts.stoppedAt - 200)
     const lead = Math.max(0, (cursor - segStartMs) / 1000)
     const dur = Math.min((windowEnd - cursor) / 1000, Math.max(0, actualSec - lead))
 
     previousEnd = windowEnd
+
+    if (i === 0) headroomLost = Math.max(0, (cursor - anchor) / 1000)
 
     if (dur <= 0.2) continue
     if (lead <= 0.05 && dur >= actualSec - 0.2) {
@@ -94,6 +122,11 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
         '-ss', lead.toFixed(3),
         '-i', seg.file,
         '-t', dur.toFixed(3),
+        // Without -map, ffmpeg keeps only the FIRST stream of each type. That
+        // silently reduced every trimmed segment to one audio track, so a
+        // recording arrived in the editor with the Desktop and Microphone lanes
+        // missing. Verified against a 3-stream clip: 1 stream without, 3 with.
+        '-map', '0',
         '-c', 'copy',
         '-avoid_negative_ts', 'make_zero',
         '-movflags', '+faststart',
@@ -125,7 +158,17 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
     // BOM makes it reject the very first line.
     const quoted = parts.map((f) => `file '${f.replace(/'/g, "'\\''")}'`)
     fs.writeFileSync(listFile, quoted.join('\n'), 'utf8')
-    await ffmpegTo(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart'], opts.outputPath)
+    await ffmpegTo(
+      [
+        '-f', 'concat', '-safe', '0', '-i', listFile,
+        // Same reason as the trim above: default mapping would take one audio
+        // stream out of the joined file however many the parts carry.
+        '-map', '0',
+        '-c', 'copy',
+        '-movflags', '+faststart',
+      ],
+      opts.outputPath,
+    )
   }
 
   const durationSec = (await probeDuration(opts.outputPath)) ?? 0
@@ -137,10 +180,32 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
 
   if (durationSec < 0.5) throw new Error('The joined file has no readable video')
 
-  // Badly wrong means the seams lost real footage, which is worth surfacing rather
-  // than shipping a recording that silently skipped a minute of a game.
-  if (wanted > 5 && durationSec < wanted * 0.8) {
-    log.warn(`Recording kept ${durationSec.toFixed(1)}s of the ${wanted.toFixed(1)}s recorded`)
+  /*
+   * Warns only about footage genuinely lost, not about the footage deliberately cut.
+   *
+   * The first cut drops up to KEYINT_SEC so the recording cannot open with frames from
+   * before the press, and each input-side seek snaps back to the keyframe in front of
+   * the point asked for. Those are the intended shape of the result, so they are
+   * subtracted before comparing.
+   *
+   * The old test was a flat `duration < wanted * 0.8`, which ignored both. It fired on
+   * perfectly good short recordings -- a 5.3s one loses 2s of headroom, which is 38%,
+   * over the threshold -- so the warning cried wolf on every short take and taught the
+   * reader to ignore it. That is worse than not warning at all: the log line meant to
+   * catch a minute of a game vanishing was sitting next to routine entries.
+   *
+   * Measured on current code: a 34s take across 5 segments kept 32.0s, and a 68s take
+   * across 10 segments kept 66.0s. Both losses are the 2s headroom, neither grows with
+   * the segment count, and neither should warn.
+   */
+  const intended = headroomLost + KEYINT_SEC
+  if (wanted > 10 && durationSec < wanted - intended) {
+    const lost = wanted - durationSec - intended
+    log.warn(
+      `Recording kept ${durationSec.toFixed(1)}s of the ${wanted.toFixed(1)}s recorded; ` +
+        `${intended.toFixed(1)}s of that is the cut that keeps pre-press footage out, ` +
+        `so roughly ${lost.toFixed(1)}s went missing across ${parts.length} segment(s)`,
+    )
   }
 
   return { file: opts.outputPath, durationSec }

@@ -1,0 +1,42 @@
+# Rewind CI
+#
+# The check this exists for is `verify:channels`. A handler that typechecks
+# perfectly, builds cleanly and passes every other gate can still be never
+# registered -- `set-mic-gain` shipped in 1.0.1 exactly that way, and the mic
+# gain slider threw on every drag. Nothing else in this project compared the
+# declared channel set against the handled one.
+#
+# It runs before `build` so a missing handler fails in seconds rather than
+# after a full renderer build.
+#
+# Native modules (@streamlabs/obs-studio-node, koffi, uiohook-napi) are Windows
+# binaries. None of these three commands load them: typecheck reads .d.ts,
+# verify:channels parses source as text, and build is esbuild over TypeScript.
+# `--ignore-scripts` is set so `npm ci` does not attempt a native postinstall
+# that would fail on Linux.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Every declared IPC channel is handled
+        run: npm run verify:channels
+
+      - run: npm run build

@@ -8,7 +8,6 @@ import {
   isCancelled,
   probe,
   probeDuration,
-  runFfmpeg,
   resolveFfmpeg,
   uniquePath,
 } from './ffmpeg.js'
@@ -219,11 +218,18 @@ export async function getTrackPeaks(file: string, stream: number, bucketCount = 
     chunksStream.on('end', resolve)
     chunksStream.on('error', reject)
 
-    const child = runFfmpeg([
-      ...FFMPEG_MAP, '-map', `0:a:${stream}`, '-ac', '1', '-ar', '2000',
-      '-f', 'f32le', '-i', file,
-    ])
-
+    /*
+     * One process, spawned directly so its stdout can be piped into the peak
+     * reducer.
+     *
+     * This also spawned a second one via `runFfmpeg`, with output options placed
+     * before `-i`, and discarded the handle with `void child`. That process
+     * could not succeed, was never registered in `runningFfmpeg` so nothing
+     * killed it, and its rejection was discarded with it -- surfacing as an
+     * "Unhandled rejection" in main.log once per audio track, carrying ffmpeg's
+     * banner as the error text. It never showed up as a concurrent process
+     * because it exited immediately on the bad arguments.
+     */
     const proc = require('child_process').spawn(
       resolveFfmpeg(),
       ['-hide_banner', '-v', 'quiet', '-i', file, '-map', `0:a:${stream}`, '-ac', '1', '-ar', '2000', '-f', 'f32le', '-'],
@@ -241,8 +247,6 @@ export async function getTrackPeaks(file: string, stream: number, bucketCount = 
       if (code === 0) resolve()
       else reject(new Error(`ffmpeg exited with code ${code}`))
     })
-
-    void child
   })
 
   const buf = Buffer.concat(chunks)
@@ -505,7 +509,11 @@ export function openEditorWindow(clipPath: string, preloadPath: string, renderer
     frame: true,
     resizable: true,
     title: 'Rewind: Edit Clip',
-    backgroundColor: '#0a0a0a',
+    // Matches `--color-canvas` (oklch(17% 0.006 285)). This was '#0a0a0a',
+    // which is visibly lighter than the canvas and flashed on open and on every
+    // resize before the renderer painted. Kept as a literal because
+    // BrowserWindow needs a colour before any CSS exists to read.
+    backgroundColor: '#0f0f12',
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,

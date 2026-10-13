@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -8,7 +8,7 @@ import { useClipEvents } from '../lib/hooks'
 import { Header } from '../components/layout'
 import { CaptureControls } from '../components/capture'
 import { ClipList, ScreenshotList } from '../components/library'
-import { Button, Dialog } from '../components/ui'
+import { Button, Dialog, cn } from '../components/ui'
 import type { DeleteScope } from '@shared/types.js'
 
 type View = 'clips' | 'screenshots'
@@ -24,7 +24,7 @@ async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string
  * The main panel.
  *
  * Three bands: capture controls, the media library, and a status strip. Everything
- * is local â€” Rewind has no account, no sync state and no network calls.
+ * is local — Rewind has no account, no sync state and no network calls.
  */
 export function HomePage() {
   const client = useQueryClient()
@@ -96,6 +96,19 @@ export function HomePage() {
   const startBuffer = useCallback(() => void setBuffer(true), [setBuffer])
   const stopBuffer = useCallback(() => void setBuffer(false), [setBuffer])
 
+  // The slider previews locally and calls this once on release, so this runs at
+  // most once per drag rather than once per pixel.
+  const setBufferSeconds = useCallback(
+    async (seconds: number) => {
+      await runAction(async () => {
+        const res = await api.setBufferDuration(seconds)
+        if (!res.success) throw new Error(res.error)
+      })
+      await client.invalidateQueries({ queryKey: QK.config })
+    },
+    [runAction, client],
+  )
+
   const openFolder = useCallback(() => {
     void runAction(async () => {
       const res = await api.openFolder()
@@ -137,10 +150,12 @@ export function HomePage() {
         lastSaved={lastSaved}
         bufferActive={bufferActive}
         bufferBusy={bufferBusy}
+        bufferSeconds={config?.bufferDuration ?? 60}
         onSaveReplay={saveClip}
         onScreenshot={takeScreenshot}
         onBufferStart={startBuffer}
         onBufferStop={stopBuffer}
+        onBufferSeconds={setBufferSeconds}
       />
 
       {status === 'error' ? (
@@ -193,7 +208,13 @@ export function HomePage() {
         )}
       </div>
 
-      <StatusStrip status={status} message={message} />
+      <StatusStrip
+        status={status}
+        message={message}
+        bufferActive={bufferActive}
+        bufferStartedAt={bufferState?.startedAt ?? 0}
+        bufferSeconds={config?.bufferDuration ?? 60}
+      />
 
       <ConfirmDelete
         target={deleteTarget}
@@ -216,23 +237,66 @@ export function HomePage() {
 }
 
 /** One line of engine state, kept out of the way at the bottom of the panel. */
-function StatusStrip({ status, message }: { status: string; message?: string }) {
+function StatusStrip({
+  status,
+  message,
+  bufferActive,
+  bufferStartedAt,
+  bufferSeconds,
+}: {
+  status: string
+  message?: string
+  bufferActive: boolean
+  bufferStartedAt: number
+  bufferSeconds: number
+}) {
+  // Counts seconds of footage that are recoverable right now, which is how long
+  // ago the buffer started, capped at its length -- once it is full the oldest
+  // footage falls out, so the number stops climbing there rather than running on.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!bufferActive) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [bufferActive])
+
+  const held =
+    bufferActive && bufferStartedAt
+      ? Math.min(Math.max(Math.floor((now - bufferStartedAt) / 1000), 0), bufferSeconds)
+      : 0
+  const full = held >= bufferSeconds
+
   return (
-    <div className="flex h-6 shrink-0 items-center justify-center border-t border-line px-3 text-[10px] text-ink-faint">
+    <div className="flex h-9 shrink-0 items-center justify-center gap-3 border-t border-line px-3 text-[13px] text-ink-muted">
       {status === 'initializing' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          {message ?? 'Starting engineâ€¦'}
+          {message ?? 'Starting engine…'}
         </span>
       ) : status === 'paused' ? (
         'Buffer paused'
       ) : status === 'saving' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Saving clipâ€¦
+          Saving clip…
         </span>
       ) : status === 'ready' ? (
-        'Rolling buffer active'
+        <span className="flex items-center gap-3">
+          <span
+            className="flex items-center gap-1.5"
+            title={`${held} of ${bufferSeconds} seconds of footage recoverable`}
+          >
+            <span
+              className={cn(
+                'h-2 w-2 rounded-full',
+                full ? 'bg-danger' : 'bg-ink-muted',
+              )}
+            />
+            <span className="tabular font-medium text-ink">
+              {held}s of {bufferSeconds}s buffered
+            </span>
+          </span>
+        </span>
       ) : status === 'error' ? (
         <span className="text-danger">{message ?? 'Engine not ready'}</span>
       ) : null}

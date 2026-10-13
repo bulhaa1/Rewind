@@ -27,7 +27,7 @@ function Surface() {
   const popup = usePopupWindow()
   const editorClip = useEditorClipPath()
 
-  if (popup) return <NotificationOverlay type={popup.type} onClick={popup.onClick} />
+  if (popup) return <NotificationOverlay type={popup.type} message={popup.message} onClick={popup.onClick} />
   if (editorClip) return <EditorPage clipPath={editorClip} />
   return <RoutedPanel />
 }

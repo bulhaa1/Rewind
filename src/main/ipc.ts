@@ -5,10 +5,10 @@ import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
 import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
-import { getClipMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
+import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
-import { defaultOutputPath } from './obs-core.js'
+import { defaultOutputPath, rewindRoot } from './obs-core.js'
 import { channelLevel, deviceAvailable, listAudioApps, listDevices, channelDevices } from './audio.js'
 import type {
   AudioChannel,
@@ -82,6 +82,18 @@ export interface Services {
   takeScreenshotHotkey: () => Promise<void>
   /** Starts or stops the replay buffer. Shared with the start/stop hotkey. */
   toggleReplay: () => Promise<{ active: boolean }>
+  /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
+  toggleRecording: () => Promise<{ recording: boolean }>
+  /** Saves the last N seconds of the buffer, using the quick-clip length setting. */
+  saveQuickClip: () => Promise<string>
+  /**
+   * Registers a recording the buffer finished on teardown.
+   *
+   * Called by `setReplayBufferActive(false)`, which the panel's Stop button
+   * uses. That path pauses the buffer directly rather than going through
+   * `toggleReplay`, so nothing else consumes `finishedOnTeardown` for it.
+   */
+  registerFinishedFromBufferStop: (finished: string) => void
   reinitPipeline: (reason?: string) => Promise<void>
   notify: (type: BufferStatus, message?: string) => void
   status: {
@@ -128,7 +140,15 @@ export function registerIpc(s: Services): void {
   const audioMix = () => s.audioMix
   const audioDevices = () => s.audioDevices
 
-  /** Runs `fn` while broadcasting a transient status, restoring the previous one after. */
+  /**
+   * Runs `fn` while broadcasting a transient status, then reports the truth.
+   *
+   * The restore step used to be an unconditional `finally`, so a settings change
+   * that threw still left the panel reading "ready" over a dead buffer. Every
+   * caller reports the real outcome through its own return value, so the status
+   * now follows the same rule `reinitPipeline` already uses: `ready` only when
+   * there is genuinely a buffer running behind it, otherwise `paused`.
+   */
   const withStatus = async <T>(status: { status: ObsStatus; message?: string }, fn: () => Promise<T>): Promise<T> => {
     const win = s.getMainWindow()
     s.status.set(status)
@@ -136,9 +156,9 @@ export function registerIpc(s: Services): void {
     try {
       return await fn()
     } finally {
-      const ready = OBS_STATUS_MESSAGES.ready
-      s.status.set(ready)
-      win?.webContents.send('obs-status', ready)
+      const settled = replay().isReplayBufferActive() ? OBS_STATUS_MESSAGES.ready : OBS_STATUS_MESSAGES.paused
+      s.status.set(settled)
+      win?.webContents.send('obs-status', settled)
     }
   }
 
@@ -264,6 +284,26 @@ export function registerIpc(s: Services): void {
       } else {
         await replay().pauseReplayBuffer()
         s.status.set(OBS_STATUS_MESSAGES.paused)
+
+        /*
+         * Pausing finishes a continuous recording rather than discarding it, and
+         * parks the path in `finishedOnTeardown`. Registering it is this layer's
+         * job -- the stitching needs the output still alive and so happens inside
+         * replay-buffer. Without this the panel's Stop button leaves the finished
+         * clip in the library root, unregistered, and it surfaces only on a later
+         * rescan with its timestamp guessed from the filename.
+         *
+         * Read after the await: `destroyRunningChain` populates it during the
+         * pause, so reading before would always see null.
+         */
+        const finished = replay().takeFinishedOnTeardown?.() ?? null
+        if (finished) {
+          try {
+            s.registerFinishedFromBufferStop(finished)
+          } catch (e) {
+            bufferLog.error('Recording finished by buffer stop but could not be registered:', e)
+          }
+        }
       }
 
       s.getMainWindow()?.webContents.send('obs-status', s.status.get())
@@ -282,7 +322,9 @@ export function registerIpc(s: Services): void {
   )
 
   handle(IPC.setBufferDuration, async (seconds: unknown) => {
-    if (!isBufferDuration(seconds)) return fail('Buffer duration must be between 5 and 300 seconds')
+    if (!isBufferDuration(seconds)) {
+      return fail(`Buffer duration must be between ${BUFFER_DURATION_MIN} and ${BUFFER_DURATION_MAX} seconds`)
+    }
     const blocked = notReady()
     if (blocked) return blocked
     try {
@@ -446,14 +488,17 @@ export function registerIpc(s: Services): void {
   handle(IPC.openFolder, async (target?: unknown) => {
     const root = getSetting('outputPath') as string
     if (target === undefined || target === null) {
-      await shell.openPath(root)
+      // openPath resolves with an error string rather than throwing.
+      const rootErr = await shell.openPath(root)
+      if (rootErr) return fail(rootErr)
       return ok()
     }
     if (typeof target !== 'string' || !isInsidePath(target, root)) {
       note('Attempted to open folder outside output directory')
       return fail('Invalid folder path')
     }
-    await shell.openPath(target)
+    const targetErr = await shell.openPath(target)
+    if (targetErr) return fail(targetErr)
     return ok()
   })
 
@@ -520,7 +565,8 @@ export function registerIpc(s: Services): void {
   handle(IPC.openFile, async (file: unknown) => {
     const resolved = resolveVideo(file, s, 'open-file')
     if ('error' in resolved) return resolved
-    await shell.openPath(resolved.path)
+    const openErr = await shell.openPath(resolved.path)
+    if (openErr) return fail(openErr)
     return ok()
   })
 
@@ -545,7 +591,7 @@ export function registerIpc(s: Services): void {
     try {
       return await withStatus(OBS_STATUS_MESSAGES.changingSettings, async () => {
         setSetting('outputPath', target)
-        await obsCore().setOutputPath(target)
+        await obsCore().setOutputPath(rewindRoot(target))
         filesLog.info(`Output path set to: ${target}`)
         return ok(target)
       })
@@ -565,7 +611,8 @@ export function registerIpc(s: Services): void {
   })
 
   handle(IPC.openScreenshotFolder, async () => {
-    await shell.openPath(screenshotPath())
+    const shotErr = await shell.openPath(screenshotPath())
+    if (shotErr) return fail(shotErr)
     return ok()
   })
 
@@ -688,7 +735,8 @@ export function registerIpc(s: Services): void {
   handle(IPC.openScreenshot, async (file: unknown) => {
     const resolved = resolveScreenshot(file, s, 'open-screenshot')
     if ('error' in resolved) return resolved
-    await shell.openPath(resolved.path)
+    const shotErr = await shell.openPath(resolved.path)
+    if (shotErr) return fail(shotErr)
     return ok()
   })
 
@@ -766,8 +814,32 @@ export function registerIpc(s: Services): void {
    * the same tier as volume and mute. Rebuilding the audio graph is what costs a
    * pipeline restart, and nothing here does that.
    */
+  handle(IPC.getQuickClipSeconds, () => ok(getSetting('quickClipSeconds')))
+
+  handle(IPC.setQuickClipSeconds, (seconds: unknown) => {
+    // Bounded by the longest preset, so a value typed anywhere still resolves to
+    // something the hotkey can actually deliver against a short buffer.
+    if (typeof seconds !== 'number' || seconds < 5 || seconds > 300) {
+      return fail('Quick clip length must be between 5 and 300 seconds')
+    }
+    setSetting('quickClipSeconds', Math.round(seconds))
+    return ok()
+  })
+
   handle(IPC.getMicGain, () => ok(getSetting('micGain')))
 
+  handle(IPC.setMicGain, (value: unknown) => {
+    if (!isMicGain(value)) return fail(`Input gain must be between ${MIC_GAIN.MIN} and ${MIC_GAIN.MAX}`)
+    try {
+      setSetting('micGain', value)
+      // Live tier, same as volume and mute: the gain is an OBS filter on the
+      // existing mic source, so nothing about the audio graph is rebuilt.
+      obsCore().applyChannelLevel('microphone')
+      return ok()
+    } catch (e) {
+      return fail(`Failed to set microphone input gain: ${messageOf(e)}`)
+    }
+  })
 
   handle(IPC.getAudioSessions, () => ok(require('./audio.js').listAudioApps()))
 
@@ -821,7 +893,7 @@ export function registerIpc(s: Services): void {
     return ok()
   })
 
-  handle(IPC.getAudioDevices, () => ok(require('./audio.js').listDevices(obsCore().obs)))
+  handle(IPC.getAudioDevices, () => ok(audioDevices().getDevices()))
 
   handle(IPC.getChannelDevices, () => ok(require('./audio.js').channelDevices()))
 
@@ -896,58 +968,6 @@ export function registerIpc(s: Services): void {
     } catch (e) {
       return fail(`Failed to set device muted: ${messageOf(e)}`)
     }
-  })
-
-  // Separate-track toggles change the mixer mask, which requires a chain rebuild.
-  const applyTrackFlags = async (next: { separateAudioTracks: boolean; perDeviceAudioTracks: boolean }, label: string) => {
-    const store = require('./store.js')
-    const prev = {
-      separateAudioTracks: store.getSetting('separateAudioTracks') as boolean,
-      perDeviceAudioTracks: store.getSetting('perDeviceAudioTracks') as boolean,
-    }
-    if (prev.separateAudioTracks === next.separateAudioTracks && prev.perDeviceAudioTracks === next.perDeviceAudioTracks) {
-      return ok()
-    }
-
-    store.setSetting('separateAudioTracks', next.separateAudioTracks)
-    store.setSetting('perDeviceAudioTracks', next.perDeviceAudioTracks)
-
-    try {
-      await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => obsCore().applyAudioTracks())
-      log.info(`${label}: separate=${next.separateAudioTracks} perDevice=${next.perDeviceAudioTracks}`)
-      return ok()
-    } catch (e) {
-      // Roll back so the UI never shows a state the engine didn't accept.
-      store.setSetting('separateAudioTracks', prev.separateAudioTracks)
-      store.setSetting('perDeviceAudioTracks', prev.perDeviceAudioTracks)
-      try {
-        await obsCore().applyAudioTracks()
-      } catch (rollbackErr) {
-        log.error('Failed to restore audio tracks after rollback:', rollbackErr)
-      }
-      return fail(`Failed to apply ${label}: ${messageOf(e)}`)
-    }
-  }
-
-  handle(IPC.getSeparateAudioTracks, () => ok(getSetting('separateAudioTracks')))
-  handle(IPC.setSeparateAudioTracks, async (value: unknown) => {
-    if (typeof value !== 'boolean') return fail('Invalid value for Separate audio tracks')
-    const store = require('./store.js')
-    const perDevice = value ? (store.getSetting('perDeviceAudioTracks') as boolean) : false
-    return applyTrackFlags({ separateAudioTracks: value, perDeviceAudioTracks: perDevice }, 'Separate audio tracks')
-  })
-
-  handle(IPC.getPerDeviceAudioTracks, () => ok(getSetting('perDeviceAudioTracks')))
-  handle(IPC.setPerDeviceAudioTracks, async (value: unknown) => {
-    if (typeof value !== 'boolean') return fail('Invalid value for Per-device audio tracks')
-    const store = require('./store.js')
-    if (value && !(store.getSetting('separateAudioTracks') as boolean)) {
-      return fail('Per-device audio tracks need separate audio tracks on')
-    }
-    return applyTrackFlags(
-      { separateAudioTracks: store.getSetting('separateAudioTracks') as boolean, perDeviceAudioTracks: value },
-      'Per-device audio tracks',
-    )
   })
 
   // -------------------------------------------------------------------------
@@ -1129,7 +1149,28 @@ export function registerIpc(s: Services): void {
     }
     const conflict = hk.conflictingAction(action as any, accelerator)
     if (conflict) return fail(`Already used by ${hk.HOTKEYS[conflict].label}`)
-    if (!hk.registerHotkey(action as any, accelerator, action === 'save-replay' ? s.saveClipHotkey : () => void s.takeScreenshotHotkey())) {
+
+    /*
+     * One callback per action, looked up by name.
+     *
+     * This used to be a binary ternary -- `save-replay` got its own callback and
+     * everything else got the screenshot one -- so rebinding Start / Stop
+     * Recording took a screenshot instead of toggling. The startup path
+     * (`index.ts:215-219`) always mapped all three correctly, which is why the
+     * bug was invisible until someone rebound a hotkey.
+     *
+     * Typed as an exhaustive Record rather than an index signature: adding a
+     * fourth hotkey then fails to compile here instead of silently inheriting
+     * someone else's callback a second time.
+     */
+    const HOTKEY_CALLBACKS: Record<import('./hotkey.js').HotkeyAction, () => void> = {
+      'save-replay': s.saveClipHotkey,
+      screenshot: () => void s.takeScreenshotHotkey(),
+      'save-quick-clip': () => void s.saveQuickClip(),
+      'toggle-record': () => void s.toggleRecording?.(),
+    }
+
+    if (!hk.registerHotkey(action as any, accelerator, HOTKEY_CALLBACKS[action as import('./hotkey.js').HotkeyAction])) {
       return fail('Unsupported key combination')
     }
     setSetting(hk.HOTKEYS[action as any].setting, accelerator)
@@ -1230,6 +1271,13 @@ class NotReadyError extends Error {
 
 /** Persist and notify. Shared by the IPC channel, the hotkey, and the tray. */
 export async function saveClipAndNotify(s: Services): Promise<string> {
+  // Guards here rather than only at the callers so the panel button, the hotkey
+  // and anything added later all refuse the same way. Without it the failure
+  // surfaces from deep inside the flush as an opaque error.
+  if (!s.replay.isReplayBufferActive()) {
+    throw new Error('The buffer is off - start it to save a clip')
+  }
+
   const sourceName = s.capture.getCurrentSourceName()
   const outputRoot = s.obsCore.getConfig().outputPath
   const cm = require('./clip-manager.js')
@@ -1280,6 +1328,82 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
   return moved
 }
 
+/**
+ * Saves only the last `seconds` of the buffer.
+ *
+ * The buffer is the ceiling: it holds `bufferDuration` seconds and older footage
+ * is overwritten, so this can only ever return a *shorter* clip. Asking for more
+ * than the buffer holds therefore returns the whole buffer rather than failing,
+ * which is also what a user who has just lengthened the buffer expects.
+ *
+ * Shares the save, folder, metadata and notification path with `saveClipAndNotify`
+ * so a quick clip is an ordinary clip everywhere downstream -- the editor, the
+ * library, and the per-game folders all see no difference.
+ *
+ * The notification quotes what `keepTail` measured, so a request the buffer was too
+ * short to satisfy says so instead of announcing a length no file has.
+ */
+export async function saveQuickClipAndNotify(s: Services, seconds: number): Promise<string> {
+  if (!s.replay.isReplayBufferActive()) {
+    throw new Error('The buffer is off - start it to save a clip')
+  }
+
+  const sourceName = s.capture.getCurrentSourceName()
+  const outputRoot = s.obsCore.getConfig().outputPath
+  const cm = require('./clip-manager.js')
+  const meta = require('./clip-meta.js')
+  const { REPLAY_RESTARTED } = require('./replay-buffer.js')
+
+  let savedPath: string
+  try {
+    savedPath = await s.replay.saveReplayBuffer(s.capture.getCaptureMode())
+  } catch (e) {
+    if (messageOf(e) !== REPLAY_RESTARTED) throw e
+    replayLog.warn('Quick save interrupted by a capture source switch; retrying...')
+    await new Promise((r) => setTimeout(r, 1500))
+    savedPath = await s.replay.saveReplayBuffer(s.capture.getCaptureMode())
+  }
+
+  const tail = await require('./ffmpeg.js').keepTail(savedPath, seconds)
+  const moved = cm.moveIntoSourceFolder(tail.file, sourceName, outputRoot)
+
+  meta.setClipMeta(moved, {
+    recordedAt: Date.now(),
+    source: sourceName,
+    audioTracks: s.obsCore.audioTrackLabels(),
+  })
+
+  // Reports the length the file actually has, not the one that was asked for.
+  //
+  // Two ways to come back with less than requested: the buffer simply held less
+  // (`wholeClip`), or the keyframe the cut snapped to was a little early. The first
+  // is worth naming -- someone who asked for 60s and got the whole 25s buffer
+  // deserves to know the buffer was the limit, not left guessing whether the
+  // hotkey misfired.
+  const kept = tail.seconds
+  s.notify(
+    'saved',
+    kept <= 0
+      ? 'Clip saved'
+      : tail.wholeClip
+        ? `Saved all ${kept}s - the buffer held no more`
+        : `Saved last ${kept}s`,
+  )
+  s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+
+  void cm
+    .describeSavedClip(moved, s.replay.getActiveEncoderVendor(), s.replay.getActiveEncoder(), s.replay.getQualityTarget(), sourceName)
+    .then(async (info: { durationSec: number } | null) => {
+      const duration = await cm.stampDuration(moved, info?.durationSec)
+      if (duration !== undefined) meta.setClipMeta(moved, { duration })
+    })
+    .catch(() => {
+      /* diagnostics only; the clip is already saved and notified */
+    })
+
+  return moved
+}
+
 export async function takeScreenshot(s: Services): Promise<string> {
   const displayIndex = s.capture.getCurrentMonitor?.() ?? getSetting('displayIndex')
   const dir = screenshotPath()
@@ -1304,9 +1428,7 @@ export async function takeScreenshot(s: Services): Promise<string> {
  * library look empty and rejected every thumbnail, open and delete.
  */
 export function outputRoot(): string {
-  const configured = getSetting('outputPath')
-  if (configured && path.isAbsolute(configured)) return configured
-  return defaultOutputPath()
+  return rewindRoot(getSetting('outputPath'))
 }
 
 export function screenshotPath(): string {
@@ -1319,7 +1441,16 @@ async function scanScreenshots(s: Services): Promise<ScreenshotInfo[]> {
   const dir = screenshotPath()
   if (!fs.existsSync(dir)) return []
 
-  const meta = require('./store.js').getScreenshotMeta?.() ?? {}
+  /*
+   * Metadata is keyed by absolute path, which is what `captureScreenshot` returns
+   * and what `setScreenshotMeta` writes. Reading it from the store's raw map means
+   * re-deriving that key by hand; `getScreenshotMeta` already does the lookup and
+   * lives beside the writer.
+   *
+   * This used to call `getScreenshotMeta` on `./store.js`, which does not export
+   * it. The optional call swallowed the TypeError and produced `{}`, so every
+   * screenshot rendered as "Unknown Source" with no error anywhere.
+   */
   const out: ScreenshotInfo[] = []
 
   for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
@@ -1337,13 +1468,15 @@ async function scanScreenshots(s: Services): Promise<ScreenshotInfo[]> {
       continue
     }
 
+    const meta = getScreenshotMeta(full)
+
     out.push({
       id: full,
       path: full,
       name: entry.name,
       size,
-      capturedAt: meta[full]?.capturedAt ?? mtimeMs,
-      source: meta[full]?.source ?? null,
+      capturedAt: meta?.capturedAt ?? mtimeMs,
+      source: meta?.source ?? null,
       localExists: true,
     })
   }
@@ -1425,7 +1558,19 @@ const isMicGain = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= MIC_GAIN.MIN && v <= MIC_GAIN.MAX
 const isChannel = (v: unknown): v is AudioChannel => v === 'desktop' || v === 'microphone'
 const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'local' || v === 'cloud'
-const isBufferDuration = (v: unknown): v is number => typeof v === 'number' && v >= 5 && v <= 300
+/**
+ * Buffer length bounds, in seconds.
+ *
+ * The ceiling is 10 minutes because that is what the homepage slider offers.
+ * OBS has no byte ceiling on this output (see replay-buffer.ts), so the upper
+ * bound is the only thing standing between a user and an unbounded RAM
+ * allocation -- it is a deliberate limit, not an arbitrary one.
+ */
+const BUFFER_DURATION_MIN = 5
+const BUFFER_DURATION_MAX = 600
+
+const isBufferDuration = (v: unknown): v is number =>
+  typeof v === 'number' && v >= BUFFER_DURATION_MIN && v <= BUFFER_DURATION_MAX
 
 function isSaveClipArgs(v: unknown): v is {
   clipPath: string
