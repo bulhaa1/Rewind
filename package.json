@@ -29,6 +29,7 @@
     "palette": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-palette.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/logo-palette-sheet.ps1",
     "selftest": "node scripts/selftest.js",
     "test:display": "node scripts/displaytest.js",
+    "test:resolution": "node scripts/probe-resolution-change.mjs",
     "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs",
     "test:quickclip": "node scripts/probe-quick-clip.mjs",
     "release": "npm run package && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",

@@ -116,51 +116,47 @@ for the idle cost. Not started; not obviously right for a replay tool.
 
 ---
 
-## Fixed, unverified
+## Verified
 
 ### Display resolution changes mid-capture
 
-**Shipped:** `4075a73`.
+**First shipped:** `4075a73` (canvas sync). **Fixed properly:** this branch.
 
-**Root cause:** the OBS canvas was sized once, at init, from the primary display
-(`configureVideo` during `initialize()`). `capture.ts` computed its own
-`canvasWidth`/`canvasHeight` the same way, also once, and the scene item's scale
-and offset were derived from those. The only display listener called
-`invalidateDisplays`, which refreshes the settings UI list and nothing else.
-Windows can change resolution while capturing, so OBS was left rendering an
-old-size canvas around a new-size source, and resolves the mismatch by scaling
-and cropping. That is the black half-screen at 720p, the 4K cropped to 2K, and
-part of a smaller virtual display going missing.
+**Root cause, measured:** OBS refuses the video-context reset while an output holds
+it. With the replay buffer live, the settings section said `1280x720`, the reset was
+called, and the next saved clip still came out `2560x1440` — the section and the live
+canvas disagreed, and the app's own canvas numbers moved to the new size anyway.
+That disagreement is the black half-screen and the zoomed-in crop. `4075a73` called
+the reset with the buffer running, so it never took effect while capturing.
 
-Restarting appeared to fix it because startup re-runs the sizing.
+`OBS_service_resetVideoContext()` returns nothing, so a clip's dimensions are the
+proof, not a return code.
 
-**What was verified:** clean typecheck and build, 16/16 CDP regression checks,
-and no spurious canvas sync at startup.
+**Fix:** `CaptureManager.applyDisplayChange()` stops the replay chain, resets the
+video context, re-fits the source, and restarts the chain. A recording in flight is
+finished and registered rather than dropped; a buffer the user paused stays paused;
+a metrics event that did not change the size costs nothing, because the canvas is
+compared before anything is stopped. `display-added` and `display-removed` now sync
+when the primary display changes, which closes the old gap.
 
-**What was not:** an actual resolution change while recording. That needs a
-human at a keyboard — changing the primary display resolution mid-session is
-disruptive, and the canvas follows the primary, so the virtual monitor does not
-exercise the path.
+**Verified** — `npm run test:display` (forced canvas, isolated profile):
 
-To confirm, the log should show one pair per real change:
+| clip | dimensions | meaning |
+|---|---|---|
+| with-buffer | 2560x1440 | the reset is refused while the output is live |
+| without-buffer | 1280x720 | it applies once nothing holds the context |
+| after-fix | 2560x1440 | the display-change path applies it with the buffer live |
 
-```
-[OBS] Display changed: canvas 2560x1440 -> 3840x2160, output ...
-[Capture] Capture canvas 2560x1440 -> 3840x2160
-```
+plus: a recording in flight was finished and registered (0.5 MB); a paused buffer
+stayed paused; two events through the source lock left the buffer running.
 
-Missing lines mean the listener did not fire. Lines present but a wrong clip
-means the problem is downstream of the canvas.
+**Verified on real mode changes** — `npm run test:resolution`, and the same watcher
+driven by the user's QRes scripts for 4K:
 
-### Known gap in that fix
+    2560x1440 -> 1920x1080 -> 2560x1440   clips 1920x1080, then 2560x1440
+    2560x1440 -> 3840x2160 -> 2560x1440   clips 3840x2160, then 2560x1440
 
-Only `display-metrics-changed` triggers the sync. If a monitor is plugged in
-that becomes the **primary**, that fires `display-added`, not a metrics change,
-so the canvas would not update. Should be handled; not yet.
-
----
-
-## Verified
+Both directions came back at the size the display had when the clip was saved.
 
 ### 1.0.1 → 1.1.0 updates end to end
 
