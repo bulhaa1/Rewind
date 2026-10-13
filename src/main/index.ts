@@ -387,7 +387,7 @@ async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean 
  * heaviest tier up to three times.
  */
 async function applyProfile(index: number): Promise<void> {
-  const { profiles } = getProfiles()
+  const { profiles, activeProfile: previousIndex } = getProfiles()
   const target = profiles[index]
   if (!target) throw new Error(`No profile ${index}`)
 
@@ -412,10 +412,12 @@ async function applyProfile(index: number): Promise<void> {
       await replay.setBufferDuration(target.bufferDuration)
     }
   } catch (e) {
-    // Put the previous settings back so the panel and the profile agree again.
+    // Put everything back, the active profile included: restoring only the settings
+    // would leave the panel highlighting a profile the engine is not running.
     setSetting('fps', current.fps)
     setSetting('visualQuality', current.visualQuality)
     setSetting('bufferDuration', current.bufferDuration)
+    setSetting('activeProfile', previousIndex)
     throw e
   }
 
