@@ -253,15 +253,32 @@ export function ClipList({
                 />
               }
               actions={
-                <Menu
-                  open={menuFor === clip.id}
-                  onOpenChange={(o) => setMenuFor(o ? clip.id : null)}
-                  trigger={
-                    <Button variant="ghost" size="iconSm" aria-label="Clip actions" title="Clip actions">
-                      <MoreHorizontal className="h-3.5 w-3.5" />
-                    </Button>
-                  }
-                >
+                <div className="flex items-center gap-0.5">
+                  {/*
+                    Delete in one click instead of opening a menu, and still one
+                    click from gone: this calls the same handler the menu item
+                    does, so the confirmation dialog is what stands between a
+                    mistap and a lost clip. Speed here should not mean less
+                    friction there.
+                  */}
+                  <Button
+                    variant="ghost"
+                    size="iconSm"
+                    aria-label={`Delete ${clip.filename}`}
+                    title="Delete clip"
+                    onClick={() => onDelete(clip.path)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Menu
+                    open={menuFor === clip.id}
+                    onOpenChange={(o) => setMenuFor(o ? clip.id : null)}
+                    trigger={
+                      <Button variant="ghost" size="iconSm" aria-label="Clip actions" title="Clip actions">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    }
+                  >
                   <MenuItem onSelect={() => void reveal(clip)}>
                     <FolderOpen className="h-3.5 w-3.5" /> Show in folder
                   </MenuItem>
@@ -275,7 +292,8 @@ export function ClipList({
                   <MenuItem destructive onSelect={() => onDelete(clip.path)}>
                     <Trash2 className="h-3.5 w-3.5" /> Delete
                   </MenuItem>
-                </Menu>
+                  </Menu>
+                </div>
               }
             />
           )}

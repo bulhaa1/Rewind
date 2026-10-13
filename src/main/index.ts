@@ -5,14 +5,21 @@ import path from 'node:path'
 import { scope } from './logger.js'
 import { bootstrap, getMainWindow, lifecycle, PRELOAD, RENDERER_DIR, showMainWindow } from './window.js'
 import { log as logger } from './logger.js'
-import { ObsCore, defaultOutputPath, killObsChildren } from './obs-core.js'
+import { ObsCore, defaultOutputPath, rewindRoot, killObsChildren } from './obs-core.js'
 import { ReplayBuffer } from './replay-buffer.js'
 import { CaptureManager } from './capture.js'
 import { GameDetector } from './game-detector.js'
 import { AudioDeviceChannels, AudioMix, invalidateDeviceCache } from './audio.js'
 import { notify, dismissPanel } from './notification.js'
 import { installDefaultHotkeys, shutdown as shutdownHotkeys, startCapture, stopCapture } from './hotkey.js'
-import { registerIpc, saveClipAndNotify, takeScreenshot, outputRoot, OBS_STATUS_MESSAGES } from './ipc.js'
+import {
+  registerIpc,
+  saveClipAndNotify,
+  saveQuickClipAndNotify,
+  takeScreenshot,
+  outputRoot,
+  OBS_STATUS_MESSAGES,
+} from './ipc.js'
 import { getClipMeta, setClipMeta } from './clip-meta.js'
 import { openEditorWindow, currentEditorClip, closeEditorWindow, cleanupEditor, saveClip } from './editor.js'
 import { getSetting, setSetting } from './store.js'
@@ -214,11 +221,15 @@ function buildPipeline(): void {
 async function initPipeline(): Promise<void> {
   installDefaultHotkeys({
     'save-replay': () => void saveFromHotkey(),
+    'save-quick-clip': () => void saveQuickClipFromHotkey(),
     screenshot: () => void saveScreenshotFromHotkey(),
     'toggle-record': () => void toggleRecordingFromHotkey(),
   })
 
   try {
+    // Once at startup, before anything reads the library. Safe to repeat: the
+    // legacy folders stop existing after the first run.
+    require('./clip-manager.js').renameLegacySourceFolders(rewindRoot(getSetting('outputPath')))
     await startPipeline()
     setStatus(OBS_STATUS_MESSAGES.ready, getMainWindow())
     log.info('OBS initialized and replay buffer started')
@@ -407,6 +418,33 @@ async function saveFromHotkey(): Promise<void> {
     await saveClipAndNotify(services)
   } catch (e) {
     log.error('Failed to save replay:', e)
+    const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
+    showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
+    if (wedged) scheduleWedgeRecovery()
+  }
+}
+
+/**
+ * Ctrl+Alt+1: saves the last N seconds rather than the whole buffer.
+ *
+ * Goes through the same buffer guard as the plain save so an off buffer says so
+ * plainly instead of surfacing whatever the flush would have thrown.
+ */
+async function saveQuickClipFromHotkey(): Promise<void> {
+  if (!obsCore?.isInitialized() || !replay || !capture) {
+    showNotification('error', 'Recording not ready')
+    return
+  }
+  if (!replay.isReplayBufferActive()) {
+    log.warn('Shortcut quick save ignored: the rolling buffer is stopped')
+    showNotification('error', 'Buffer is off - start it to save a clip')
+    return
+  }
+
+  try {
+    await saveQuickClipAndNotify(services, getSetting('quickClipSeconds'))
+  } catch (e) {
+    log.error('Failed to save quick clip:', e)
     const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
     showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
     if (wedged) scheduleWedgeRecovery()
@@ -603,6 +641,7 @@ const services = {
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
   toggleRecording: () => toggleRecordingForUser(),
+  saveQuickClip: () => saveQuickClipAndNotify(services, getSetting('quickClipSeconds')),
   /**
    * Registers a recording the buffer finished on teardown.
    *

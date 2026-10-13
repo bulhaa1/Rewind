@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Circle, Square, Camera, Save, Loader2, Play } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Circle, Square, Camera, Save, Loader2, Play, Mic, MicOff } from 'lucide-react'
 import { api } from '../lib/api'
+import { SETTINGS, hotkeysQuery } from '../lib/queries'
+import { QUICK_CLIP_DEFAULT, QUICK_CLIP_OPTIONS } from '@shared/constants.js'
 import { Button, cn } from './ui'
+import { SettingSelect } from './controls'
 
 /** mm:ss for the continuous recorder; hh:mm:ss once past an hour. */
 function elapsed(ms: number): string {
@@ -122,6 +126,23 @@ function BufferLengthSlider({
 }
 
 /**
+ * The shortcut that triggers a button, shown on the button itself.
+ *
+ * Read from the hotkey settings rather than hardcoded, so a rebind shows here
+ * instead of the panel advertising a key that no longer works.
+ */
+function HotkeyHint({ accel }: { accel?: string }) {
+  if (!accel) return null
+  return (
+    <kbd
+      className="ml-auto rounded border border-line bg-raised px-1.5 py-0.5 font-mono text-[10px] leading-none text-ink-muted"
+    >
+      {accel}
+    </kbd>
+  )
+}
+
+/**
  * The capture controls.
  *
  * The arc shows how much of the rolling buffer is filled — the one thing a user
@@ -169,6 +190,45 @@ export function CaptureControls({
   const [recording, setRecording] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [busy, setBusy] = useState(false)
+
+  const { data: hotkeys } = useQuery(hotkeysQuery)
+
+  // Quick access to the microphone only. Settings remains the full control, and
+  // both go through the same IPC, so the two cannot disagree.
+  const [micMuted, setMicMuted] = useState(false)
+  const [micBusy, setMicBusy] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    const tick = async () => {
+      const res = await api.getAudioLevels().catch(() => null)
+      if (!alive || !res || !res.success) return
+      setMicMuted(!!res.data?.microphone?.muted)
+    }
+    void tick()
+    const id = setInterval(tick, 1500)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [])
+
+  const toggleMic = useCallback(async () => {
+    if (micBusy) return
+    setMicBusy(true)
+    const next = !micMuted
+    try {
+      const res = await api.setChannelMuted('microphone', next)
+      if (!res.success) throw new Error(res.error)
+      setMicMuted(next)
+    } catch {
+      // Re-read rather than assume: a rejected toggle may still have applied.
+      const after = await api.getAudioLevels().catch(() => null)
+      if (after?.success) setMicMuted(!!after.data?.microphone?.muted)
+    } finally {
+      setMicBusy(false)
+    }
+  }, [micBusy, micMuted])
 
   // Poll the recorder's own clock rather than counting locally, so the displayed
   // time matches what OBS actually considers elapsed.
@@ -264,10 +324,12 @@ export function CaptureControls({
         </div>
 
         {/*
-          Two actions on the first row, and Screenshot spanning the second. It was
-          the third cell of a two-column grid, so a hole the width of a button sat
-          beside it — a gap in the middle of the panel's primary controls read as a
-          control that failed to load.
+          Four actions, two per row. Screenshot used to span the second row alone,
+          which left a hole the width of a button when it was the third cell of a
+          two-column grid -- and a gap in the middle of the primary controls reads as
+          a control that failed to load. Mic mute fills the row and earns its place:
+          it is the one audio action someone needs mid-session, and Settings stays
+          the full control.
         */}
         <div className="grid grid-cols-2 gap-1.5 border-t border-line p-2">
           <Button
@@ -279,23 +341,38 @@ export function CaptureControls({
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : recording ? <Square className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
             {recording ? 'Stop' : 'Record'}
+            <HotkeyHint accel={hotkeys?.['toggle-record']} />
           </Button>
 
           <Button variant="secondary" size="md" disabled={!ready || saving} onClick={onSaveReplay}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save Clip
+            <HotkeyHint accel={hotkeys?.['save-replay']} />
           </Button>
 
           <Button
             variant="ghost"
             size="md"
-            className="col-span-2"
             disabled={capturing}
             onClick={onScreenshot}
             title="Take a screenshot of the captured display"
           >
             {capturing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
             Screenshot
+            <HotkeyHint accel={hotkeys?.screenshot} />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="md"
+            disabled={micBusy}
+            onClick={() => void toggleMic()}
+            title={micMuted ? 'Unmute the microphone' : 'Mute the microphone'}
+            aria-pressed={micMuted}
+            className={micMuted ? 'text-danger' : undefined}
+          >
+            {micMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+            {micMuted ? 'Unmute' : 'Mute Mic'}
           </Button>
         </div>
 
@@ -340,6 +417,24 @@ export function CaptureControls({
             onCommit={onBufferSeconds}
             disabled={bufferBusy || initializing}
           />
+
+          {/*
+            A shorter save, without touching the buffer. The buffer is the ceiling
+            here: it holds `bufferSeconds` and overwrites older footage, so this can
+            only ever return less than the full save next to it.
+          */}
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <span className="label pl-1">Quick clip</span>
+            <div className="min-w-0 flex-1">
+              <SettingSelect
+                binding={SETTINGS.quickClipSeconds}
+                initial={QUICK_CLIP_DEFAULT}
+                options={QUICK_CLIP_OPTIONS}
+                label="Quick clip length"
+              />
+            </div>
+            <HotkeyHint accel={hotkeys?.['save-quick-clip']} />
+          </div>
         </div>
 
         {lastSaved ? (

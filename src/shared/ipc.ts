@@ -72,6 +72,8 @@ export const IPC = {
   getAudioLevels: 'get-audio-levels',
   setChannelVolume: 'set-channel-volume',
   setChannelMuted: 'set-channel-muted',
+  getQuickClipSeconds: 'get-quick-clip-seconds',
+  setQuickClipSeconds: 'set-quick-clip-seconds',
   getMicGain: 'get-mic-gain',
   setMicGain: 'set-mic-gain',
   getAudioSessions: 'get-audio-sessions',

@@ -15,6 +15,26 @@ export const OBS_SOURCE_NAMES = {
   streamingService: 'rewind-stream-service',
 } as const
 
+/**
+ * Lengths the quick-clip hotkey can save, in seconds.
+ *
+ * All shorter than the longest buffer, so any of them is reachable from any
+ * buffer setting. A request at or beyond the buffer length saves the whole
+ * buffer rather than failing.
+ */
+export const QUICK_CLIP_OPTIONS = [
+  { value: 10, label: '10 seconds' },
+  { value: 15, label: '15 seconds' },
+  { value: 30, label: '30 seconds' },
+  { value: 45, label: '45 seconds' },
+  { value: 60, label: '60 seconds' },
+  { value: 90, label: '90 seconds' },
+  { value: 2 * 60, label: '2 minutes' },
+  { value: 3 * 60, label: '3 minutes' },
+  { value: 5 * 60, label: '5 minutes' },
+]
+export const QUICK_CLIP_DEFAULT = 30
+
 export const DEFAULT_SETTINGS = {
   captureMode: 'game' as CaptureMode,
   displayIndex: 0,
@@ -26,12 +46,14 @@ export const DEFAULT_SETTINGS = {
   micMuted: false,
   // Unity gain, so a fresh install records exactly what the pre-gain build recorded.
   micGain: 1,
+  quickClipSeconds: QUICK_CLIP_DEFAULT,
   desktopDeviceId: 'default',
   micDeviceId: 'default',
   appAudioLevels: {},
   deviceChannels: {},
   saveReplayHotkey: 'Alt+1',
   screenshotHotkey: 'Alt+2',
+  quickClipHotkey: 'Ctrl+Alt+1',
   toggleRecordHotkey: 'Alt+3',
   bufferDuration: 60,
   outputPath: '',
@@ -60,6 +82,28 @@ export const REPLAY_PREFIX = 'Replay'
 
 /** Prefix for continuous recordings, which are written by a different path than replays. */
 export const RECORDING_PREFIX = 'Recording'
+
+/**
+ * The app's own folder inside whatever location the user picked.
+ *
+ * Choosing `D:\Captures` stores `D:\Captures`, and clips land under
+ * `D:\Captures\Rewind\<game>`. The app owns that level so a chosen location
+ * is never filled with its output directly.
+ */
+export const APP_FOLDER = 'Rewind'
+
+/**
+ * Folders used when the capture source is not a detected game.
+ *
+ * Named for the mode rather than the moment: a display-capture clip is still a
+ * display-capture clip tomorrow, and a folder named after the monitor it
+ * happened to be on reads like a bug the moment there are two monitors.
+ */
+export const DISPLAY_CAPTURE_FOLDER = 'Display Capture'
+export const GAME_CAPTURE_FOLDER = 'Game Capture'
+
+/** Pre-1.1.0 folder for clips saved while the detector had not locked a game. */
+export const LEGACY_AUTO_GAME_FOLDER = 'Auto Game Capture'
 
 // ---------------------------------------------------------------------------
 // Encoder selection

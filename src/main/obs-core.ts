@@ -11,7 +11,7 @@ import {
   withTimeout,
   type ObsModule,
 } from './obs-bind.js'
-import { MONITOR_LOG_INTERVAL_MS, TIMING } from '@shared/constants.js'
+import { APP_FOLDER, MONITOR_LOG_INTERVAL_MS, TIMING } from '@shared/constants.js'
 import { writeProfileVideoSettings } from './obs-profile.js'
 import { bindChildren, killChildren, OBS_EXE } from './process-lifetime.js'
 import { getSetting } from './store.js'
@@ -25,9 +25,29 @@ export interface ObsConfig {
   outputResolution: 'native' | '1080p' | '720p'
 }
 
-/** Default output root: `<Videos>/Rewind`. */
+/**
+ * The location the user picks; `rewindRoot` puts the app folder inside it.
+ */
 export function defaultOutputPath(): string {
-  return path.join(app.getPath('videos'), 'Rewind')
+  return app.getPath('videos')
+}
+
+/**
+ * The directory clips actually live in: `<chosen location>\Rewind`.
+ *
+ * Every consumer goes through this rather than through the stored setting, so
+ * the app owns one level of the chosen location instead of writing straight into
+ * it.
+ *
+ * A stored path that already ends in `Rewind` is used as the root rather than
+ * nested again. Without that, a user whose setting already pointed at the app
+ * folder -- which is what every pre-1.1.0 install has -- would get
+ * `...\Rewind\Rewind` the moment they upgraded.
+ */
+export function rewindRoot(configured?: string): string {
+  const base = configured && path.isAbsolute(configured) ? configured : defaultOutputPath()
+  if (path.basename(base).toLowerCase() === APP_FOLDER.toLowerCase()) return base
+  return path.join(base, APP_FOLDER)
 }
 
 /** Scales the canvas down to a 16:9 ceiling, preserving aspect and even dimensions. */
@@ -135,7 +155,7 @@ export class ObsCore {
       outputResolution: 'native',
       ...config,
       // An unset path means the user hasn't chosen one yet; fall back to the default.
-      outputPath: config?.outputPath || defaultOutputPath(),
+      outputPath: rewindRoot(config?.outputPath),
     }
   }
 

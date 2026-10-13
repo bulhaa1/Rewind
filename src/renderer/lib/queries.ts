@@ -71,6 +71,11 @@ export const SETTINGS = defineSettings({
   },
   launchOnStartup: { queryKey: QK.setting('launchOnStartup'), get: api.getLaunchOnStartup, set: api.setLaunchOnStartup },
   micGain: { queryKey: QK.setting('micGain'), get: api.getMicGain, set: api.setMicGain },
+  quickClipSeconds: {
+    queryKey: QK.setting('quickClipSeconds'),
+    get: api.getQuickClipSeconds,
+    set: api.setQuickClipSeconds,
+  },
 })
 
 // ---------------------------------------------------------------------------

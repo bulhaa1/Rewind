@@ -8,7 +8,7 @@ import { getSetting, setSetting } from './store.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
-import { defaultOutputPath } from './obs-core.js'
+import { defaultOutputPath, rewindRoot } from './obs-core.js'
 import { channelLevel, deviceAvailable, listAudioApps, listDevices, channelDevices } from './audio.js'
 import type {
   AudioChannel,
@@ -84,6 +84,8 @@ export interface Services {
   toggleReplay: () => Promise<{ active: boolean }>
   /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
   toggleRecording: () => Promise<{ recording: boolean }>
+  /** Saves the last N seconds of the buffer, using the quick-clip length setting. */
+  saveQuickClip: () => Promise<string>
   /**
    * Registers a recording the buffer finished on teardown.
    *
@@ -589,7 +591,7 @@ export function registerIpc(s: Services): void {
     try {
       return await withStatus(OBS_STATUS_MESSAGES.changingSettings, async () => {
         setSetting('outputPath', target)
-        await obsCore().setOutputPath(target)
+        await obsCore().setOutputPath(rewindRoot(target))
         filesLog.info(`Output path set to: ${target}`)
         return ok(target)
       })
@@ -812,6 +814,18 @@ export function registerIpc(s: Services): void {
    * the same tier as volume and mute. Rebuilding the audio graph is what costs a
    * pipeline restart, and nothing here does that.
    */
+  handle(IPC.getQuickClipSeconds, () => ok(getSetting('quickClipSeconds')))
+
+  handle(IPC.setQuickClipSeconds, (seconds: unknown) => {
+    // Bounded by the longest preset, so a value typed anywhere still resolves to
+    // something the hotkey can actually deliver against a short buffer.
+    if (typeof seconds !== 'number' || seconds < 5 || seconds > 300) {
+      return fail('Quick clip length must be between 5 and 300 seconds')
+    }
+    setSetting('quickClipSeconds', Math.round(seconds))
+    return ok()
+  })
+
   handle(IPC.getMicGain, () => ok(getSetting('micGain')))
 
   handle(IPC.setMicGain, (value: unknown) => {
@@ -1152,6 +1166,7 @@ export function registerIpc(s: Services): void {
     const HOTKEY_CALLBACKS: Record<import('./hotkey.js').HotkeyAction, () => void> = {
       'save-replay': s.saveClipHotkey,
       screenshot: () => void s.takeScreenshotHotkey(),
+      'save-quick-clip': () => void s.saveQuickClip(),
       'toggle-record': () => void s.toggleRecording?.(),
     }
 
@@ -1313,6 +1328,66 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
   return moved
 }
 
+/**
+ * Saves only the last `seconds` of the buffer.
+ *
+ * The buffer is the ceiling: it holds `bufferDuration` seconds and older footage
+ * is overwritten, so this can only ever return a *shorter* clip. Asking for more
+ * than the buffer holds therefore returns the whole buffer rather than failing,
+ * which is also what a user who has just lengthened the buffer expects.
+ *
+ * Shares the save, folder, metadata and notification path with `saveClipAndNotify`
+ * so a quick clip is an ordinary clip everywhere downstream -- the editor, the
+ * library, and the per-game folders all see no difference.
+ */
+export async function saveQuickClipAndNotify(s: Services, seconds: number): Promise<string> {
+  if (!s.replay.isReplayBufferActive()) {
+    throw new Error('The buffer is off - start it to save a clip')
+  }
+
+  const sourceName = s.capture.getCurrentSourceName()
+  const outputRoot = s.obsCore.getConfig().outputPath
+  const cm = require('./clip-manager.js')
+  const meta = require('./clip-meta.js')
+  const { REPLAY_RESTARTED } = require('./replay-buffer.js')
+
+  let savedPath: string
+  try {
+    savedPath = await s.replay.saveReplayBuffer(s.capture.getCaptureMode())
+  } catch (e) {
+    if (messageOf(e) !== REPLAY_RESTARTED) throw e
+    replayLog.warn('Quick save interrupted by a capture source switch; retrying...')
+    await new Promise((r) => setTimeout(r, 1500))
+    savedPath = await s.replay.saveReplayBuffer(s.capture.getCaptureMode())
+  }
+
+  const trimmed = await require('./ffmpeg.js').keepTail(savedPath, seconds)
+  const moved = cm.moveIntoSourceFolder(trimmed, sourceName, outputRoot)
+
+  meta.setClipMeta(moved, {
+    recordedAt: Date.now(),
+    source: sourceName,
+    audioTracks: s.obsCore.audioTrackLabels(),
+  })
+
+  // Names the length, because a clip that came back shorter than asked (the cut
+  // lands on a keyframe) would otherwise be indistinguishable from a bug.
+  s.notify('saved', `Saved last ${seconds}s`)
+  s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
+
+  void cm
+    .describeSavedClip(moved, s.replay.getActiveEncoderVendor(), s.replay.getActiveEncoder(), s.replay.getQualityTarget(), sourceName)
+    .then(async (info: { durationSec: number } | null) => {
+      const duration = await cm.stampDuration(moved, info?.durationSec)
+      if (duration !== undefined) meta.setClipMeta(moved, { duration })
+    })
+    .catch(() => {
+      /* diagnostics only; the clip is already saved and notified */
+    })
+
+  return moved
+}
+
 export async function takeScreenshot(s: Services): Promise<string> {
   const displayIndex = s.capture.getCurrentMonitor?.() ?? getSetting('displayIndex')
   const dir = screenshotPath()
@@ -1337,9 +1412,7 @@ export async function takeScreenshot(s: Services): Promise<string> {
  * library look empty and rejected every thumbnail, open and delete.
  */
 export function outputRoot(): string {
-  const configured = getSetting('outputPath')
-  if (configured && path.isAbsolute(configured)) return configured
-  return defaultOutputPath()
+  return rewindRoot(getSetting('outputPath'))
 }
 
 export function screenshotPath(): string {

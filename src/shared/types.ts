@@ -10,7 +10,7 @@
 export type CaptureMode = 'display' | 'window' | 'game'
 
 /** Bindable actions the global keyboard hook can trigger. */
-export type HotkeyAction = 'save-replay' | 'screenshot' | 'toggle-record'
+export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record'
 
 export type EncoderVendor = 'auto' | 'nvenc' | 'amf' | 'qsv' | 'x264'
 
@@ -47,6 +47,16 @@ export interface PersistedSettings {
   deviceChannels: Record<string, { label: string; kind: DeviceKind; volume: number; muted: boolean }>
   saveReplayHotkey: string
   screenshotHotkey: string
+  quickClipHotkey: string
+
+  /**
+   * Length the quick-clip hotkey saves, in seconds.
+   *
+   * Always shorter than or equal to the buffer, which is the only thing that
+   * bounds it: the buffer holds `bufferDuration` seconds and older footage is
+   * overwritten, so no hotkey can hand back footage the buffer no longer has.
+   */
+  quickClipSeconds: number
   toggleRecordHotkey: string
   bufferDuration: number
   outputPath: string

@@ -228,6 +228,81 @@ export async function probeDuration(file: string): Promise<number> {
   return d ? Math.round(d) : 0
 }
 
+/**
+ * Keeps only the last `seconds` of a clip, in place.
+ *
+ * `-ss` goes BEFORE `-i` deliberately. An input-side seek lands on a keyframe and
+ * keeps the stream intact; the output-side form produces files ffprobe reports as
+ * valid and no player will open ("unspecified pixel format"). The same argument
+ * order applies to `-map`, which must also precede `-i` for this to hold.
+ *
+ * `-map 0` is not optional. Without it ffmpeg keeps only the FIRST stream of each
+ * type, which silently reduces a three-track clip to a single audio track -- that
+   is what made recordings reach the editor with the Desktop and Microphone lanes
+   missing.
+ *
+ * The result is at most `seconds`, sometimes a little under: the cut lands on a
+ * keyframe, so the clip can come back shorter than asked but never carries footage
+ * from before the requested window.
+ *
+ * Returns the path in force afterwards, which differs from `file` only when the
+ * trim had to be abandoned.
+ */
+export async function keepTail(file: string, seconds: number): Promise<string> {
+  const total = await probeDuration(file)
+  if (!total) return file
+  if (seconds >= total) return file
+
+  const lead = Math.max(0, total - seconds)
+  const dir = path.dirname(file)
+  const stem = path.basename(file, path.extname(file))
+  const out = uniquePath(dir, `${stem}-tail`, path.extname(file))
+
+  try {
+    await ffmpegTo(
+      [
+        '-ss', lead.toFixed(3),
+        '-i', file,
+        '-map', '0',
+        '-c', 'copy',
+        '-movflags', '+faststart',
+      ],
+      out,
+    )
+  } catch (e) {
+    // The clip is already saved and playable. Losing the trim is a far smaller
+    // failure than losing the clip, so report it and keep the original.
+    log.warn(`Tail trim failed, keeping the full clip: ${(e as Error).message}`)
+    return file
+  }
+
+  const kept = await probeDuration(out)
+  if (!kept) {
+    log.warn('Tail trim produced nothing readable, keeping the full clip')
+    try {
+      fs.unlinkSync(out)
+    } catch {
+      /* best effort */
+    }
+    return file
+  }
+
+  // Back to the original name. The trimmed file was written as `-tail` only so the
+  // input and the output could not collide, and that suffix is an implementation
+  // detail that has no business showing up in a filename the user sees in their
+  // library.
+  try {
+    fs.unlinkSync(file)
+    fs.renameSync(out, file)
+  } catch (e) {
+    // The trimmed copy still stands on its own; only the name came out wrong.
+    log.warn('Kept the trimmed file under its temporary name:', e)
+    return out
+  }
+  log.info(`Kept last ${kept}s of a ${total}s clip`)
+  return file
+}
+
 export interface ClipProbe {
   durationSec: number
   bitrateKbps: number

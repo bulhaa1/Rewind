@@ -3,7 +3,7 @@ import os from 'node:os'
 import { scope } from './logger.js'
 import { Mutex, withTimeout, type ObsModule } from './obs-bind.js'
 import { getSetting, setSetting } from './store.js'
-import { TIMING } from '@shared/constants.js'
+import { DISPLAY_CAPTURE_FOLDER, GAME_CAPTURE_FOLDER, TIMING } from '@shared/constants.js'
 import type { CaptureMode, MonitorInfo } from '@shared/types.js'
 
 const log = scope('Capture')
@@ -526,14 +526,14 @@ export class CaptureManager {
   getCurrentSourceName(): string {
     const gd = this.gameDetector
     if (gd?.isRunning?.()) {
-      if (gd.isCapturingGame?.()) return gd.getActiveGameName?.() || 'Game Capture'
-      return 'Auto Game Capture'
+      if (gd.isCapturingGame?.()) return gd.getActiveGameName?.() || GAME_CAPTURE_FOLDER
+      return GAME_CAPTURE_FOLDER
     }
     if (this.captureMode === 'window' && this.currentWindowId) {
       const found = this.obsWindows.find((w) => w.value === this.currentWindowId)
       return found ? stripWindowTitle(found.name) : 'Window'
     }
-    return this.getDisplayName(this.currentMonitor)
+    return DISPLAY_CAPTURE_FOLDER
   }
 
   getCurrentMonitor(): number {

@@ -822,6 +822,7 @@ function QualitySection() {
 
 const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
   { action: 'save-replay', label: 'Save Replay' },
+  { action: 'save-quick-clip', label: 'Save Quick Clip' },
   { action: 'screenshot', label: 'Screenshot' },
   { action: 'toggle-record', label: 'Start / Stop Recording' },
 ]
