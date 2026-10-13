@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'motion/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Menu as BaseMenu } from '@base-ui-components/react/menu'
 import { Camera, Film, FolderOpen, Image as ImageIcon, MoreHorizontal, Pencil, Scissors, Trash2 } from 'lucide-react'
 import { api, formatBytes, formatDuration, formatSourceName, formatTimestamp, messageOf } from '../lib/api'
 import { QK, clipsQuery, hotkeysQuery, screenshotsQuery } from '../lib/queries'
+import { SPRING_SNAPPY, SPRING_SOFT } from '../lib/motion'
 import { useBackgroundAction } from '../lib/context'
 import { Badge, Button, Dialog, InlineSpinner, cn } from './ui'
 import type { ClipInfo, DeleteScope, ScreenshotInfo } from '@shared/types.js'
@@ -35,11 +37,15 @@ function Thumb({
   fetch,
   fallback,
   duration,
+  overlay,
+  onHoverChange,
 }: {
   cacheKey: string
   fetch: () => Promise<{ success: boolean; data?: string | null }>
   fallback: React.ReactNode
   duration?: string
+  overlay?: React.ReactNode
+  onHoverChange?: (hovering: boolean) => void
 }) {
   const { data } = useQuery({
     queryKey: ['thumb', cacheKey],
@@ -53,8 +59,14 @@ function Thumb({
   })
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-md bg-raised" data-testid="card-thumb">
+    <div
+      className="relative aspect-video w-full overflow-hidden rounded-md bg-raised"
+      data-testid="card-thumb"
+      onPointerEnter={() => onHoverChange?.(true)}
+      onPointerLeave={() => onHoverChange?.(false)}
+    >
       {data ? <img src={data} alt="" draggable={false} className="h-full w-full object-cover" /> : fallback}
+      {overlay}
       {duration ? (
         <span className="tabular absolute bottom-1 right-1 rounded bg-black/75 px-1 text-[10px] leading-tight">
           {duration}
@@ -120,6 +132,55 @@ function Item({
   )
 }
 
+/** Clip URLs go through the same protocol the editor plays. */
+function clipUrl(filePath: string): string {
+  return `rewind-clip://local/${encodeURIComponent(filePath)}`
+}
+
+/**
+ * Hover scrub.
+ *
+ * A single `<video>` per hovered card, mounted only while the pointer is over the
+ * thumbnail and never while the window is hidden. The frame under the cursor is a
+ * `currentTime` seek, so a scrub costs one decode per pointer move rather than one
+ * playing stream per card in the list.
+ *
+ * If a clip cannot be decoded (AV1 on an older GPU, a file mid-remux), `failed`
+ * latches and the thumbnail stays. A card must never look broken because a preview
+ * could not be built.
+ */
+function ScrubLayer({ filePath, duration }: { filePath: string; duration: number }) {
+  const [failed, setFailed] = useState(false)
+  const [ready, setReady] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  if (failed) return null
+
+  const seek = (event: React.PointerEvent<HTMLDivElement>) => {
+    const video = videoRef.current
+    if (!video || !ready || document.hidden) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.min(Math.max((event.clientX - rect.left) / Math.max(rect.width, 1), 0), 1)
+    const length = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : duration
+    if (length > 0) video.currentTime = ratio * length
+  }
+
+  return (
+    <div className="absolute inset-0" data-testid="scrub-layer" onPointerEnter={seek} onPointerMove={seek}>
+      <video
+        ref={videoRef}
+        src={clipUrl(filePath)}
+        muted
+        playsInline
+        preload="auto"
+        onLoadedData={() => setReady(true)}
+        onError={() => setFailed(true)}
+        className={cn('h-full w-full object-cover transition-opacity', ready ? 'opacity-100' : 'opacity-0')}
+      />
+    </div>
+  )
+}
+
 /**
  * One clip card.
  *
@@ -141,9 +202,15 @@ function ClipCard({
   onRename: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [hovering, setHovering] = useState(false)
 
   return (
-    <div className="pb-3">
+    <motion.div
+      className="pb-3"
+      initial={isNew ? { opacity: 0.65, scale: 0.985 } : false}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={SPRING_SNAPPY}
+    >
       <div
         role="button"
         tabIndex={0}
@@ -171,6 +238,8 @@ function ClipCard({
           fetch={() => api.getClipThumbnail(clip.path)}
           fallback={<Film className="mx-auto mt-[38px] h-4 w-4 text-accent" strokeWidth={1.5} />}
           duration={clip.duration > 0 ? formatDuration(clip.duration) : undefined}
+          overlay={hovering ? <ScrubLayer filePath={clip.path} duration={clip.duration} /> : null}
+          onHoverChange={setHovering}
         />
 
         <div className="mt-2 flex items-start gap-2">
@@ -211,7 +280,7 @@ function ClipCard({
           </span>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -424,6 +493,11 @@ export function Rail({
                   ref={virtualizer.measureElement}
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
                 >
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ ...SPRING_SOFT, delay: Math.min(v.index, 6) * 0.03 }}
+                  >
                   {isClip ? (
                     <ClipCard
                       clip={item as ClipInfo}
@@ -438,6 +512,7 @@ export function Rail({
                       onDelete={() => setDeleteTarget({ path: item.path, name: (item as ScreenshotInfo).name })}
                     />
                   )}
+                  </motion.div>
                 </div>
               )
             })}
