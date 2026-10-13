@@ -733,6 +733,15 @@ const services = {
 // ---------------------------------------------------------------------------
 
 function main(): void {
+  /*
+   * Audio runs inside the browser process rather than in its own utility
+   * process. Measured on this machine: the audio utility is one process and
+   * ~64 MB of private working set, and the app's real audio graph (desktop
+   * loopback and microphone) is handled by OBS inside obs64 -- this process
+   * only serves the panel's own sound. Must be set before the app is ready.
+   */
+  app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
+
   // Safe before ready: the log file, the scheme privilege table, and the protocol
   // client registration all only read command-line/config state.
   logger.init()
