@@ -15,7 +15,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.cwd()
-const UNPACKED = path.join(root, 'release', 'win-unpacked')
+// Optional argument: the unpacked directory of an out-of-tree build. Defaults to the
+// one `npm run package` produces.
+const UNPACKED = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'release', 'win-unpacked')
 
 function findAppExe() {
   if (!fs.existsSync(UNPACKED)) return null

@@ -184,18 +184,26 @@ function buildIfAsked() {
 function prepareFeed() {
   fs.rmSync(FEED, { recursive: true, force: true })
   fs.mkdirSync(FEED, { recursive: true })
+  // Name-agnostic: the same harness serves a locally built 1.2.0 and the published
+  // release's own assets (Rewind-1.2.0-rc.1-setup.exe, ...), so a released installer
+  // can be verified end to end by downloading it into BUILD first.
   for (const name of fs.readdirSync(BUILD)) {
-    if (/^Rewind-1\.2\.0-setup\.exe(\.blockmap)?$/.test(name) || name === 'latest.yml') {
+    if (/^Rewind-.*setup\.exe(\.blockmap)?$/i.test(name) || name === 'latest.yml') {
       fs.copyFileSync(path.join(BUILD, name), path.join(FEED, name))
     }
   }
-  const needed = ['latest.yml', 'Rewind-1.2.0-setup.exe']
-  for (const name of needed) {
-    if (!fs.existsSync(path.join(FEED, name))) {
-      line(`FAIL: ${name} missing from ${BUILD} - run with --build`)
-      process.exit(1)
-    }
+  const setup = fs.readdirSync(FEED).find((n) => /^Rewind-.*setup\.exe$/i.test(n))
+  if (!fs.existsSync(path.join(FEED, 'latest.yml')) || !setup) {
+    line(`FAIL: latest.yml and a Rewind-*-setup.exe are needed in ${BUILD} - run with --build, or copy a release's assets in`)
+    process.exit(1)
   }
+  const version = /^version:\s*(\S+)\s*$/m.exec(fs.readFileSync(path.join(FEED, 'latest.yml'), 'utf8'))?.[1]
+  if (!version) {
+    line('FAIL: latest.yml has no version')
+    process.exit(1)
+  }
+  line(`feed version: ${version} (${setup})`)
+  return version
 }
 
 /**
@@ -319,7 +327,7 @@ async function waitForLog(pattern, timeoutMs, { since = 0 } = {}) {
 
 async function main() {
   buildIfAsked()
-  prepareFeed()
+  const expectedVersion = prepareFeed()
   installOld()
   fs.rmSync(PROFILE, { recursive: true, force: true })
   fs.mkdirSync(PROFILE, { recursive: true })
@@ -355,7 +363,7 @@ async function main() {
     }
 
     const before = await evaluate('window.electronAPI.getUpdateState()')
-    check(before?.data?.version !== '1.2.0', 'starting from the older build', JSON.stringify(before?.data ?? before))
+    check(before?.data?.version !== expectedVersion, 'starting from the older build', JSON.stringify(before?.data ?? before))
 
     const checked = await evaluate('window.electronAPI.checkForUpdates()')
     check(
@@ -408,7 +416,7 @@ async function main() {
     check(cacheAfter.size === 0, 'update cache empty after the new version started', `${cacheAfter.size} file(s)`)
 
     const version = asarVersion()
-    check(version === '1.2.0', 'installed version is 1.2.0', version ?? 'unknown')
+    check(version === expectedVersion, `installed version is ${expectedVersion}`, version ?? 'unknown')
 
     if (fs.existsSync(LOG)) {
       const log = fs.readFileSync(LOG, 'utf8')

@@ -21,7 +21,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.cwd()
-const UNPACKED = path.join(root, 'release', 'win-unpacked')
+// An out-of-tree build (`-c.directories.output=<dir>`, which is how a build is made
+// while something holds release/) passes its unpacked directory. The default is what
+// `npm run package` produces.
+const UNPACKED = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'release', 'win-unpacked')
 const ICON = path.join(root, 'assets', 'favicon.ico')
 
 if (!fs.existsSync(UNPACKED)) {
