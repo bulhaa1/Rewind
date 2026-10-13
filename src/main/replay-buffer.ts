@@ -441,6 +441,14 @@ export class ReplayBuffer {
       // Output signals are delivered by assigning `signalHandler` on each output
       // object. Without this the replay buffer starts but nothing ever confirms it,
       // and every start/save/save-wait times out.
+      //
+      // Both handlers are load-bearing, even though only the replay buffer is ever
+      // started. Removing the streaming one was tried on 2026-10-14 and wedged
+      // every rebuild: `reinitPipeline` never returned, and because the main thread
+      // was blocked in a synchronous IPC wait even the shutdown timeout could not
+      // fire. The stop/start signals a rebuild depends on arrive through the
+      // streaming object's queue -- which is also why `handleSignal` never filtered
+      // by type. Do not remove it as dead weight.
       this.replayBuffer.signalHandler = (signal: ObsSignal) => this.handleSignal(signal)
       this.streaming.signalHandler = (signal: ObsSignal) => this.handleSignal(signal)
 
