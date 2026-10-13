@@ -13,6 +13,8 @@ export const OBS_SOURCE_NAMES = {
   recordingOutputEncoder: 'rewind-recording-output-encoder',
   recordingService: 'rewind-recording-service',
   streamingService: 'rewind-stream-service',
+  /** The live microphone input. Named here because the level meter finds it by name. */
+  microphone: 'microphone-audio',
 } as const
 
 /**

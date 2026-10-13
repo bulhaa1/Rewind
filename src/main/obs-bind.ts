@@ -32,7 +32,19 @@ export interface ObsModule {
     InitShutdownSequence: () => void
     RegisterSourceCallback: (cb: (sources: { name: string; width: number; height: number }[]) => void) => void
     RemoveSourceCallback: () => void
+    /*
+     * One process-wide meter callback, shared by every attached volmeter. The
+     * binding delivers `{ sourceName, magnitude[], peak[], inputPeak[] }` per
+     * meter, batched at a best-effort 250 ms cadence.
+     */
+    RegisterVolmeterCallback: (cb: (data: unknown) => void) => void
+    RemoveVolmeterCallback: () => void
   }
+  /*
+   * The meter factory. `EFaderType` in the binding is a type-only const enum, so
+   * callers pass the numeric value (Cubic = 0).
+   */
+  VolmeterFactory: { create: (type: number) => any }
   Global: {
     setOutputSource: (slot: number, source: unknown) => void
     getOutputSource: (slot: number) => { name?: string } | null

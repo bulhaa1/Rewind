@@ -191,6 +191,7 @@ export interface RewindApi {
   on(event: 'update-state', handler: (s: UpdateState) => void): () => void
   on(event: 'hotkey-capture-key', handler: (hotkey: string) => void): () => void
   on(event: 'play-notification-sound', handler: () => void): () => void
+  on(event: 'mic-level', handler: (levels: { peak: number; inputPeak: number }) => void): () => void
 }
 
 const bridge = (window as unknown as { electronAPI?: RewindApi }).electronAPI

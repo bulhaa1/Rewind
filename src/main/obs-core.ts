@@ -11,7 +11,7 @@ import {
   withTimeout,
   type ObsModule,
 } from './obs-bind.js'
-import { APP_FOLDER, MONITOR_LOG_INTERVAL_MS, TIMING } from '@shared/constants.js'
+import { APP_FOLDER, MONITOR_LOG_INTERVAL_MS, OBS_SOURCE_NAMES, TIMING } from '@shared/constants.js'
 import { writeProfileVideoSettings } from './obs-profile.js'
 import { bindChildren, killChildren, OBS_EXE } from './process-lifetime.js'
 import { getSetting } from './store.js'
@@ -345,7 +345,7 @@ export class ObsCore {
 
     this.microphone = createAudioSource(mod, {
       type: 'wasapi_input_capture',
-      name: 'microphone-audio',
+      name: OBS_SOURCE_NAMES.microphone,
       settings: { device_id: getSetting('micDeviceId') },
       slot: 2,
       track: 3,

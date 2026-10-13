@@ -9,6 +9,7 @@ import { HotkeyChip } from './audio-controls'
 import { SettingSelect } from './controls'
 import { HotkeyDialog } from './record'
 import { InlineSpinner, cn } from './ui'
+import { MicStrip } from './mic-strip'
 import { BUFFER_DURATION_MAX, BUFFER_DURATION_MIN, QUICK_CLIP_DEFAULT, QUICK_CLIP_OPTIONS } from '@shared/constants.js'
 import type { HotkeyAction } from '@shared/types.js'
 
@@ -344,6 +345,10 @@ export function Deck({
               : 'Start the buffer and the last minute is always on disk'}
           </p>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <MicStrip />
       </div>
 
       <div className="mt-8 flex flex-col gap-2">

@@ -173,8 +173,9 @@ the panel is visible.
 - Real meter: `VolmeterFactory.create(EFaderType.Peak).attach(micSource)` plus
   `NodeObs.RegisterVolmeterCallback`, which delivers `{ sourceName, magnitude[], peak[],
   inputPeak[] }` (`module.ts:385` exports the factory; the callback is registered on
-  `NodeObs`, verified in the client source). The binding batches at a best-effort 250 ms
-  cadence, so the bar smooths with a CSS transition and peak-hold decay.
+  `NodeObs`, verified in the client source). Measured: one batch every ~50 ms, so the bar
+  needs no interpolation. `attach` takes the raw OBS input, which is
+  `obsCore.microphone.source`, not the wrapper.
 - The callback worker is shared with `RegisterSourceCallback`; start it when the panel is
   visible or a game-hook wait is pending, remove it when neither holds (see T6).
 - Detach and re-attach the volmeter after every `reinitPipeline()`; never start a second
