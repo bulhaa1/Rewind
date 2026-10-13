@@ -911,3 +911,22 @@ function DataSection() {
     </Section>
   )
 }
+
+/**
+ * The settings sections, grouped the way the spine presents them.
+ *
+ * The old page was one column of every section in a fixed order. The spine view
+ * renders one group at a time instead, so the sections are exposed as data: each
+ * entry is the list of sections that belong under one spine item, in order.
+ * Sections keep everything they need internally; the view supplies only the frame.
+ */
+export const SETTINGS_SECTIONS = {
+  capture: [CaptureSection],
+  audio: [AudioSection],
+  encoder: [QualitySection],
+  replay: [ReplaysSection, ScreenshotsSection],
+  hotkeys: [HotkeysSection],
+  system: [NotificationsSection, StartupSection, DataSection, VersionFooter],
+} as const
+
+export type SettingsSectionId = keyof typeof SETTINGS_SECTIONS

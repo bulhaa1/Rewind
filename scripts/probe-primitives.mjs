@@ -10,6 +10,9 @@ export default async function ({ evaluate }) {
   // --- Switch: toggle notifications from the settings page, then restore
   await call('window.location.hash = "/settings"')
   await wait(2000)
+  // Settings shows one section at a time; notifications live under System.
+  await call('(() => { const nav = document.querySelector("[data-section=\\"system\\"]"); if (nav) nav.click(); return !!nav })()')
+  await wait(1000)
   const found = await call('(() => { const el = document.querySelector("[aria-label=\\"Show notifications\\"]"); return !!el })()')
   if (!found) {
     problems.push('notifications switch not found on the settings page')

@@ -6,7 +6,7 @@ import { queryClient } from './lib/queries'
 import { BackgroundActionProvider, ObsStatusProvider, useLibraryInvalidation } from './lib/context'
 import { useNotificationSound, usePopupWindow, useEditorClipPath } from './lib/hooks'
 import { MainView } from './pages/MainView'
-import { SettingsPage } from './components/settings'
+import { SettingsView } from './components/settings/SettingsView'
 import { EditorPage } from './components/editor'
 import { NotificationOverlay } from './pages/NotificationOverlay'
 import { RestartOverlay } from './components/restart-overlay'
@@ -74,7 +74,7 @@ function RoutedPanel() {
 
   return (
     <div className="h-full">
-      {route === '/settings' ? <SettingsPage onBack={goHome} /> : <MainView />}
+      {route === '/settings' ? <SettingsView onBack={goHome} /> : <MainView />}
       {/*
         Mounted outside the routed surface so it survives navigation and covers
         whichever page is showing — a restart triggered from Settings must not
