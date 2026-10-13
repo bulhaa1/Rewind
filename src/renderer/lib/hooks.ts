@@ -49,7 +49,7 @@ export function useNotificationSound(): void {
  * and closes itself, returning focus to the main panel on click. The timer that
  * used to live here raced the window teardown and cut the exit animation short.
  */
-export function usePopupWindow(): { type: string; message: string | null; onClick: () => void } | null {
+export function usePopupWindow(): { type: string; message: string | null; title: string | null; onClick: () => void } | null {
   /*
    * Resolved synchronously, like `useEditorClipPath` below, and for the same
    * reason. `App.tsx` states the popup must be known before the main panel
@@ -66,6 +66,8 @@ export function usePopupWindow(): { type: string; message: string | null; onClic
       // The main process has always sent this; it was simply never read, so
       // every error popup showed a generic title and no explanation.
       message: params.get('message'),
+      // The action and its key, when a hotkey drove the notification.
+      title: params.get('title'),
       onClick: () => void api.notificationClick(),
     }
   })

@@ -15,6 +15,7 @@ import {
   clampQuickClip,
 } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
+import { hotkeyTitle } from './hotkey.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
@@ -27,6 +28,7 @@ import type {
   DeleteScope,
   DeviceKind,
   FolderKind,
+  HotkeyAction,
   IpcResult,
   ObsStatus,
   ScreenshotInfo,
@@ -107,7 +109,8 @@ export interface Services {
    */
   registerFinishedFromBufferStop: (finished: string) => void
   reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
-  notify: (type: BufferStatus, message?: string) => void
+  /** `title` names the action and key on hotkey popups; `message` is the body line. */
+  notify: (type: BufferStatus, message?: string, title?: string) => void
   status: {
     get: () => { status: ObsStatus; message?: string }
     set: (s: { status: ObsStatus; message?: string }) => void
@@ -1294,7 +1297,7 @@ class NotReadyError extends Error {
 }
 
 /** Persist and notify. Shared by the IPC channel, the hotkey, and the tray. */
-export async function saveClipAndNotify(s: Services): Promise<string> {
+export async function saveClipAndNotify(s: Services, action?: HotkeyAction): Promise<string> {
   // Guards here rather than only at the callers so the panel button, the hotkey
   // and anything added later all refuse the same way. Without it the failure
   // surfaces from deep inside the flush as an opaque error.
@@ -1333,7 +1336,8 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
 
   // Notify immediately so the user gets instant feedback; probing for the log line
   // and duration stamp happens after, since it can take a moment.
-  s.notify('saved')
+  // The body is where the clip landed; `action` (hotkey/tray) names the key too.
+  s.notify('saved', path.dirname(moved), action ? hotkeyTitle(action, 'Clip saved') : undefined)
 
   // Tell the renderer to refresh. This must live here rather than in the hotkey
   // path, otherwise saving from the button (or the tray) leaves the list stale.
@@ -1367,7 +1371,7 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
  * The notification quotes what `keepTail` measured, so a request the buffer was too
  * short to satisfy says so instead of announcing a length no file has.
  */
-export async function saveQuickClipAndNotify(s: Services, seconds: number): Promise<string> {
+export async function saveQuickClipAndNotify(s: Services, seconds: number, action?: HotkeyAction): Promise<string> {
   if (!s.replay.isReplayBufferActive()) {
     throw new Error('The buffer is off - start it to save a clip')
   }
@@ -1403,16 +1407,19 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
   // (`wholeClip`), or the keyframe the cut snapped to was a little early. The first
   // is worth naming -- someone who asked for 60s and got the whole 25s buffer
   // deserves to know the buffer was the limit, not left guessing whether the
-  // hotkey misfired.
+  // hotkey misfired. On the hotkey path that number rides in the title ("Last 15s
+  // saved — Ctrl + Alt + 1") and the body carries the folder.
   const kept = tail.seconds
-  s.notify(
-    'saved',
+  const title = action
+    ? hotkeyTitle(action, kept <= 0 ? 'Clip saved' : tail.wholeClip ? `Saved all ${kept}s` : `Last ${kept}s saved`)
+    : undefined
+  const body =
     kept <= 0
       ? 'Clip saved'
       : tail.wholeClip
-        ? `Saved all ${kept}s - the buffer held no more`
-        : `Saved last ${kept}s`,
-  )
+        ? `The buffer held no more than ${kept}s`
+        : path.dirname(moved)
+  s.notify('saved', body, title)
   s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
 
   void cm
@@ -1428,7 +1435,7 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
   return moved
 }
 
-export async function takeScreenshot(s: Services): Promise<string> {
+export async function takeScreenshot(s: Services, action?: HotkeyAction): Promise<string> {
   const displayIndex = s.capture.getCurrentMonitor?.() ?? getSetting('displayIndex')
   const dir = screenshotPath()
   const file = await captureScreenshot(displayIndex, dir)
@@ -1438,7 +1445,7 @@ export async function takeScreenshot(s: Services): Promise<string> {
     source: s.capture.getCurrentSourceName(),
   })
 
-  s.notify('screenshot')
+  s.notify('screenshot', path.dirname(file), action ? hotkeyTitle(action, 'Screenshot taken') : undefined)
   s.getMainWindow()?.webContents.send('screenshot-saved', { path: file })
   return file
 }

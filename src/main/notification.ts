@@ -67,10 +67,14 @@ export interface NotifyDeps {
 /**
  * Shows the in-app notification popup in a dedicated transparent panel window.
  *
+ * `title` replaces the kind's default heading, which is how a hotkey popup names
+ * the action and its key; `message` is the body line -- the engine's own reason
+ * on a failure, the folder on a save.
+ *
  * The sound fires before the popup is suppressed, so a saved clip is still
  * acknowledged when the user has turned popups off or is mid-game.
  */
-export function notify(type: BufferStatus, deps: NotifyDeps, message?: string): void {
+export function notify(type: BufferStatus, deps: NotifyDeps, message?: string, title?: string): void {
   if (type === 'saved' || type === 'screenshot') {
     if (deps.soundEnabled()) {
       const win = deps.getMainWindow()
@@ -129,7 +133,10 @@ export function notify(type: BufferStatus, deps: NotifyDeps, message?: string): 
 
   const devUrl = process.env.REWIND_DEV_SERVER
   const indexHtml = path.join(deps.rendererDir, 'index.html')
-  const query = message ? `?notification=${type}&message=${encodeURIComponent(message)}` : `?notification=${type}`
+  const params = new URLSearchParams({ notification: type })
+  if (message) params.set('message', message)
+  if (title) params.set('title', title)
+  const query = `?${params.toString()}`
 
   win.loadURL(devUrl ? `${devUrl}${query}` : `file://${indexHtml}${query}`)
 
@@ -141,7 +148,7 @@ export function notify(type: BufferStatus, deps: NotifyDeps, message?: string): 
     if (!win.isDestroyed()) win.close()
   }, NOTIFICATION_LIFETIME_MS)
 
-  log.info(`Shown: ${type}${message ? ` - ${message}` : ''}`)
+  log.info(`Shown: ${type}${title ? ` - ${title}` : ''}${message ? ` - ${message}` : ''}`)
 }
 
 /** Closes any open popup. Safe to call when none is showing. */

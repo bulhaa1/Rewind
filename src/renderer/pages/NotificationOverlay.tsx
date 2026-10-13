@@ -32,14 +32,24 @@ const CONTENT: Record<BufferStatus, { title: string; subtitle: string; tone: 'ok
 export function NotificationOverlay({
   type,
   message,
+  title,
   onClick,
 }: {
   type: string
   message?: string | null
+  /** Action + key when a hotkey drove this popup; replaces the kind's heading. */
+  title?: string | null
   onClick: () => void
 }) {
   const content = CONTENT[type as BufferStatus] ?? CONTENT.saved
   const [leaving, setLeaving] = useState(false)
+
+  /*
+   * A hotkey popup names the action and its key ("Clip saved — Alt + 1"), which
+   * is the heading the user needs; the kind's own title stays as the fallback for
+   * panel-driven popups.
+   */
+  const heading = (title ?? '').trim() || content.title
 
   /*
    * The main process puts a real diagnostic in the URL as `&message=...`
@@ -92,7 +102,7 @@ export function NotificationOverlay({
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{content.title}</span>
+        <span className="block text-sm font-medium">{heading}</span>
         {detail ? <span className="block truncate text-xs text-ink-muted">{detail}</span> : null}
       </span>
 

@@ -336,6 +336,29 @@ export function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
+/** Renders a hotkey accelerator the way the original does. */
+export function formatHotkey(accelerator: string): string {
+  if (!accelerator) return 'Unbound'
+  return accelerator
+    .replace('CommandOrControl', 'Ctrl')
+    .replace('Command', 'Cmd')
+    .replace('Control', 'Ctrl')
+    .replace('Super', 'Win')
+    .replace(/\bKey(\d+)\b/, 'Key $1')
+    .replace(/\+/g, ' + ')
+}
+
+/**
+ * A notification title naming an outcome and the key bound to it:
+ * `Clip saved — Alt + 1`.
+ *
+ * The caller reads the binding at notify time rather than capturing it, so a
+ * rebind changes the next popup with no extra work.
+ */
+export function titleWithHotkey(outcome: string, accelerator: string): string {
+  return accelerator ? `${outcome} — ${formatHotkey(accelerator)}` : outcome
+}
+
 export function screenshotFileName(d: Date = new Date()): string {
   return (
     `Screenshot ${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ` +

@@ -11,7 +11,7 @@ import { CaptureManager } from './capture.js'
 import { GameDetector } from './game-detector.js'
 import { AudioDeviceChannels, AudioMix, invalidateDeviceCache } from './audio.js'
 import { notify, dismissPanel } from './notification.js'
-import { installDefaultHotkeys, shutdown as shutdownHotkeys, startCapture, stopCapture } from './hotkey.js'
+import { hotkeyTitle, installDefaultHotkeys, shutdown as shutdownHotkeys, startCapture, stopCapture } from './hotkey.js'
 import {
   registerIpc,
   saveClipAndNotify,
@@ -27,7 +27,7 @@ import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
 import { TIMING, clampQuickClip } from '@shared/constants.js'
-import type { BufferStatus, ObsStatus } from '@shared/types.js'
+import type { BufferStatus, HotkeyAction, ObsStatus } from '@shared/types.js'
 
 const log = scope('App')
 const protocolLog = scope('ClipProtocol')
@@ -403,10 +403,13 @@ function errorMessage(e: unknown): string {
 /**
  * Shows a popup, honouring the user's notification and sound settings.
  *
+ * `title` names the action and its key for hotkey-driven popups; `message` is the
+ * engine's own reason on a failure.
+ *
  * The sound fires even when the popup is suppressed (disabled, or an app is in
  * exclusive fullscreen) — the user still needs to know the clip was saved.
  */
-function showNotification(type: BufferStatus, message?: string): void {
+function showNotification(type: BufferStatus, message?: string, title?: string): void {
   notify(
     type,
     {
@@ -416,13 +419,14 @@ function showNotification(type: BufferStatus, message?: string): void {
       rendererDir: RENDERER_DIR,
     },
     message,
+    title,
   )
 }
 
 async function saveFromHotkey(): Promise<void> {
   if (!obsCore?.isInitialized() || !replay || !capture) {
     log.warn('Shortcut save ignored: recording not ready')
-    showNotification('error', 'Recording not ready')
+    showNotification('error', 'Recording not ready', hotkeyTitle('save-replay', 'Clip not saved'))
     return
   }
 
@@ -434,18 +438,18 @@ async function saveFromHotkey(): Promise<void> {
   // clip when there was nothing rolling to take it from.
   if (!replay.isReplayBufferActive()) {
     log.warn('Shortcut save ignored: the rolling buffer is stopped')
-    showNotification('error', 'Buffer is off - start it to save a clip')
+    showNotification('error', 'Buffer is off - start it to save a clip', hotkeyTitle('save-replay', 'Clip not saved'))
     return
   }
 
   try {
     // `saveClipAndNotify` emits `clip-saved` itself, so every entry point (hotkey,
     // tray, button) refreshes the library the same way.
-    await saveClipAndNotify(services)
+    await saveClipAndNotify(services, 'save-replay')
   } catch (e) {
     log.error('Failed to save replay:', e)
     const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
-    showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
+    showNotification('error', errorMessage(e), hotkeyTitle('save-replay', 'Clip not saved'))
     if (wedged) scheduleWedgeRecovery()
   }
 }
@@ -458,31 +462,31 @@ async function saveFromHotkey(): Promise<void> {
  */
 async function saveQuickClipFromHotkey(): Promise<void> {
   if (!obsCore?.isInitialized() || !replay || !capture) {
-    showNotification('error', 'Recording not ready')
+    showNotification('error', 'Recording not ready', hotkeyTitle('save-quick-clip', 'Clip not saved'))
     return
   }
   if (!replay.isReplayBufferActive()) {
     log.warn('Shortcut quick save ignored: the rolling buffer is stopped')
-    showNotification('error', 'Buffer is off - start it to save a clip')
+    showNotification('error', 'Buffer is off - start it to save a clip', hotkeyTitle('save-quick-clip', 'Clip not saved'))
     return
   }
 
   try {
-    await saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds')))
+    await saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds')), 'save-quick-clip')
   } catch (e) {
     log.error('Failed to save quick clip:', e)
     const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
-    showNotification('error', wedged ? 'Recording stopped responding - restarting it...' : 'Failed to save clip')
+    showNotification('error', errorMessage(e), hotkeyTitle('save-quick-clip', 'Clip not saved'))
     if (wedged) scheduleWedgeRecovery()
   }
 }
 
 async function saveScreenshotFromHotkey(): Promise<void> {
   try {
-    await takeScreenshot(services)
+    await takeScreenshot(services, 'screenshot')
   } catch (e) {
     log.error('Failed to take screenshot:', e)
-    showNotification('error', 'Failed to take screenshot')
+    showNotification('error', errorMessage(e), hotkeyTitle('screenshot', 'Screenshot not taken'))
   }
 }
 
@@ -555,31 +559,41 @@ async function stopRecordingAndRegister(): Promise<string> {
  *
  * It replaced the rolling-buffer toggle, so the buffer keeps running throughout a
  * recording and is still there for clipping afterwards.
+ *
+ * `action` is present only on the hotkey path, so its popups can name the key that
+ * fired; the panel's own start/stop handlers stay quiet.
  */
 let recordingToggleInFlight = false
 
-async function toggleRecordingForUser(): Promise<{ recording: boolean }> {
+async function toggleRecordingForUser(action?: HotkeyAction): Promise<{ recording: boolean }> {
   if (!replay || !obsCore) throw new Error('Recording not ready')
 
   if (replay.isRecordingContinuously?.()) {
-    await stopRecordingAndRegister()
-    showNotification('saved')
+    const moved = await stopRecordingAndRegister()
+    showNotification('saved', path.dirname(moved), action ? hotkeyTitle(action, 'Recording saved') : undefined)
     return { recording: false }
   }
 
   await replay.startContinuousRecording()
-  showNotification('recorded')
+  showNotification('recorded', outputRoot(), action ? hotkeyTitle(action, 'Recording started') : undefined)
   return { recording: true }
 }
 
 async function toggleRecordingFromHotkey(): Promise<void> {
   if (recordingToggleInFlight) return
   recordingToggleInFlight = true
+  // Which half failed decides the popup's heading; read before the call, because a
+  // failed stop still leaves the recording running.
+  const wasRecording = replay?.isRecordingContinuously?.() ?? false
   try {
-    await toggleRecordingForUser()
+    await toggleRecordingForUser('toggle-record')
   } catch (e) {
     log.error('Failed to toggle recording:', e)
-    showNotification('error', 'Recording not ready')
+    showNotification(
+      'error',
+      errorMessage(e),
+      hotkeyTitle('toggle-record', wasRecording ? 'Recording not stopped' : 'Recording not started'),
+    )
   } finally {
     recordingToggleInFlight = false
   }
@@ -667,10 +681,12 @@ const services = {
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
-  toggleRecording: () => toggleRecordingForUser(),
+  /** Hotkey-only (startup and rebind): names the key in its popups. */
+  toggleRecording: () => toggleRecordingForUser('toggle-record'),
   /** The panel's Stop button: the same function the start/stop hotkey uses. */
   stopRecording: () => stopRecordingAndRegister(),
-  saveQuickClip: () => saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds'))),
+  /** Hotkey-only (startup and rebind): names the key in its popups. */
+  saveQuickClip: () => saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds')), 'save-quick-clip'),
   /**
    * Registers a recording the buffer finished on teardown.
    *
@@ -680,7 +696,7 @@ const services = {
    */
   registerFinishedFromBufferStop,
   reinitPipeline,
-  notify: (type: BufferStatus, message?: string) => showNotification(type, message),
+  notify: (type: BufferStatus, message?: string, title?: string) => showNotification(type, message, title),
   status: {
     get: () => currentStatus,
     set: (s: { status: ObsStatus; message?: string }) => setStatus(s),

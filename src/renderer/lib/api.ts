@@ -286,14 +286,4 @@ export function formatSourceName(raw: string | null | undefined): string {
   return s
 }
 
-/** Renders a hotkey accelerator the way the original does. */
-export function formatHotkey(accelerator: string): string {
-  if (!accelerator) return 'Unbound'
-  return accelerator
-    .replace('CommandOrControl', 'Ctrl')
-    .replace('Command', 'Cmd')
-    .replace('Control', 'Ctrl')
-    .replace('Super', 'Win')
-    .replace(/\bKey(\d+)\b/, 'Key $1')
-    .replace(/\+/g, ' + ')
-}
+

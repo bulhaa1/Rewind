@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pencil, Volume2, VolumeX } from 'lucide-react'
-import { api, formatHotkey } from '../lib/api'
+import { api } from '../lib/api'
+import { formatHotkey } from '@shared/constants.js'
 import { cn } from './ui'
 
 /** Percent readout for a 0-1 fader, which is every volume in the app. */
