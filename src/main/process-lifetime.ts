@@ -184,15 +184,17 @@ export function bindChildren(exeName: string): void {
 export function killChildren(exeName: string): void {
   if (process.platform !== 'win32') return
   const job = getJobBinding()
-  const targets = job
-    ? findChildPids(job, exeName).map((pid) => `/PID ${pid}`)
-    : [`/IM ${exeName}`]
+  if (!job) {
+    // shortcut: with no job handle there is no way to tell our obs64 from the user's
+    // own OBS Studio, so nothing is killed here. Upgrade path: track the child pid we
+    // spawn so this can still kill ours by pid.
+    log.warn(`Process list unavailable; leaving ${exeName} alone rather than killing by name`)
+    return
+  }
 
-  if (!job) log.warn(`Process list unavailable, killing every ${exeName} by name`)
-
-  for (const t of targets) {
+  for (const pid of findChildPids(job, exeName)) {
     try {
-      execSync(`taskkill /F /T ${t}`, { stdio: 'ignore' })
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' })
     } catch {
       /* already gone */
     }

@@ -408,7 +408,13 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
      */
     const current = clipMeta.get('clips') ?? {}
     const merged: Record<string, ClipMeta> = { ...current }
-    for (const [p, rec] of Object.entries(metaUpdates)) merged[p] = { ...current[p], ...rec }
+    for (const [p, rec] of Object.entries(metaUpdates)) {
+      // A clip deleted while this scan was still walking appears in the snapshot but
+      // nowhere else. Writing it back would resurrect a record for a file that is
+      // gone, so check the disk before trusting the snapshot about a new key.
+      if (!(p in current) && !fs.existsSync(p)) continue
+      merged[p] = { ...current[p], ...rec }
+    }
     clipMeta.set('clips', merged)
   }
 

@@ -17,15 +17,36 @@ class JsonStore<T extends object> {
     private readonly defaults: T,
   ) {}
 
+  /** Last good copy. Also means one parse per run instead of one per read. */
+  private cached: T | null = null
+  /** Set when the file exists but could not be read; writes stand down until it can. */
+  private unreadable = false
+
   private read(): T {
+    if (this.cached) return this.cached
     try {
       const raw = fs.readFileSync(this.filePath, 'utf8')
       const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') return parsed as T
-    } catch {
+      if (parsed && typeof parsed === 'object') {
+        this.unreadable = false
+        return (this.cached = parsed as T)
+      }
       this.backupCorrupt()
+    } catch (e) {
+      // A missing file is a first run. Unparseable text is corruption. Anything else
+      // - a lock, a sharing violation, a permission error - is neither, and treating
+      // it as corruption is how a whole file of settings, or the clip metadata, got
+      // replaced by defaults on the next write.
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return (this.cached = { ...this.defaults })
+      if (e instanceof SyntaxError) {
+        this.backupCorrupt()
+        return (this.cached = { ...this.defaults })
+      }
+      log.error(`Could not read ${path.basename(this.filePath)}; keeping what we had:`, e)
+      this.unreadable = true
+      return this.cached ?? { ...this.defaults }
     }
-    return { ...this.defaults }
+    return (this.cached = { ...this.defaults })
   }
 
   private backupCorrupt(): void {
@@ -40,11 +61,16 @@ class JsonStore<T extends object> {
   }
 
   private write(next: T): void {
+    if (this.unreadable) {
+      log.error(`Refusing to overwrite ${path.basename(this.filePath)}: it could not be read`)
+      return
+    }
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
       const tmp = `${this.filePath}.tmp`
       fs.writeFileSync(tmp, JSON.stringify(next, null, '\t'), 'utf8')
       fs.renameSync(tmp, this.filePath)
+      this.cached = next
     } catch (e) {
       log.error(`Failed to persist ${path.basename(this.filePath)}:`, e)
     }

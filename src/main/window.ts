@@ -327,12 +327,21 @@ export function bootstrap(hooks: {
   app.on('before-quit', (e) => {
     if (lifecycle.value) return
     lifecycle.value = true
-    try {
-      hooks.onPipelineWedge()
-    } catch (err) {
-      log.error('Cleanup failed:', err)
-    }
+
+    // Hold the quit until the engine has finished. `onPipelineWedge` is what stitches
+    // a running recording and writes a pending save, and `will-quit` force-kills the
+    // child - so quitting without waiting destroys the very file the user asked to
+    // keep. Ten seconds is the ceiling: a wedged engine must not make Quit do nothing.
+    e.preventDefault()
     destroyTray()
+    void (async () => {
+      try {
+        await Promise.race([hooks.onPipelineWedge(), new Promise((resolve) => setTimeout(resolve, 10_000))])
+      } catch (err) {
+        log.error('Cleanup failed:', err)
+      }
+      app.quit()
+    })()
   })
 
   app.on('will-quit', () => {

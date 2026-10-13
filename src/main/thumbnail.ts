@@ -20,15 +20,26 @@ function hashName(file: string): string {
   return crypto.createHash('sha1').update(file).digest('hex')
 }
 
-export function thumbnailPath(file: string): string {
-  return path.join(dir(), `${hashName(file)}.jpg`)
+export function thumbnailPath(file: string, width: number): string {
+  return path.join(dir(), `${hashName(file)}-${width}.jpg`)
 }
 
+/** Removes every cached size for a file: a caller only knows the file, not the widths used. */
 export function deleteThumbnail(file: string): void {
+  const prefix = `${hashName(file)}-`
+  let entries: string[]
   try {
-    fs.rmSync(thumbnailPath(file), { force: true })
+    entries = fs.readdirSync(dir())
   } catch {
-    /* already gone */
+    return
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith(prefix)) continue
+    try {
+      fs.rmSync(path.join(dir(), entry), { force: true })
+    } catch {
+      /* already gone */
+    }
   }
 }
 
@@ -41,14 +52,17 @@ function nonEmpty(p: string): boolean {
 }
 
 /** Reads a cached thumbnail as a data URL, or null if it can't be produced. */
-async function cachedOr(file: string, produce: (out: string) => Promise<void>): Promise<string | null> {
-  const existing = inFlight.get(file)
+async function cachedOr(file: string, width: number, produce: (out: string) => Promise<void>): Promise<string | null> {
+  // Keyed by size as well as path: the same clip at two widths is two cached files,
+  // and neither should block the other.
+  const key = `${file}|${width}`
+  const existing = inFlight.get(key)
   if (existing) return existing
 
   const job = (async () => {
     if (!nonEmpty(file)) return null
 
-    const out = thumbnailPath(file)
+    const out = thumbnailPath(file, width)
     try {
       const mtime = fs.statSync(file).mtimeMs
       // Regenerate only when the source is newer than our cached thumbnail.
@@ -57,6 +71,16 @@ async function cachedOr(file: string, produce: (out: string) => Promise<void>): 
       }
       fs.mkdirSync(dir(), { recursive: true })
       await produce(out)
+      // A delete can land while a frame is being grabbed. Leaving the file behind
+      // would resurrect a cache entry for a clip that is gone.
+      if (!fs.existsSync(file)) {
+        try {
+          fs.rmSync(out, { force: true })
+        } catch {
+          /* best effort */
+        }
+        return null
+      }
       return nonEmpty(out) ? dataUrl(out) : null
     } catch (e) {
       log.warn(`Failed to generate thumbnail for ${path.basename(file)}:`, e)
@@ -64,8 +88,8 @@ async function cachedOr(file: string, produce: (out: string) => Promise<void>): 
     }
   })()
 
-  inFlight.set(file, job)
-  return job.finally(() => inFlight.delete(file))
+  inFlight.set(key, job)
+  return job.finally(() => inFlight.delete(key))
 }
 
 function dataUrl(p: string): string {
@@ -77,7 +101,7 @@ function dataUrl(p: string): string {
  * which is often black on OBS recordings) and falls back to 0s on failure.
  */
 export function clipThumbnail(file: string, width = THUMBNAIL.GRID): Promise<string | null> {
-  return cachedOr(file, async (out) => {
+  return cachedOr(file, width, async (out) => {
     try {
       await ffmpegTo(
         ['-hide_banner', '-ss', String(THUMBNAIL.SEEK), '-i', file, '-frames:v', '1', '-q:v', String(THUMBNAIL.JPEG_QUALITY), '-vf', `scale=${width}:-2`],
@@ -96,7 +120,7 @@ export function clipThumbnail(file: string, width = THUMBNAIL.GRID): Promise<str
 
 /** Screenshot thumbnail: single frame from the head, no seek. */
 export function screenshotThumbnail(file: string, width = THUMBNAIL.GRID): Promise<string | null> {
-  return cachedOr(file, async (out) => {
+  return cachedOr(file, width, async (out) => {
     await ffmpegTo(
       ['-hide_banner', '-i', file, '-frames:v', '1', '-q:v', String(THUMBNAIL.JPEG_QUALITY), '-vf', `scale=${width}:-2`],
       out,

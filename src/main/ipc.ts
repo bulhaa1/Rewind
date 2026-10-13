@@ -94,6 +94,8 @@ export interface Services {
   toggleReplay: () => Promise<{ active: boolean }>
   /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
   toggleRecording: () => Promise<{ recording: boolean }>
+  /** Stops a running recording and registers the file. The panel's Stop button. */
+  stopRecording: () => Promise<string>
   /** Saves the last N seconds of the buffer, using the quick-clip length setting. */
   saveQuickClip: () => Promise<string>
   /**
@@ -232,29 +234,9 @@ export function registerIpc(s: Services): void {
     if (!replay().isRecordingContinuously?.()) return fail('Not currently recording')
 
     try {
-      const file = await replay().stopContinuousRecording()
-      const sourceName = capture().getCurrentSourceName()
-      const cm = require('./clip-manager.js')
-      const meta = require('./clip-meta.js')
-
-      const moved = cm.moveIntoSourceFolder(file, sourceName, obsCore().getConfig().outputPath)
-      meta.setClipMeta(moved, {
-        recordedAt: Date.now(),
-        source: sourceName,
-        audioTracks: obsCore().audioTrackLabels(),
-      })
-
-      s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
-
-      void cm
-        .describeSavedClip(moved, replay().getActiveEncoderVendor(), replay().getActiveEncoder(), replay().getQualityTarget(), sourceName)
-        .then((info: { durationSec: number } | null) => cm.stampDuration(moved, info?.durationSec))
-        .catch(() => {
-          /* diagnostics only */
-        })
-
-      filesLog.info(`Recording saved: ${moved}`)
-      return ok({ outputPath: moved })
+      // One implementation with the start/stop hotkey, so the two cannot drift in
+      // what they do with the finished file.
+      return ok({ outputPath: await s.stopRecording() })
     } catch (e) {
       replayLog.error('Failed to stop recording:', e)
       return fail(messageOf(e))
@@ -607,14 +589,26 @@ export function registerIpc(s: Services): void {
     const blocked = notReady()
     if (blocked) return blocked
 
+    const previous = getSetting('outputPath')
     try {
       return await withStatus(OBS_STATUS_MESSAGES.changingSettings, async () => {
-        setSetting('outputPath', target)
+        // The engine first. The setting is what the library scans, so saving it before
+        // OBS agrees would leave the panel showing an empty folder while clips keep
+        // landing in the old one.
         await obsCore().setOutputPath(rewindRoot(target))
+        setSetting('outputPath', target)
         filesLog.info(`Output path set to: ${target}`)
         return ok(target)
       })
     } catch (e) {
+      // Best effort: put the engine back where it was. The setting never moved.
+      if (previous) {
+        try {
+          await obsCore().setOutputPath(rewindRoot(previous))
+        } catch {
+          /* the engine is the thing that just failed; report the original error */
+        }
+      }
       log.error('Failed to set output path:', e)
       return fail(messageOf(e))
     }
@@ -787,6 +781,10 @@ export function registerIpc(s: Services): void {
 
     try {
       deleteScreenshotMeta(resolved.path)
+      // Same as the clip path above: the cached thumbnail is ours, so deleting the
+      // shot has to take it along or the cache grows for the life of the install.
+      const { deleteThumbnail } = require('./thumbnail.js')
+      deleteThumbnail(resolved.path)
     } catch (e) {
       filesLog.warn('Deleted screenshot but failed to drop its metadata:', e)
     }

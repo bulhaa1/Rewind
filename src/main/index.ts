@@ -291,6 +291,19 @@ async function shutdownPipeline(): Promise<void> {
     killObsChildren()
     await sleep(TIMING.OBS_RESPAWN_SETTLE)
   } finally {
+    // A recording that was still running when the pipeline came down is finished by
+    // the service itself. Registering it here is what makes it land in the library
+    // with its metadata, instead of showing up later as an unlabelled file with a
+    // guessed timestamp. Every rebuild passes through here: a setting change, a
+    // wedge recovery, a relaunch and a quit.
+    const finished = replay?.takeFinishedOnTeardown?.() ?? null
+    if (finished) {
+      try {
+        registerFinishedFromBufferStop(finished)
+      } catch (err) {
+        log.error('Recording finished by pipeline teardown but could not be registered:', err)
+      }
+    }
     obsCore = null
     replay = null
     capture = null
@@ -655,6 +668,8 @@ const services = {
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
   toggleRecording: () => toggleRecordingForUser(),
+  /** The panel's Stop button: the same function the start/stop hotkey uses. */
+  stopRecording: () => stopRecordingAndRegister(),
   saveQuickClip: () => saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds'))),
   /**
    * Registers a recording the buffer finished on teardown.
