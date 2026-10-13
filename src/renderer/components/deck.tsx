@@ -345,9 +345,9 @@ export function Deck({
               : 'Start the buffer and the last minute is always on disk'}
           </p>
         </div>
-      </div>
 
-      <div className="mt-6">
+        {/* The microphone sits at the far end of the dial row: the panel is widest
+            here and the space beside the capture line is otherwise empty. */}
         <MicStrip />
       </div>
 
