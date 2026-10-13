@@ -27,7 +27,7 @@ let tray: Tray | null = null
 let quitting = false
 
 /** True once a real quit is underway (used to distinguish hide-vs-quit). */
-export const lifecycle = { value: false }
+export const lifecycle = { value: false, installing: false }
 
 // ---------------------------------------------------------------------------
 // Crash dump bookkeeping
@@ -327,6 +327,16 @@ export function bootstrap(hooks: {
   app.on('before-quit', (e) => {
     if (lifecycle.value) return
     lifecycle.value = true
+
+    // The installer is already running and force-kills this process a few seconds
+    // from now, so waiting for the engine here would only mean being killed mid-way
+    // through the stitch it is waiting for. The updater sets `installing` before it
+    // hands over, and the Install button refuses to start while a recording is
+    // running, so there is nothing to protect at this point.
+    if (lifecycle.installing) {
+      destroyTray()
+      return
+    }
 
     // Hold the quit until the engine has finished. `onPipelineWedge` is what stitches
     // a running recording and writes a pending save, and `will-quit` force-kills the

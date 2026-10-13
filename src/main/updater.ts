@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { scope } from './logger.js'
+import { lifecycle } from './window.js'
 
 const log = scope('Updater')
 
@@ -159,6 +160,9 @@ export function quitAndInstall(): void {
     app.quit()
     return
   }
+  // The installer kills this process itself a few seconds in, so the quit must not
+  // stop to finish a recording: `installing` tells window.ts to skip that wait.
+  lifecycle.installing = true
   // isSilent = false and isForceRunAfter = true: the user should see the installer
   // running, and the app should come back up afterwards.
   au.quitAndInstall(false, true)

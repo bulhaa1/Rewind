@@ -905,6 +905,12 @@ export function registerIpc(s: Services): void {
   handle(IPC.downloadUpdate, async () => ok(await require('./updater.js').downloadUpdate()))
 
   handle(IPC.quitAndInstall, () => {
+    // Installing means the installer kills this process seconds later, so a recording
+    // still running would be cut off mid-stitch and never register. Refuse it, and say
+    // what to do, rather than losing the recording silently.
+    if (replay().isRecordingContinuously?.()) {
+      return fail('Stop the recording first — installing now would cut it off')
+    }
     // The process is replaced by the installer, so this never really returns.
     require('./updater.js').quitAndInstall()
     return ok()
