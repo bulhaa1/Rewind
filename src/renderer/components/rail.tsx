@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -11,8 +11,21 @@ import { useBackgroundAction } from '../lib/context'
 import { Badge, Button, Dialog, InlineSpinner, cn } from './ui'
 import type { ClipInfo, DeleteScope, ScreenshotInfo } from '@shared/types.js'
 
-const CARD_HEIGHT = 236
 const OVERSCAN = 4
+
+// A card's thumbnail is 16:9, so a row's height follows the rail's width. That
+// height is computed here rather than left to `aspect-ratio` so the list can lay
+// itself out for the new width in the same paint as the resize: an estimate that
+// only catches up a frame later is what stacked the cards on top of each other
+// while the divider was being dragged.
+const THUMB_RATIO = 9 / 16
+/** Everything in a row that is not the thumbnail: card padding, meta block, gap below. */
+const ROW_CHROME_FALLBACK = 90
+/** First paint only, before there is a row in the DOM to measure. */
+const FALLBACK_ROW_WIDTH = 314
+
+/** The thumbnail height a row of this width draws at. */
+const thumbHeight = (rowWidth: number) => Math.round(rowWidth * THUMB_RATIO)
 
 type View = 'clips' | 'screenshots'
 
@@ -39,6 +52,7 @@ function Thumb({
   duration,
   overlay,
   onHoverChange,
+  height,
 }: {
   cacheKey: string
   fetch: () => Promise<{ success: boolean; data?: string | null }>
@@ -46,6 +60,8 @@ function Thumb({
   duration?: string
   overlay?: React.ReactNode
   onHoverChange?: (hovering: boolean) => void
+  /** Computed from the rail's width, so a row lays out with the resize. */
+  height: number
 }) {
   const { data } = useQuery({
     queryKey: ['thumb', cacheKey],
@@ -60,7 +76,8 @@ function Thumb({
 
   return (
     <div
-      className="relative aspect-video w-full overflow-hidden rounded-md bg-raised"
+      className="relative flex w-full items-center justify-center overflow-hidden rounded-md bg-raised"
+      style={{ height }}
       data-testid="card-thumb"
       onPointerEnter={() => onHoverChange?.(true)}
       onPointerLeave={() => onHoverChange?.(false)}
@@ -199,12 +216,14 @@ function ScrubLayer({ filePath, duration }: { filePath: string; duration: number
  */
 function ClipCard({
   clip,
+  thumbHeight,
   isNew,
   onOpenEditor,
   onDelete,
   onRename,
 }: {
   clip: ClipInfo
+  thumbHeight: number
   isNew: boolean
   onOpenEditor: () => void
   onDelete: () => void
@@ -245,17 +264,19 @@ function ClipCard({
         <Thumb
           cacheKey={`${clip.path}|${clip.editedAt ?? ''}`}
           fetch={() => api.getClipThumbnail(clip.path)}
-          fallback={<Film className="mx-auto mt-[38px] h-4 w-4 text-accent" strokeWidth={1.5} />}
+          fallback={<Film className="h-4 w-4 text-accent" strokeWidth={1.5} />}
           duration={clip.duration > 0 ? formatDuration(clip.duration) : undefined}
           overlay={hovering ? <ScrubLayer filePath={clip.path} duration={clip.duration} /> : null}
           onHoverChange={setHovering}
+          height={thumbHeight}
         />
 
-        <div className="mt-2 flex items-start gap-2">
+        {/* Fixed height, so a row is exactly thumbnail + chrome at every width. */}
+        <div className="mt-2 flex h-[50px] items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-[12px] font-medium">{formatSourceName(clip.sourceName)}</span>
-            <span className="truncate text-[11px] text-ink-faint">{clip.filename}</span>
-            <span className="tabular truncate text-[10px] text-ink-faint">
+            <span className="truncate text-[12px] font-medium leading-4">{formatSourceName(clip.sourceName)}</span>
+            <span className="truncate text-[11px] leading-4 text-ink-faint">{clip.filename}</span>
+            <span className="tabular truncate text-[10px] leading-3.5 text-ink-faint">
               {formatTimestamp(clip.recordedAt)}
               {clip.fileSize ? ` · ${formatBytes(clip.fileSize)}` : ''}
             </span>
@@ -296,9 +317,11 @@ function ClipCard({
 /** One screenshot card. Same shell, fewer actions — there is nothing to trim. */
 function ScreenshotCard({
   shot,
+  thumbHeight,
   onDelete,
 }: {
   shot: ScreenshotInfo
+  thumbHeight: number
   onDelete: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -328,14 +351,16 @@ function ScreenshotCard({
         <Thumb
           cacheKey={shot.path}
           fetch={() => api.getScreenshotThumbnail(shot.path)}
-          fallback={<ImageIcon className="mx-auto mt-[38px] h-4 w-4 text-accent" strokeWidth={1.5} />}
+          fallback={<ImageIcon className="h-4 w-4 text-accent" strokeWidth={1.5} />}
+          height={thumbHeight}
         />
 
-        <div className="mt-2 flex items-start gap-2">
+        {/* Fixed height, so a row is exactly thumbnail + chrome at every width. */}
+        <div className="mt-2 flex h-[50px] items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-[12px] font-medium">{formatSourceName(shot.source)}</span>
-            <span className="truncate text-[11px] text-ink-faint">{shot.name}</span>
-            <span className="tabular truncate text-[10px] text-ink-faint">
+            <span className="truncate text-[12px] font-medium leading-4">{formatSourceName(shot.source)}</span>
+            <span className="truncate text-[11px] leading-4 text-ink-faint">{shot.name}</span>
+            <span className="tabular truncate text-[10px] leading-3.5 text-ink-faint">
               {formatTimestamp(shot.capturedAt)}
               {shot.size ? ` · ${formatBytes(shot.size)}` : ''}
             </span>
@@ -372,11 +397,14 @@ export function Rail({
   onViewChange,
   onOpenFolder,
   lastSavedAt,
+  railWidth,
 }: {
   view: View
   onViewChange: (view: View) => void
   onOpenFolder: () => void
   lastSavedAt: number | null
+  /** The rail's current width: a change is the signal to re-lay the list. */
+  railWidth: number
 }) {
   const client = useQueryClient()
   const { runAction } = useBackgroundAction()
@@ -409,12 +437,43 @@ export function Rail({
   }, [lastSavedAt])
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // A row is its thumbnail (16:9, so it follows the rail's width) plus fixed
+  // chrome. Both are measured from the DOM that is on screen, so the row height is
+  // right without a box-model sum to keep in sync.
+  const [rowWidth, setRowWidth] = useState(FALLBACK_ROW_WIDTH)
+  const [rowChrome, setRowChrome] = useState(ROW_CHROME_FALLBACK)
+
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => CARD_HEIGHT,
+    estimateSize: () => thumbHeight(rowWidth) + rowChrome,
     overscan: OVERSCAN,
   })
+
+  // Re-lay the list before the browser paints, whenever the rail changes width.
+  // Letting each card's ResizeObserver correct the offsets afterwards is a frame
+  // too late: that painted frame still holds the old width's heights, and the rows
+  // stand on top of each other for as long as the divider is moving.
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const row = list.firstElementChild
+    const thumb = row?.querySelector('[data-testid="card-thumb"]')
+    if (row && thumb) {
+      const chrome = Math.round(row.getBoundingClientRect().height - thumb.getBoundingClientRect().height)
+      if (chrome > 0 && chrome !== rowChrome) setRowChrome(chrome)
+    }
+    const width = list.clientWidth
+    if (width > 0 && width !== rowWidth) setRowWidth(width)
+    if (width > 0) {
+      // Sizes measured at the previous width no longer describe these cards, and a
+      // measurement outranks the estimate: drop them so the estimate is believed.
+      virtualizer.measure()
+    }
+  }, [railWidth, rowWidth, rowChrome, items.length, virtualizer])
+
+  const thumb = thumbHeight(rowWidth)
 
   const deleteClip = useCallback(
     async (path: string, scope: DeleteScope) => {
@@ -497,7 +556,7 @@ export function Rail({
         </div>
       ) : (
         <div ref={scrollRef} className="scroll-clean min-h-0 flex-1 overflow-y-auto pr-0.5">
-          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((v) => {
               const item = items[v.index]
               const isClip = view === 'clips'
@@ -515,6 +574,7 @@ export function Rail({
                   {isClip ? (
                     <ClipCard
                       clip={item as ClipInfo}
+                      thumbHeight={thumb}
                       isNew={newFor === item.path}
                       onOpenEditor={() => void api.openClipEditor(item.path)}
                       onDelete={() => setDeleteTarget({ path: item.path, name: (item as ClipInfo).filename })}
@@ -523,6 +583,7 @@ export function Rail({
                   ) : (
                     <ScreenshotCard
                       shot={item as ScreenshotInfo}
+                      thumbHeight={thumb}
                       onDelete={() => setDeleteTarget({ path: item.path, name: (item as ScreenshotInfo).name })}
                     />
                   )}

@@ -311,7 +311,13 @@ export function MainView() {
           style={{ width: railWidth }}
           className="flex shrink-0 flex-col overflow-hidden px-3 pb-3 pt-2"
         >
-          <Rail view={view} onViewChange={setView} onOpenFolder={openFolder} lastSavedAt={lastSaved} />
+          <Rail
+            view={view}
+            onViewChange={setView}
+            onOpenFolder={openFolder}
+            lastSavedAt={lastSaved}
+            railWidth={railWidth}
+          />
         </aside>
       </div>
 
