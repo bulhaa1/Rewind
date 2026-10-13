@@ -53,9 +53,10 @@ separate decision; none is touched here.
 2. **Encoder probe executables stay.** `obs-nvenc-test.exe`, `obs-qsv-test.exe`,
    `obs-amf-test.exe` are launched by the bundled plugins to test encoders; removing them
    silently changes encoder detection.
-3. **The mic meter survives a pipeline rebuild.** The microphone source object is recreated
-   on every `reinitPipeline()`; a volmeter left attached to a destroyed source is the
-   failure mode.
+3. **Signal handlers are load-bearing.** Both output objects keep their `signalHandler`:
+   removing the streaming one (which looks dead, since that output never starts) wedges every
+   rebuild — the main thread blocks in a synchronous IPC wait and even the shutdown timeout
+   cannot fire. Verified 2026-10-14; the code comment carries the date and the symptom.
 4. **Nothing new polls while the panel is hidden.** The meter, the recording-state poll and
    the thumbnail cache all stop when the window is hidden.
 5. **The audio-service flag is measured, not assumed.** If Chromium ignores it, record the
@@ -156,37 +157,26 @@ after scrolling the whole library; the thumbnail directory stops growing for del
 
 ---
 
-### T5 — Microphone strip with a live test meter on the main page
+### T5 — Microphone strip on the main page (no level meter)
 
-**Files:** new `src/main/volmeter.ts`, new `src/renderer/components/mic-strip.tsx`;
-modify `src/main/obs-core.ts` (expose the microphone source handle),
-`src/main/index.ts` (attach/detach on visibility and after every pipeline rebuild),
-`src/shared/ipc.ts`, `src/preload/index.ts`, `src/renderer/lib/api.ts` (one event channel),
-`src/renderer/components/deck.tsx` (mount).
+**Files:** new `src/renderer/components/mic-strip.tsx`; modify `src/renderer/components/deck.tsx`
+(mount), `src/shared/ipc.ts` + `src/preload/index.ts` + `src/renderer/lib/api.ts` only if a new
+channel is needed (it is not).
 
-**Interfaces:** `mic-level` event, `{ peak: number; inputPeak: number }`, pushed only while
-the panel is visible.
-
-- Layout, per the reference screenshot: mic glyph with a small level bar beneath it,
-  `microphone / input` label, device name (`Default`), a horizontal volume slider showing the
-  percentage, and a mute toggle — one row at the top of the deck.
-- Real meter: `VolmeterFactory.create(EFaderType.Peak).attach(micSource)` plus
-  `NodeObs.RegisterVolmeterCallback`, which delivers `{ sourceName, magnitude[], peak[],
-  inputPeak[] }` (`module.ts:385` exports the factory; the callback is registered on
-  `NodeObs`, verified in the client source). Measured: one batch every ~50 ms, so the bar
-  needs no interpolation. `attach` takes the raw OBS input, which is
-  `obsCore.microphone.source`, not the wrapper.
-- The callback worker is shared with `RegisterSourceCallback`; start it when the panel is
-  visible or a game-hook wait is pending, remove it when neither holds (see T6).
-- Detach and re-attach the volmeter after every `reinitPipeline()`; never start a second
-  callback worker.
+- Layout: one compact row at the top of the deck — mic glyph, the device in use (`Default` when
+  the system default is picked), a volume fader with its percentage, and a mute toggle.
+- **No level meter.** A first version used OBS's volmeter (`VolmeterFactory` +
+  `RegisterVolmeterCallback`); it was removed on request: the row is a control, not an
+  instrument, and a meter that only moves when someone speaks reads as broken the rest of the
+  time. Its cost was measured as inside the noise (obs64 6.61% attached vs 6.77% detached over
+  30 s windows), so nothing measurable is given up. The removal also removes the volmeter's one
+  real hazard: a meter left attached while the engine shuts down wedged every rebuild.
 - Slider and toggle reuse `setChannelVolume` / `setChannelMuted`; the device label comes from
-  `getChannelDevices`. Mic gain stays in Settings.
+  `getChannelDevices` + `getAudioDevices`. Mic gain stays in Settings.
 
-**Verify:** speaking or a tone moves the bar (assert changing `peak` in a CDP probe, plus a
-capture); the slider matches the stored fader; the toggle silences the bar; the meter costs
-< 1% of one core while visible and zero callbacks while hidden; it survives a settings change
-that rebuilds the pipeline.
+**Verify:** `node scripts/cdp.mjs scripts/probe-mic-strip.mjs` — strip on the main page, the
+meter's event channel gone (the preload throws on an unknown channel), volume and mute
+round-trip with the original values restored. Plus `npm run test:ui` for the panel as a whole.
 
 **Commit:** `feat: microphone strip with a live level meter on the main page`
 
@@ -247,4 +237,4 @@ machine completes the full cycle.
 | CPU @120 fps, buffering | 32.7% of one core | ≤ 26% |
 | CPU @60 fps, buffering | — | ≤ 12% |
 | Renderer IPC while hidden | polling | 0 gated calls |
-| Mic meter | absent | < 1% visible, 0 hidden |
+| Mic strip | absent | compact row; fader and mute verified, no meter |

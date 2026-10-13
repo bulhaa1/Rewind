@@ -27,8 +27,7 @@ import { getSetting, setSetting } from './store.js'
 import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
-import { detachMicMeter, setMicLevelSink, shutdownMicMeter, syncMicMeter } from './volmeter.js'
-import { TIMING, clampQuickClip, OBS_SOURCE_NAMES, shutdownBudgetMs } from '@shared/constants.js'
+import { TIMING, clampQuickClip, shutdownBudgetMs } from '@shared/constants.js'
 import type { BufferStatus, HotkeyAction, ObsStatus } from '@shared/types.js'
 
 const log = scope('App')
@@ -242,7 +241,6 @@ async function initPipeline(): Promise<void> {
     // legacy folders stop existing after the first run.
     require('./clip-manager.js').renameLegacySourceFolders(rewindRoot(getSetting('outputPath')))
     await startPipeline()
-    wireMicMeter()
     setStatus(OBS_STATUS_MESSAGES.ready, getMainWindow())
     log.info('OBS initialized and replay buffer started')
   } catch (e) {
@@ -296,16 +294,6 @@ async function startPipeline(): Promise<void> {
 async function shutdownPipeline(): Promise<void> {
   try {
     if (!obsCore) return
-    /*
-     * The meter is detached before the engine goes down, not after.
-     *
-     * A volmeter still attached to the microphone source while OBS shuts down
-     * wedged the whole reinit on this build: the main process stopped answering
-     * IPC and the shutdown never returned, so the timeout below could not even
-     * fire. Measured against the same rebuild on the previous release, which
-     * completes in about nine seconds.
-     */
-    detachMicMeter()
     await withTimeout(obsCore.shutdown(), shutdownBudget(), 'Shutdown timed out')
   } catch (e) {
     log.warn('OBS shutdown timed out during reinit, force-killing:', e)
@@ -329,7 +317,6 @@ async function shutdownPipeline(): Promise<void> {
     // The meter's source goes with the engine; detach before the objects vanish.
     // (Already detached at the top of this function on the normal path; this
     // covers the timeout path, where the engine is abandoned mid-teardown.)
-    detachMicMeter()
     obsCore = null
     replay = null
     capture = null
@@ -337,45 +324,6 @@ async function shutdownPipeline(): Promise<void> {
     audioMix = null
     audioDevices = null
   }
-}
-
-/**
- * The window whose visibility decides whether the microphone meter samples.
- *
- * Held rather than looked up so the show/hide listeners are installed once, not
- * once per pipeline build.
- */
-let micMeterWindow: Electron.BrowserWindow | null = null
-
-/**
- * Keeps the microphone meter in step with the panel and the pipeline.
- *
- * Called after every pipeline build, because a rebuild creates a new microphone
- * source object and the meter has to follow it, and from the window's own
- * visibility events. The meter samples only while the panel is visible: hidden to
- * the tray there is nothing to draw, and the callback worker behind it is shared
- * with the game-hook detector.
- */
-function wireMicMeter(): void {
-  const win = getMainWindow()
-  if (win && !micMeterWindow) {
-    micMeterWindow = win
-    win.on('show', syncMicMeterLevels)
-    win.on('hide', syncMicMeterLevels)
-    win.on('minimize', syncMicMeterLevels)
-    win.on('restore', syncMicMeterLevels)
-    win.on('closed', () => {
-      micMeterWindow = null
-    })
-  }
-  syncMicMeterLevels()
-}
-
-/** Attaches the meter when the panel is on screen, detaches it when it is not. */
-function syncMicMeterLevels(): void {
-  const win = getMainWindow()
-  const visible = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
-  syncMicMeter(obsCore?.obs ?? null, obsCore?.microphone?.source ?? null, OBS_SOURCE_NAMES.microphone, visible)
 }
 
 /**
@@ -408,8 +356,6 @@ async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean 
       await shutdownPipeline()
       buildPipeline()
       await startPipeline()
-      // The rebuild replaced the microphone source, so the meter follows it.
-      wireMicMeter()
       if (wasPaused) {
         await replay!.pauseReplayBuffer()
         await capture!.pauseCapture()
@@ -809,10 +755,6 @@ function main(): void {
     ? app.setAsDefaultProtocolClient('rewind', process.execPath, [path.resolve(process.argv[1])])
     : app.setAsDefaultProtocolClient('rewind')
 
-  // One clean release of the meter and its process-wide callback. The pipeline
-  // teardown path only detaches, because a settings change rebuilds it.
-  app.on('will-quit', () => shutdownMicMeter(obsCore?.obs ?? null))
-
   // Everything below needs a live app: `app.getPath('videos')` (default output
   // location), the session, and the `screen` module all throw before ready.
   // These callbacks are registered before bootstrap's, so ordering is preserved.
@@ -820,16 +762,6 @@ function main(): void {
     buildPipeline()
     registerIpc(services as never)
     registerClipProtocol()
-
-    /*
-     * Microphone levels are pushed to the panel as the binding delivers them. The
-     * meter that produces them is attached and detached by `wireMicMeter`, which
-     * follows the window's visibility.
-     */
-    setMicLevelSink((levels) => {
-      const win = getMainWindow()
-      if (win && !win.isDestroyed()) win.webContents.send('mic-level', levels)
-    })
 
     /*
      * Cache housekeeping, off the critical path. Deleting or renaming a clip

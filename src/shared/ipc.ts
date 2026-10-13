@@ -145,5 +145,4 @@ export const EVENT_CHANNELS = [
   'hotkey-capture-key',
   'play-notification-sound',
   'update-state',
-  'mic-level',
 ] as const
