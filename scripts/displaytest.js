@@ -55,13 +55,13 @@ const child = spawn(electron, ['.', `--user-data-dir=${PROFILE}`], {
 
 let exitCode = 0
 
-// Hard stop: a wedged OBS child must not hang the suite. Three saves plus two chain
-// restarts, so the budget is generous.
+// Hard stop: a wedged OBS child must not hang the suite. Six phases, five saves and
+// several chain restarts, so the budget is generous.
 const guard = setTimeout(() => {
   line('\nTIMEOUT: killing Rewind')
   child.kill()
   exitCode = 1
-}, 240_000)
+}, 360_000)
 
 child.on('exit', (code) => {
   clearTimeout(guard)
@@ -81,7 +81,9 @@ function report() {
     return
   }
 
-  const { real, half, clips } = JSON.parse(fs.readFileSync(resultPath, 'utf8'))
+  const { real, half, clips, recording, pausedAfterChange, activeAfterConcurrent } = JSON.parse(
+    fs.readFileSync(resultPath, 'utf8'),
+  )
   line(`display: ${real.width}x${real.height}   forced: ${half.width}x${half.height}`)
 
   const check = (label, expected) => {
@@ -110,6 +112,32 @@ function report() {
   check('with-buffer', real)
   check('without-buffer', half)
   check('after-fix', real)
+  check('after-paused', real)
+  check('after-concurrent', real)
+
+  // A recording that was in flight when the display changed must have been finished
+  // and registered, not dropped on the floor.
+  const finished = recording ?? {}
+  if (!finished.path || !(finished.bytes > 0)) {
+    line(`FAIL  recording: not finished across the change (${finished.path ?? 'none'}, ${finished.bytes ?? 0} bytes)`)
+    exitCode = 1
+  } else {
+    line(`PASS  recording: finished and registered (${(finished.bytes / 1024 / 1024).toFixed(1)} MB)`)
+  }
+
+  if (pausedAfterChange !== true) {
+    line('FAIL  paused: a display change resumed a buffer the user had paused')
+    exitCode = 1
+  } else {
+    line('PASS  paused: still paused after the change')
+  }
+
+  if (activeAfterConcurrent !== true) {
+    line('FAIL  concurrent: two display changes left the buffer stopped')
+    exitCode = 1
+  } else {
+    line('PASS  concurrent: buffer still running')
+  }
 
   if (exitCode !== 0) tailLog()
 }

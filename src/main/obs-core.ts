@@ -293,34 +293,54 @@ export class ObsCore {
    * when a metrics event fires without a real resolution change (a scale-factor
    * change, a colour-depth change, a spurious event).
    */
-  syncCanvasToDisplay(): { changed: boolean; base: { width: number; height: number } } {
+  /**
+   * Whether the canvas is out of step with the primary display, without touching OBS.
+   *
+   * A metrics event fires for changes that do not alter the size at all -- a scale
+   * factor, a colour depth, a monitor waking -- and acting on those would stop and
+   * restart the replay chain, throwing away the rolling buffer, for a canvas that
+   * was already correct.
+   */
+  canvasChangePending(): {
+    changed: boolean
+    base: { width: number; height: number }
+    out: { width: number; height: number }
+    previous: string | null
+  } {
     const primary = screen.getPrimaryDisplay()
     const size = { width: physicalWidth(primary), height: physicalHeight(primary) }
     const out = resolveOutputSize(size.width, size.height, this.config.outputResolution)
 
-    const baseStr = `${size.width}x${size.height}`
-    const outStr = `${out.width}x${out.height}`
-
-    if (!this.obs) return { changed: false, base: size }
+    if (!this.obs) return { changed: false, base: size, out, previous: null }
 
     const before = readSectionParams(getSettingSection('Video'))
-    if (before.Base === baseStr && before.Output === outStr) {
-      return { changed: false, base: size }
+    if (before.Base === `${size.width}x${size.height}` && before.Output === `${out.width}x${out.height}`) {
+      return { changed: false, base: size, out, previous: null }
     }
+    return { changed: true, base: size, out, previous: typeof before.Base === 'string' ? before.Base : null }
+  }
+
+  syncCanvasToDisplay(): {
+    changed: boolean
+    base: { width: number; height: number }
+    previous: string | null
+  } {
+    const pending = this.canvasChangePending()
+    if (!pending.changed) return { changed: false, base: pending.base, previous: null }
 
     const section = getSettingSection('Video')
-    setSettingValue(section, 'Base', baseStr)
-    setSettingValue(section, 'Output', outStr)
+    setSettingValue(section, 'Base', `${pending.base.width}x${pending.base.height}`)
+    setSettingValue(section, 'Output', `${pending.out.width}x${pending.out.height}`)
     saveSettingSection('Video', section)
 
     log.info(
-      `Display changed: canvas ${before.Base ?? 'unset'} -> ${baseStr}, ` +
-        `output ${before.Output ?? 'unset'} -> ${outStr}`,
+      `Display changed: canvas ${pending.previous ?? 'unset'} -> ${pending.base.width}x${pending.base.height}, ` +
+        `output ${pending.out.width}x${pending.out.height}`,
     )
 
     this.resetVideoContext('display change')
 
-    return { changed: true, base: size }
+    return { changed: true, base: pending.base, previous: pending.previous }
   }
 
   /**

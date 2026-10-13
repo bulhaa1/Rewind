@@ -48,6 +48,13 @@ export class CaptureManager {
   replayBuffer: any = null
   gameDetector: any = null
 
+  /**
+   * Called with the file when a display change finished a recording in flight.
+   * Wired to the same registration the pause path uses, so the clip still lands
+   * in the library with its metadata.
+   */
+  onRecordingFinished: ((file: string) => void) | null = null
+
   private windowListProbed = false
   private lastWindowListProbeAt = 0
   private switchMutex = new Mutex()
@@ -63,7 +70,9 @@ export class CaptureManager {
     setOutputScene?(scene: any): void
     ensureOutputScene?(): boolean
     /** Resizes the OBS canvas to the display. Returns whether it changed. */
-    syncCanvasToDisplay?(): { changed: boolean; base: { width: number; height: number } }
+    syncCanvasToDisplay?(): { changed: boolean; base: { width: number; height: number }; previous: string | null }
+    /** Whether the canvas is out of step with the display, without writing anything. */
+    canvasChangePending?(): { changed: boolean }
   }) {}
 
   setReplayBuffer(rb: any): void {
@@ -249,17 +258,65 @@ export class CaptureManager {
    * manager's canvasWidth/Height are the same idea stored twice, and updating
    * one without the other is what produced the mismatched scaling.
    *
+   * The replay chain comes down around the reset. OBS refuses to reset the video
+   * context while an output holds it -- measured: the section said 1280x720, the
+   * reset was called with the buffer live, and the next saved clip still came out
+   * 2560x1440 -- so without this the canvas kept the size it was built with while
+   * this manager's numbers moved to the new one. That disagreement is the black
+   * half-screen and the zoomed-in crop.
+   *
+   * The cost is the rolling buffer: the frames held before the change are gone,
+   * because an encode cannot change dimensions partway through. A clip already on
+   * disk is untouched, and a recording still in flight is finished and handed to
+   * `onRecordingFinished` rather than dropped.
+   *
    * Returns null when nothing actually changed, so a caller can stay quiet about
    * an event that was not a real resolution change.
    */
-  syncCanvasToDisplay(): { width: number; height: number } | null {
+  async applyDisplayChange(): Promise<{ from: string; to: string } | null> {
     const core = this.obsCore
     if (!core?.isInitialized?.()) return null
     if (!core.syncCanvasToDisplay) return null
-    const result = core.syncCanvasToDisplay()
-    if (!result.changed) return null
-    this.refreshCanvasForDisplay()
-    return result.base
+
+    // Read before stopping anything: a metrics event that did not change the size (a
+    // scale factor, a colour depth) must not cost the rolling buffer a restart.
+    if (core.canvasChangePending && !core.canvasChangePending().changed) return null
+
+    const buffer = this.replayBuffer
+    const wasActive = buffer?.isReplayBufferActive?.() === true
+
+    // stopReplayBuffer, never pauseReplayBuffer: `userPaused` is the user's flag,
+    // and the chain goes straight back up below.
+    if (wasActive) await buffer.stopReplayBuffer(true)
+
+    let changed = false
+    let from: string | null = null
+    try {
+      const result = core.syncCanvasToDisplay()
+      changed = result.changed
+      if (changed) {
+        // What the section said, not what this manager believed: the two disagreed
+        // for exactly as long as the reset was being refused.
+        from = result.previous
+        this.refreshCanvasForDisplay()
+      }
+    } finally {
+      if (wasActive) {
+        try {
+          await buffer.startReplayBuffer(true)
+        } catch (e) {
+          // A dead buffer is worse than a stale canvas, and the panel can restart it.
+          log.error('Display change: could not restart the replay buffer', e)
+        }
+      }
+      const finished = buffer?.takeFinishedOnTeardown?.() ?? null
+      if (finished) this.onRecordingFinished?.(finished)
+    }
+
+    if (!changed) return null
+    const to = `${this.canvasWidth}x${this.canvasHeight}`
+    log.info(`Capture canvas synced to the display: ${from ?? '(unknown)'} -> ${to}`)
+    return { from: from ?? '(unknown)', to }
   }
 
   /**

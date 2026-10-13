@@ -221,6 +221,9 @@ function buildPipeline(): void {
 
   capture.setReplayBuffer(replay)
   capture.setGameDetector(detector)
+  // A display change stops and restarts the chain, so a recording still running is
+  // finished by that teardown. Same registration the pause path uses.
+  capture.onRecordingFinished = registerFinishedFromBufferStop
 
   obsCore.wire(capture, replay, audioMix, audioDevices)
 
@@ -840,24 +843,72 @@ function main(): void {
      * resets the OBS video context.
      */
     let canvasSyncTimer: NodeJS.Timeout | null = null
-    const syncCanvasToDisplay = () => {
+    let syncRunning = false
+    let syncPending = false
+
+    /*
+     * Runs the display-change path, one at a time.
+     *
+     * Windows emits several metrics events for one change, and a change that arrives
+     * while a sync is running must not interleave with it: the sync stops and restarts
+     * the replay chain, so two overlapping runs would fight over the same output. The
+     * pending flag re-runs once afterwards instead.
+     */
+    const runDisplaySync = async (): Promise<void> => {
+      if (syncRunning) {
+        syncPending = true
+        return
+      }
+      syncRunning = true
+      try {
+        do {
+          syncPending = false
+          const manager = services.capture
+          if (!manager) break
+          // Through the source lock: a display change and a source switch both stop
+          // and restart the chain, and they must not do it at the same time.
+          await manager.acquireSourceLock(() => manager.applyDisplayChange())
+        } while (syncPending)
+      } catch (e) {
+        // Never let a display event take the app down with it.
+        console.error('Failed to sync the capture canvas to a display change:', e)
+      } finally {
+        syncRunning = false
+      }
+    }
+
+    const scheduleCanvasSync = () => {
       if (canvasSyncTimer) clearTimeout(canvasSyncTimer)
       canvasSyncTimer = setTimeout(() => {
         canvasSyncTimer = null
-        try {
-          services.capture?.syncCanvasToDisplay()
-        } catch (e) {
-          // Never let a display event take the app down with it.
-          console.error('Failed to sync the capture canvas to a display change:', e)
-        }
+        void runDisplaySync()
       }, 750)
     }
 
-    screen.on('display-added', invalidateDisplays)
-    screen.on('display-removed', invalidateDisplays)
+    /*
+     * A monitor that becomes primary fires display-added, not a metrics change, and
+     * the canvas follows the primary -- so the primary's id decides whether a sync is
+     * needed, not the event's name.
+     */
+    let primaryDisplayId = screen.getPrimaryDisplay().id
+    const syncIfPrimaryChanged = () => {
+      const id = screen.getPrimaryDisplay().id
+      if (id === primaryDisplayId) return
+      primaryDisplayId = id
+      scheduleCanvasSync()
+    }
+
+    screen.on('display-added', () => {
+      invalidateDisplays()
+      syncIfPrimaryChanged()
+    })
+    screen.on('display-removed', () => {
+      invalidateDisplays()
+      syncIfPrimaryChanged()
+    })
     screen.on('display-metrics-changed', () => {
       invalidateDisplays()
-      syncCanvasToDisplay()
+      scheduleCanvasSync()
     })
 
     if (process.env.REWIND_SELFTEST === '1') void runSelfTest()
@@ -920,6 +971,20 @@ async function waitForBuffer(buffer: ReplayBuffer, timeoutMs: number): Promise<v
   throw new Error(`Replay buffer did not become active within ${timeoutMs}ms`)
 }
 
+/** Finds a file by name anywhere under a directory, or null. */
+function findFile(dir: string, name: string): string | null {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      const hit = findFile(full, name)
+      if (hit) return hit
+    } else if (entry.name === name) {
+      return full
+    }
+  }
+  return null
+}
+
 /**
  * Measures what OBS does with a canvas change while the replay chain is live.
  *
@@ -947,6 +1012,7 @@ async function runDisplaySelfTest(): Promise<void> {
   }
 
   const realOutputPath = getSetting('outputPath')
+  const manager = capture
   const primary = screen.getPrimaryDisplay()
   const real = {
     width: Math.round(primary.bounds.width * (primary.scaleFactor || 1)),
@@ -1000,10 +1066,75 @@ async function runDisplaySelfTest(): Promise<void> {
     await saveClip('without-buffer')
 
     log.info('DISPLAY-TEST phase=C buffer running, stale canvas, display-change path')
-    await capture.syncCanvasToDisplay()
+    await manager.applyDisplayChange()
     await saveClip('after-fix')
 
-    fs.writeFileSync(path.join(outDir, 'result.json'), JSON.stringify({ real, half, clips }, null, 2))
+    /*
+     * D: a recording in flight. The chain has to come down to reset the video
+     * context, and a recording running at that moment must be finished and
+     * registered, not dropped. The canvas is forced first because the reset only
+     * refuses while an output is live -- which is exactly the state being tested.
+     */
+    log.info('DISPLAY-TEST phase=D recording in flight across a display change')
+    obsCore.forceCanvasSize(half.width, half.height)
+    await replay.startContinuousRecording()
+    await sleep(6_000)
+    let finishedName: string | null = null
+    const passThrough = manager.onRecordingFinished
+    manager.onRecordingFinished = (file) => {
+      finishedName = path.basename(file)
+      passThrough?.(file)
+    }
+    await manager.applyDisplayChange()
+    await sleep(2_000)
+    manager.onRecordingFinished = passThrough
+    // Registration moves the file into its source folder, so the name is what is
+    // stable -- the path it was handed no longer exists afterwards.
+    const registeredRecording = finishedName ? findFile(outDir, finishedName) : null
+    const recordingBytes = registeredRecording ? fs.statSync(registeredRecording).size : 0
+    log.info(`DISPLAY-TEST recording=${registeredRecording ?? '(none)'} bytes=${recordingBytes}`)
+
+    /*
+     * E: a buffer the user paused. A display change must still reach OBS and must
+     * not resume anything: the pause is the user's, and an empty scene would record
+     * black until they resume it themselves.
+     */
+    log.info('DISPLAY-TEST phase=E paused buffer across a display change')
+    await replay.pauseReplayBuffer()
+    obsCore.forceCanvasSize(half.width, half.height)
+    await manager.applyDisplayChange()
+    const pausedAfterChange = replay.isReplayBufferActive() === false
+    log.info(`DISPLAY-TEST pausedAfterChange=${pausedAfterChange}`)
+    await replay.startReplayBuffer(true)
+    await saveClip('after-paused')
+
+    // F: two display events arriving together, through the same lock the listener
+    // uses. Neither may wedge the chain.
+    log.info('DISPLAY-TEST phase=F concurrent display changes')
+    obsCore.forceCanvasSize(half.width, half.height)
+    await Promise.all([
+      manager.acquireSourceLock(() => manager.applyDisplayChange()),
+      manager.acquireSourceLock(() => manager.applyDisplayChange()),
+    ])
+    const activeAfterConcurrent = replay.isReplayBufferActive() === true
+    log.info(`DISPLAY-TEST activeAfterConcurrent=${activeAfterConcurrent}`)
+    await saveClip('after-concurrent')
+
+    fs.writeFileSync(
+      path.join(outDir, 'result.json'),
+      JSON.stringify(
+        {
+          real,
+          half,
+          clips,
+          recording: { path: registeredRecording, bytes: recordingBytes },
+          pausedAfterChange,
+          activeAfterConcurrent,
+        },
+        null,
+        2,
+      ),
+    )
     log.info('DISPLAY-TEST complete')
   } catch (e) {
     log.error('DISPLAY-TEST failed:', e)
