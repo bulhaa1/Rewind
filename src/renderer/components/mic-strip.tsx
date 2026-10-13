@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Mic, VolumeX } from 'lucide-react'
 import { api, read } from '../lib/api'
@@ -12,7 +12,7 @@ import type { AudioDevice } from '@shared/types.js'
  * A narrow vertical column that sits at the right-hand end of the deck's dial row,
  * where the panel is widest and the space beside the capture line is otherwise
  * empty. Vertical is what makes it fit there without competing with the dial for
- * width: the control reads top to bottom as mute, device, level, value.
+ * width: the control reads top to bottom as mute, level.
  *
  * The microphone glyph is the mute control -- a switch of its own would be a
  * second element for a state the icon already shows, and the column is meant to be
@@ -54,15 +54,49 @@ export function MicStrip() {
   const shown = drag ?? (muted ? 0 : volume)
   const MuteIcon = muted ? VolumeX : Mic
 
-  const commit = () => {
-    if (drag === null) return
-    const value = drag
-    setDrag(null)
-    void runAction(async () => {
-      const res = await api.setChannelVolume('microphone', value)
-      if (!res.success) throw new Error(res.error)
-    }).then(() => client.invalidateQueries({ queryKey: ['audio-levels'] }))
-  }
+  /**
+   * Commits a drag and only then releases the local value.
+   *
+   * Clearing `drag` first is what made the fader flicker: for the length of the
+   * round trip the stored volume was still the old one, so the thumb snapped back
+   * and then jumped forward again. Holding the dragged value until the refetch has
+   * landed means the hand-off is between two equal numbers.
+   */
+  const commit = useCallback(
+    async (value: number) => {
+      await runAction(async () => {
+        const res = await api.setChannelVolume('microphone', value)
+        if (!res.success) throw new Error(res.error)
+      })
+      await client.invalidateQueries({ queryKey: ['audio-levels'] })
+      setDrag(null)
+    },
+    [client, runAction],
+  )
+
+  // The latest dragged value, so the release listener below can stay installed.
+  const dragRef = useRef<number | null>(null)
+  dragRef.current = drag
+
+  /*
+   * One release path for pointer and keyboard alike, on the window rather than the
+   * track: a drag that ends outside the fader still saves, and there is exactly one
+   * place that commits, so no double write.
+   */
+  useEffect(() => {
+    const release = () => {
+      const value = dragRef.current
+      if (value !== null) void commit(value)
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    window.addEventListener('keyup', release)
+    return () => {
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+      window.removeEventListener('keyup', release)
+    }
+  }, [commit])
 
   const toggleMute = () => {
     void runAction(async () => {
@@ -100,12 +134,10 @@ export function MicStrip() {
         value={shown}
         aria-label={device ? `Microphone volume (${device})` : 'Microphone volume'}
         onChange={(e) => setDrag(Number(e.target.value))}
-        onPointerUp={commit}
-        onKeyUp={commit}
         // Chromium's supported way to lay a range out vertically: the track runs
         // down the block axis, and `direction: rtl` puts the loud end at the top.
         style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
-        className="h-12 w-1.5 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
+        className="h-20 w-1.5 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
       />
     </div>
   )
