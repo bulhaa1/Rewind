@@ -14,9 +14,10 @@ const DEV_URL = process.env.REWIND_DEV_SERVER
 
 const MAIN_WIDTH = 1000
 const MAIN_HEIGHT = 620
-// The landscape shell: the capture deck is fluid and the clips rail is a fixed
-// 340px, so the floor is where the deck's rows start to crowd. The old panel was a
-// fixed 400px column, which is why the floor used to equal the width.
+// The landscape shell: the capture deck is fluid and the clips rail is resizable
+// (340px by default, dragged from the divider between them), so the floor is where
+// the rail's own floor plus the deck's floor still fit. The old panel was a fixed
+// 400px column, which is why the floor used to equal the width.
 const MIN_WIDTH = 860
 const MIN_HEIGHT = 540
 

@@ -88,11 +88,13 @@ export default async function ({ evaluate, drainErrors }) {
     titlebar: !!document.querySelector('[data-testid="titlebar"]'),
     dial: !!document.querySelector('[data-testid="dial"]'),
     rail: !!document.querySelector('[data-testid="rail-pane"]'),
+    resizer: !!document.querySelector('[data-testid="pane-resizer"]'),
     cards: document.querySelectorAll('[data-testid="rail-card"]').length,
   })`)
   check('titlebar present', dom.titlebar === true)
   check('buffer dial present', dom.dial === true)
   check('clips rail present', dom.rail === true, `cards: ${dom.cards}`)
+  check('pane resizer present', dom.resizer === true)
 
   // 14. the settings spine is reachable and complete, then back to the panel
   await call(`window.location.hash = '/settings'`)
