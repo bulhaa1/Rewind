@@ -26,7 +26,7 @@ import { getSetting, setSetting } from './store.js'
 import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
-import { TIMING } from '@shared/constants.js'
+import { TIMING, clampQuickClip } from '@shared/constants.js'
 import type { BufferStatus, ObsStatus } from '@shared/types.js'
 
 const log = scope('App')
@@ -455,7 +455,7 @@ async function saveQuickClipFromHotkey(): Promise<void> {
   }
 
   try {
-    await saveQuickClipAndNotify(services, getSetting('quickClipSeconds'))
+    await saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds')))
   } catch (e) {
     log.error('Failed to save quick clip:', e)
     const wedged = errorMessage(e).includes('Timeout waiting for replay buffer')
@@ -655,7 +655,7 @@ const services = {
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
   toggleRecording: () => toggleRecordingForUser(),
-  saveQuickClip: () => saveQuickClipAndNotify(services, getSetting('quickClipSeconds')),
+  saveQuickClip: () => saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds'))),
   /**
    * Registers a recording the buffer finished on teardown.
    *

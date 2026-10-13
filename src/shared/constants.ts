@@ -18,8 +18,10 @@ export const OBS_SOURCE_NAMES = {
 /**
  * Lengths the quick-clip hotkey can save, in seconds.
  *
- * All shorter than the longest buffer, so any of them is reachable from any
- * buffer setting. A request at or beyond the buffer length saves the whole
+ * Capped at 90 seconds: the hotkey exists to grab the last moment, and the buffer is
+ * the only bound on it, so a longer window mostly means waiting on footage nobody
+ * wanted. All of them are shorter than the longest buffer, so any is reachable from
+ * any buffer setting; a request at or beyond the buffer length saves the whole
  * buffer rather than failing.
  */
 export const QUICK_CLIP_OPTIONS = [
@@ -29,11 +31,17 @@ export const QUICK_CLIP_OPTIONS = [
   { value: 45, label: '45 seconds' },
   { value: 60, label: '60 seconds' },
   { value: 90, label: '90 seconds' },
-  { value: 2 * 60, label: '2 minutes' },
-  { value: 3 * 60, label: '3 minutes' },
-  { value: 5 * 60, label: '5 minutes' },
 ]
+export const QUICK_CLIP_MIN = 5
+export const QUICK_CLIP_MAX = 90
 export const QUICK_CLIP_DEFAULT = 30
+
+/**
+ * A stored length can predate the cap, and IPC is not the only way a value gets in,
+ * so reads clamp rather than trust the file: nothing above QUICK_CLIP_MAX is acted on.
+ */
+export const clampQuickClip = (seconds: number) =>
+  Math.min(Math.max(Math.round(seconds), QUICK_CLIP_MIN), QUICK_CLIP_MAX)
 
 export const DEFAULT_SETTINGS = {
   captureMode: 'game' as CaptureMode,

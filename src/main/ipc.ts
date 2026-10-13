@@ -9,7 +9,10 @@ import {
   BUFFER_DURATION_MIN,
   DEFAULT_SETTINGS,
   MIC_GAIN,
+  QUICK_CLIP_MAX,
+  QUICK_CLIP_MIN,
   SCREENSHOT_SUBDIR,
+  clampQuickClip,
 } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
@@ -830,13 +833,13 @@ export function registerIpc(s: Services): void {
    * the same tier as volume and mute. Rebuilding the audio graph is what costs a
    * pipeline restart, and nothing here does that.
    */
-  handle(IPC.getQuickClipSeconds, () => ok(getSetting('quickClipSeconds')))
+  handle(IPC.getQuickClipSeconds, () => ok(clampQuickClip(getSetting('quickClipSeconds'))))
 
   handle(IPC.setQuickClipSeconds, (seconds: unknown) => {
-    // Bounded by the longest preset, so a value typed anywhere still resolves to
-    // something the hotkey can actually deliver against a short buffer.
-    if (typeof seconds !== 'number' || seconds < 5 || seconds > 300) {
-      return fail('Quick clip length must be between 5 and 300 seconds')
+    // Capped at the longest option, so the hotkey always delivers what it promises
+    // and nothing can set a longer window behind the picker's back.
+    if (typeof seconds !== 'number' || seconds < QUICK_CLIP_MIN || seconds > QUICK_CLIP_MAX) {
+      return fail(`Quick clip length must be between ${QUICK_CLIP_MIN} and ${QUICK_CLIP_MAX} seconds`)
     }
     setSetting('quickClipSeconds', Math.round(seconds))
     return ok()
