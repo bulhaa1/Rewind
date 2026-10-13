@@ -114,7 +114,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   >
                     <span
                       className={cn(
-                        'tabular relative z-10 grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]',
+                        'tabular relative z-10 grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px]',
                         current ? 'border-accent bg-accent-soft text-ink' : 'border-line bg-canvas text-ink-faint',
                       )}
                     >

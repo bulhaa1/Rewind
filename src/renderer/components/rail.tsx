@@ -85,7 +85,7 @@ function Thumb({
       {data ? <img src={data} alt="" draggable={false} className="h-full w-full object-cover" /> : fallback}
       {overlay}
       {duration ? (
-        <span className="tabular absolute bottom-1 right-1 rounded bg-black/75 px-1 text-[10px] leading-tight">
+        <span className="tabular absolute bottom-1 right-1 rounded bg-black/75 px-1 text-[11px] leading-tight">
           {duration}
         </span>
       ) : null}
@@ -276,7 +276,7 @@ function ClipCard({
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[12px] font-medium leading-4">{formatSourceName(clip.sourceName)}</span>
             <span className="truncate text-[11px] leading-4 text-ink-faint">{clip.filename}</span>
-            <span className="tabular truncate text-[10px] leading-3.5 text-ink-faint">
+            <span className="tabular truncate text-[11px] leading-3.5 text-ink-faint">
               {formatTimestamp(clip.recordedAt)}
               {clip.fileSize ? ` · ${formatBytes(clip.fileSize)}` : ''}
             </span>
@@ -360,7 +360,7 @@ function ScreenshotCard({
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[12px] font-medium leading-4">{formatSourceName(shot.source)}</span>
             <span className="truncate text-[11px] leading-4 text-ink-faint">{shot.name}</span>
-            <span className="tabular truncate text-[10px] leading-3.5 text-ink-faint">
+            <span className="tabular truncate text-[11px] leading-3.5 text-ink-faint">
               {formatTimestamp(shot.capturedAt)}
               {shot.size ? ` · ${formatBytes(shot.size)}` : ''}
             </span>

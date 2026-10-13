@@ -761,7 +761,7 @@ function AudioTrackLane({
         {peaks && peaks.length > 0 ? (
           <Waveform peaks={peaks} />
         ) : (
-          <div className="flex h-full items-center justify-center text-[10px] text-ink-muted">
+          <div className="flex h-full items-center justify-center text-[11px] text-ink-muted">
             No waveform data
           </div>
         )}
