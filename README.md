@@ -45,16 +45,19 @@ does not install an update you have not applied.
 
 ## Using it
 
-Rewind lives in the system tray. The panel opens from the tray, or with the
-global hotkeys:
+Rewind lives in the system tray, and the panel opens from the tray icon. These four
+work whether the panel is open or closed:
 
 | Key | Action |
 |---|---|
-| `Alt+1` | Open / close the panel |
-| `Alt+2` | Save the buffer as a clip |
+| `Alt+1` | Save the whole replay buffer as a clip |
+| `Ctrl+Alt+1` | Save only the last N seconds, at a length you pick on the panel |
+| `Alt+2` | Take a screenshot of the captured display |
+| `Alt+3` | Start / stop a continuous recording |
 
-The buffer keeps rolling while the panel is closed. Recording state is shown by the
-ring filling — there is no red dot to misread.
+All four are rebindable in Settings. The buffer keeps rolling while the panel is
+closed, so closing the window never costs you a clip. The strip along the bottom of
+the panel shows how much is buffered at that moment.
 
 Clips, screenshots and the editor are all reachable from the tray menu.
 
@@ -77,7 +80,9 @@ to CPU encoding when it finds none, so it runs on any of them rather than being
 tied to one vendor. It is also its own installer: no Overwolf, no Adrenalin, no
 NVIDIA App running underneath it.
 
-Rewind is the least system resource taking app out of them all. Its purposly built with simple ui to make it lightweight so anyone even on a potato PC can clip there favorite moments without major fps hit.
+Rewind is the least system resource taking app out of them all. It's purposefully
+built with a simple UI to make it lightweight, so anyone — even on a potato PC — can
+clip their favorite moments without a major frame-rate hit.
 
 The share-link column is the one place Rewind is behind on purpose. Everyone
 else's version of that feature means your clips go through someone else's server.
