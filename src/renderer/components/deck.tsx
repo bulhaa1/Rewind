@@ -253,14 +253,21 @@ export function Deck({
   useEffect(() => {
     let alive = true
     const tick = async () => {
+      // The panel spends most of its life hidden to the tray. Nothing can see the
+      // answer then, so the round trip is skipped; a tick on the way back in makes
+      // the button correct the moment the panel opens.
+      if (document.hidden) return
       const value = await readRecording()
       if (alive && value !== null) setRecording(value)
     }
     void tick()
     const id = setInterval(() => void tick(), 2000)
+    const onVisibility = () => void tick()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       alive = false
       clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 

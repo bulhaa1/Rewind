@@ -132,3 +132,68 @@ export function screenshotThumbnail(file: string, width = THUMBNAIL.GRID): Promi
 // Screenshots
 // ---------------------------------------------------------------------------
 export { SCREENSHOT_FILENAME_ATTEMPTS, screenshotFileName }
+
+/** Source file types that can have a cached thumbnail. */
+const MEDIA_EXTENSIONS = new Set(['.mp4', '.mkv', '.mov', '.avi', '.webm', '.png'])
+
+/**
+ * Deletes cached thumbnails whose source file no longer exists.
+ *
+ * `deleteThumbnail` already runs when a clip or screenshot is deleted or renamed
+ * through the app. This catches the rest: files removed in Explorer, or a crash
+ * between the delete and the cache cleanup. Without it the cache only grows.
+ *
+ * Matching is on the file-name hash prefix rather than a rebuilt path, so every
+ * cached width is covered without knowing which widths were ever used.
+ *
+ * Roots that do not exist are skipped, and nothing is pruned when no root exists
+ * at all -- a fresh or misconfigured install must not wipe the cache on the
+ * strength of an empty library.
+ */
+export function pruneOrphanThumbnails(roots: string[]): number {
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(dir())
+  } catch {
+    return 0
+  }
+  if (!entries.length) return 0
+
+  const live = new Set<string>()
+  const walk = (p: string, depth: number): void => {
+    if (depth > 6) return
+    let items: fs.Dirent[]
+    try {
+      items = fs.readdirSync(p, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const item of items) {
+      const full = path.join(p, item.name)
+      if (item.isDirectory()) walk(full, depth + 1)
+      else if (MEDIA_EXTENSIONS.has(path.extname(item.name).toLowerCase())) live.add(hashName(full))
+    }
+  }
+
+  const present = roots.filter((r) => {
+    try {
+      return fs.statSync(r).isDirectory()
+    } catch {
+      return false
+    }
+  })
+  if (!present.length) return 0
+  for (const root of present) walk(root, 0)
+
+  let removed = 0
+  for (const entry of entries) {
+    if (live.has(entry.slice(0, 40))) continue
+    try {
+      fs.rmSync(path.join(dir(), entry), { force: true })
+      removed++
+    } catch {
+      /* best effort */
+    }
+  }
+  return removed
+}

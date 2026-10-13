@@ -18,6 +18,7 @@ import {
   saveQuickClipAndNotify,
   takeScreenshot,
   outputRoot,
+  screenshotPath,
   OBS_STATUS_MESSAGES,
 } from './ipc.js'
 import { getClipMeta, setClipMeta } from './clip-meta.js'
@@ -758,6 +759,23 @@ function main(): void {
     buildPipeline()
     registerIpc(services as never)
     registerClipProtocol()
+
+    /*
+     * Cache housekeeping, off the critical path. Deleting or renaming a clip
+     * through the app already drops its cached thumbnail; this catches the rest
+     * -- files removed in Explorer, or a crash between the delete and the cache
+     * cleanup. Without it the cache directory only ever grows.
+     */
+    setTimeout(() => {
+      try {
+        const { pruneOrphanThumbnails } = require('./thumbnail.js')
+        const removed = pruneOrphanThumbnails([outputRoot(), screenshotPath()])
+        if (removed) log.info(`Thumbnail cache: pruned ${removed} orphaned file(s)`)
+      } catch (e) {
+        log.warn('Thumbnail cache prune failed:', e)
+      }
+    }, 5_000)
+
     // Pushes the initial update state to the panel. This does not check for
     // updates -- it only reports whether checking is possible at all, which in a
     // dev build it is not. No network call happens here.

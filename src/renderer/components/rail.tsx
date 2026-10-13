@@ -72,7 +72,12 @@ function Thumb({
       return res?.success ? (res.data ?? null) : null
     },
     staleTime: Infinity,
-    gcTime: Infinity,
+    // Bounded, not Infinity: a thumbnail is a base64 JPEG in the renderer, and
+    // with an unbounded cache every clip ever scrolled past stayed resident for
+    // the life of the window. Five minutes after a row leaves the screen the
+    // entry is dropped; scrolling back re-reads the cached JPEG from disk, which
+    // is one file read, not a new frame grab.
+    gcTime: 5 * 60_000,
     retry: false,
   })
 
