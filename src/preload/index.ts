@@ -135,6 +135,8 @@ api.getNotificationSoundEnabled = invoke(IPC.getNotificationSoundEnabled)
 api.setNotificationSoundEnabled = invoke(IPC.setNotificationSoundEnabled)
 api.getLaunchOnStartup = invoke(IPC.getLaunchOnStartup)
 api.setLaunchOnStartup = invoke(IPC.setLaunchOnStartup)
+api.getStartMinimized = invoke(IPC.getStartMinimized)
+api.setStartMinimized = invoke(IPC.setStartMinimized)
 
 // Notifications
 api.notificationClick = invoke(IPC.notificationClick)

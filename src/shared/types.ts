@@ -64,6 +64,14 @@ export interface PersistedSettings {
   notificationsEnabled: boolean
   notificationSoundEnabled: boolean
   launchOnStartup: boolean
+  /**
+   * Start with the window hidden, so a launch lands in the tray.
+   *
+   * The point of pairing it with `launchOnStartup`: the engine starts capturing at
+   * login without a window in the way. The tray icon and a second launch are both
+   * ways back in, which is what makes it safe to leave switched on.
+   */
+  startMinimized: boolean
   fps: number
   nvencMultipass: 'disabled' | 'qres'
   nvencPreset: 'p3' | 'p4' | 'p5'

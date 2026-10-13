@@ -30,3 +30,6 @@ Thumbs.db
 # lineage and local machine layout, which should not be published.
 DESIGN.md
 PRODUCT.md
+
+# Superpowers plan workspace (scratch)
+.superpowers/

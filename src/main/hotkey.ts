@@ -1,5 +1,6 @@
 import { scope } from './logger.js'
 import { getSetting, setSetting } from './store.js'
+import { titleWithHotkey } from '@shared/constants.js'
 
 const log = scope('Hotkey')
 
@@ -255,6 +256,16 @@ export function installDefaultHotkeys(callbacks: Record<HotkeyAction, () => void
 
 export function getHotkeys(): Record<HotkeyAction, string> {
   return Object.fromEntries(ACTIONS.map((a) => [a, getSetting(HOTKEYS[a].setting)])) as Record<HotkeyAction, string>
+}
+
+/**
+ * A popup title for a hotkey action: `<outcome> — <bound key>`.
+ *
+ * The binding is read from settings at call time, so a rebind shows in the very
+ * next popup. An unbound action still names the outcome.
+ */
+export function hotkeyTitle(action: HotkeyAction, outcome: string): string {
+  return titleWithHotkey(outcome, getSetting(HOTKEYS[action].setting))
 }
 
 /** Streams the next key press back to the renderer for the rebind dialog. */

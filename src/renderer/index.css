@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 
+@import '@fontsource-variable/orbitron';
 @import '@fontsource-variable/geist';
 @import '@fontsource/geist-mono/400.css';
 @import '@fontsource/geist-mono/500.css';
@@ -18,7 +19,10 @@
  * `npm run icons` and review the palette with `npm run palette`.
  */
 @theme {
-  --font-sans: 'Geist Variable', 'Geist Sans', 'SF Pro Display', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+  /* Orbitron is the app's voice: square, technical, and its own thing. Geist stays
+     behind it in the stack for the glyphs Orbitron does not carry, so a stray
+     symbol falls back per character rather than showing a box. */
+  --font-sans: 'Orbitron Variable', 'Geist Variable', 'Geist Sans', 'SF Pro Display', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --color-canvas: oklch(17% 0.006 285);
@@ -129,6 +133,21 @@
   button:disabled {
     cursor: not-allowed;
   }
+
+  /* Chromium draws its own number spinner as a light grey box, which fights this
+     panel. The deck has a stepper of its own (components/deck.tsx), so the native
+     one is removed here rather than left to sit on the dark surface. */
+  input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
 }
 
 @layer utilities {
@@ -142,7 +161,9 @@
   .label {
     font-size: 0.6875rem;
     font-weight: 500;
-    letter-spacing: 0.04em;
+    /* Orbitron is a wide face with its own spacing, so it needs less tracking than
+       the neutral sans did to read as a caption rather than as spaced-out letters. */
+    letter-spacing: 0.01em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
   }
@@ -160,6 +181,40 @@
 
   .rise {
     animation: rise 0.18s ease-out;
+  }
+
+  /*
+   * Film grain. A fixed, non-interactive wash that keeps the off-black canvas
+   * from reading as flat digital paint.
+   *
+   * It is `position: fixed` on purpose: attached to a scrolling container it
+   * would repaint the whole viewport on every wheel event. Opacity stays at a
+   * register the eye reads as texture rather than noise, and the layer never
+   * takes pointer events.
+   */
+  .grain {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+  }
+
+  /*
+   * Frameless window drag regions.
+   *
+   * `-webkit-app-region` is an Electron extension, not a standard CSS property,
+   * so it is written here rather than as a Tailwind arbitrary value. The bar
+   * drags the window; interactive children opt back out with `.no-drag`.
+   */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
   }
 }
 

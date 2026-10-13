@@ -172,6 +172,8 @@ export interface RewindApi {
   setNotificationSoundEnabled(value: boolean): Promise<IpcResult>
   getLaunchOnStartup(): Promise<IpcResult<boolean>>
   setLaunchOnStartup(value: boolean): Promise<IpcResult>
+  getStartMinimized(): Promise<IpcResult<boolean>>
+  setStartMinimized(value: boolean): Promise<IpcResult>
 
   notificationClick(): Promise<IpcResult>
 
@@ -256,13 +258,21 @@ export function formatTimestamp(ms: number): string {
     : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** Buffer length label: `45s`, `2m`, `1m30s`. */
-export function formatBuffer(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return s === 0 ? `${m}m` : `${m}m${s}s`
+/**
+ * URL for the custom protocol cards and the editor play clips through. The scheme
+ * is a contract with the main process, so it is spelled in one place.
+ */
+export function clipUrl(filePath: string): string {
+  return `rewind-clip://local/${encodeURIComponent(filePath)}`
 }
+
+/** True when a key event came from a field the user is typing in, so it is theirs. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+}
+
 /**
  * Normalizes a capture-source label for display.
  * Strips the `[exe.exe]: ` prefix and `(process: exe)` suffix that OBS window
@@ -276,14 +286,4 @@ export function formatSourceName(raw: string | null | undefined): string {
   return s
 }
 
-/** Renders a hotkey accelerator the way the original does. */
-export function formatHotkey(accelerator: string): string {
-  if (!accelerator) return 'Unbound'
-  return accelerator
-    .replace('CommandOrControl', 'Ctrl')
-    .replace('Command', 'Cmd')
-    .replace('Control', 'Ctrl')
-    .replace('Super', 'Win')
-    .replace(/\bKey(\d+)\b/, 'Key $1')
-    .replace(/\+/g, ' + ')
-}
+

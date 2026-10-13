@@ -41,7 +41,7 @@ async function loadFfmpegModule() {
   const entry = path.join(work, 'entry.mjs')
   fs.writeFileSync(
     entry,
-    `export { keepTail, probeDuration } from ${JSON.stringify(path.join(root, 'src/main/ffmpeg.ts'))}\n`,
+    `export { keepTail, probeDuration, probe } from ${JSON.stringify(path.join(root, 'src/main/ffmpeg.ts'))}\n`,
   )
 
   const out = path.join(root, 'node_modules', '.cache', 'rewind-probe', 'bundle.cjs')
@@ -62,6 +62,26 @@ async function loadFfmpegModule() {
     alias: { electron: stub, '@shared': path.join(root, 'src/shared') },
   })
   return createRequire(import.meta.url)(out)
+}
+
+/**
+ * Runs `fn` with any require of ffprobe-static throwing.
+ *
+ * The cut this gate exists for: the app must probe through ffmpeg alone. The
+ * inspector above is unaffected -- its binary path was resolved before this hook.
+ */
+async function withFfprobeBlocked(fn) {
+  const Module = require('module')
+  const load = Module._load
+  Module._load = function (request, ...rest) {
+    if (request === 'ffprobe-static') throw new Error('ffprobe-static must not be used by the app')
+    return load.call(this, request, ...rest)
+  }
+  try {
+    return await fn()
+  } finally {
+    Module._load = load
+  }
 }
 
 /** A clip with three audio lanes, matching what the recorder actually produces. */
@@ -93,14 +113,76 @@ function inspect(file) {
   const parsed = JSON.parse(json)
   return {
     duration: Number(parsed.format.duration),
+    bitrateKbps: Math.round(Number(parsed.format.bit_rate) / 1000),
     audio: parsed.streams.filter((s) => s.codec_type === 'audio').length,
+    streams: parsed.streams.map((s) => ({
+      type: s.codec_type,
+      codec: s.codec_name,
+      width: s.width ?? 0,
+      height: s.height ?? 0,
+      fps: s.r_frame_rate,
+      tags: s.tags ?? {},
+    })),
   }
 }
 
-const { keepTail, probeDuration } = await loadFfmpegModule()
+const { keepTail, probeDuration, probe } = await loadFfmpegModule()
 
 // --- a 40s clip, the shape that used to produce the lie ------------------------
 const source = makeClip('Replay source.mp4', 40)
+
+// --- probe() parity, with ffprobe poisoned: the cut this gate guards -----------
+//
+// `probe()` is what the editor, the clip scanner and the diagnostics line read a
+// file through. It must produce the same facts as ffprobe while never loading it.
+// This runs before any other probe call, because resolveFfprobe caches its path --
+// a warm cache would hide a require that still happens.
+{
+  const app = await withFfprobeBlocked(() => probe(source).catch((e) => ({ error: String(e) })))
+  if (app?.error) {
+    check('probe(): reads a file without ffprobe-static', false, app.error)
+  } else {
+    const ref = inspect(source)
+    const appAudio = app.streams.filter((s) => s.codec_type === 'audio')
+    const refAudio = ref.streams.filter((s) => s.type === 'audio')
+    const appVideo = app.streams.find((s) => s.codec_type === 'video')
+    const refVideo = ref.streams.find((s) => s.type === 'video')
+    const fpsOf = (fraction) => {
+      const [n, d] = String(fraction ?? '').split('/').map(Number)
+      return d ? n / d : 0
+    }
+
+    check('probe(): reads a file without ffprobe-static', true)
+    check(
+      'probe(): duration matches ffprobe',
+      Math.abs(Number(app.format?.duration) - ref.duration) < 0.1,
+      `${app.format?.duration} vs ${ref.duration}`,
+    )
+    check(
+      'probe(): bitrate matches ffprobe',
+      Math.abs(Math.round(Number(app.format?.bit_rate) / 1000) - ref.bitrateKbps) <= 1,
+      `${app.format?.bit_rate} vs ${ref.bitrateKbps}`,
+    )
+    check('probe(): audio stream count matches ffprobe', appAudio.length === ref.audio, `${appAudio.length} vs ${ref.audio}`)
+    check(
+      'probe(): video codec and resolution match ffprobe',
+      appVideo?.codec_name === refVideo?.codec && appVideo?.width === refVideo?.width && appVideo?.height === refVideo?.height,
+      `${appVideo?.codec_name} ${appVideo?.width}x${appVideo?.height} vs ${refVideo?.codec} ${refVideo?.width}x${refVideo?.height}`,
+    )
+    check(
+      'probe(): frame rate matches ffprobe',
+      Math.abs(fpsOf(appVideo?.r_frame_rate) - fpsOf(refVideo?.fps)) < 0.1,
+      `${appVideo?.r_frame_rate} vs ${refVideo?.fps}`,
+    )
+    check(
+      'probe(): audio tags match ffprobe',
+      JSON.stringify(appAudio.map((s) => s.tags?.handler_name ?? null)) ===
+        JSON.stringify(refAudio.map((s) => s.tags?.handler_name ?? null)),
+      JSON.stringify(appAudio.map((s) => s.tags?.handler_name ?? null)),
+    )
+  }
+}
+
 const measured = await probeDuration(source)
 console.log(`source clip: ${measured}s with 3 audio lanes\n`)
 

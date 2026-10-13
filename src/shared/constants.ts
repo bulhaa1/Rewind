@@ -18,8 +18,10 @@ export const OBS_SOURCE_NAMES = {
 /**
  * Lengths the quick-clip hotkey can save, in seconds.
  *
- * All shorter than the longest buffer, so any of them is reachable from any
- * buffer setting. A request at or beyond the buffer length saves the whole
+ * Capped at 90 seconds: the hotkey exists to grab the last moment, and the buffer is
+ * the only bound on it, so a longer window mostly means waiting on footage nobody
+ * wanted. All of them are shorter than the longest buffer, so any is reachable from
+ * any buffer setting; a request at or beyond the buffer length saves the whole
  * buffer rather than failing.
  */
 export const QUICK_CLIP_OPTIONS = [
@@ -29,11 +31,17 @@ export const QUICK_CLIP_OPTIONS = [
   { value: 45, label: '45 seconds' },
   { value: 60, label: '60 seconds' },
   { value: 90, label: '90 seconds' },
-  { value: 2 * 60, label: '2 minutes' },
-  { value: 3 * 60, label: '3 minutes' },
-  { value: 5 * 60, label: '5 minutes' },
 ]
+export const QUICK_CLIP_MIN = 5
+export const QUICK_CLIP_MAX = 90
 export const QUICK_CLIP_DEFAULT = 30
+
+/**
+ * A stored length can predate the cap, and IPC is not the only way a value gets in,
+ * so reads clamp rather than trust the file: nothing above QUICK_CLIP_MAX is acted on.
+ */
+export const clampQuickClip = (seconds: number) =>
+  Math.min(Math.max(Math.round(seconds), QUICK_CLIP_MIN), QUICK_CLIP_MAX)
 
 export const DEFAULT_SETTINGS = {
   captureMode: 'game' as CaptureMode,
@@ -64,6 +72,9 @@ export const DEFAULT_SETTINGS = {
   // can be switched back on under Settings > Notifications.
   notificationSoundEnabled: false,
   launchOnStartup: false,
+  // Off by default: a launch that shows nothing is indistinguishable from a launch
+  // that failed, so it is only worth switching on once there is a tray habit.
+  startMinimized: false,
   fps: 30,
   nvencMultipass: 'disabled',
   nvencPreset: 'p4',
@@ -148,6 +159,17 @@ export const VBR_KBPS_BY_QUALITY: Record<VisualQuality, number> = {
 /** Keyframe interval, in seconds. */
 export const KEYINT_SEC = 2
 
+/**
+ * The rolling-window range the engine accepts, in seconds.
+ *
+ * OBS has no byte ceiling on this output (see replay-buffer.ts), so the upper
+ * bound is the only thing standing between a user and an unbounded RAM
+ * allocation -- it is a deliberate limit, not an arbitrary one. Shared so the
+ * main-process validator and the panel's custom-limit field cannot disagree.
+ */
+export const BUFFER_DURATION_MIN = 5
+export const BUFFER_DURATION_MAX = 600
+
 /** AMF target usage for ICQ-style QSV. */
 export const QSV_TARGET_USAGE = 4
 
@@ -214,6 +236,18 @@ export const TIMING = {
 
   /** Overall shutdown budget (ms). */
   SHUTDOWN: 8000,
+  /**
+   * Shutdown budget while a continuous recording is running (ms).
+   *
+   * The recording is stitched on the way out -- one ffmpeg remux plus one probe
+   * per segment -- and a long recording is many segments, so the plain budget
+   * fired mid-stitch and left the file unregistered.
+   *
+   * shortcut: 3 minutes covers roughly 2.5 hours of recording at the default 60s
+   * buffer (~54s segments, ~1s each); a longer recording can still time out.
+   * Upgrade to a segment-count-based budget if anyone records longer.
+   */
+  SHUTDOWN_RECORDING: 180_000,
   OBS_RESPAWN_SETTLE: 1500,
   CLIP_SAVED_BROADCAST: 500,
   SCREENSHOT: 15000,
@@ -232,6 +266,15 @@ export const GAME_DETECTOR = {
   /** content/monitor ratio >= this on both axes counts as fullscreen. */
   FULLSCREEN_RATIO: 0.9,
 } as const
+
+/**
+ * How long an engine teardown may take, in ms.
+ *
+ * A recording in flight is stitched on the way out, so it gets the long budget;
+ * everything else keeps the plain one.
+ */
+export const shutdownBudgetMs = (recording: boolean): number =>
+  recording ? TIMING.SHUTDOWN_RECORDING : TIMING.SHUTDOWN
 /** OBS monitor order reconciliation: silence a log line no more often than this. */
 export const MONITOR_LOG_INTERVAL_MS = 60_000
 
@@ -312,6 +355,29 @@ export const ENCODER_AUTO_LABEL = 'Auto (recommended)'
 /** Screenshot / clip filename builders. */
 export function pad2(n: number): string {
   return String(n).padStart(2, '0')
+}
+
+/** Renders a hotkey accelerator the way the original does. */
+export function formatHotkey(accelerator: string): string {
+  if (!accelerator) return 'Unbound'
+  return accelerator
+    .replace('CommandOrControl', 'Ctrl')
+    .replace('Command', 'Cmd')
+    .replace('Control', 'Ctrl')
+    .replace('Super', 'Win')
+    .replace(/\bKey(\d+)\b/, 'Key $1')
+    .replace(/\+/g, ' + ')
+}
+
+/**
+ * A notification title naming an outcome and the key bound to it:
+ * `Clip saved — Alt + 1`.
+ *
+ * The caller reads the binding at notify time rather than capturing it, so a
+ * rebind changes the next popup with no extra work.
+ */
+export function titleWithHotkey(outcome: string, accelerator: string): string {
+  return accelerator ? `${outcome} — ${formatHotkey(accelerator)}` : outcome
 }
 
 export function screenshotFileName(d: Date = new Date()): string {

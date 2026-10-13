@@ -48,7 +48,6 @@ interface BackgroundActionContextValue {
   error: BackgroundActionError | null
   /** Resolves false when the action was dropped because another was still running. */
   runAction: (fn: () => Promise<unknown>) => Promise<boolean>
-  reportError: (message: string, recover?: () => Promise<void>, actionLabel?: string) => void
   dismissError: () => void
 }
 
@@ -76,10 +75,6 @@ export function BackgroundActionProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     errorRef.current = error
   }, [error])
-
-  const reportError = useCallback((message: string, recover?: () => Promise<void>, actionLabel?: string) => {
-    setError({ message, recover, actionLabel })
-  }, [])
 
   const runAction = useCallback(async (fn: () => Promise<unknown>): Promise<boolean> => {
     // Overlapping mutations are dropped rather than queued: a queued full restart
@@ -140,8 +135,8 @@ export function BackgroundActionProvider({ children }: { children: ReactNode }) 
   }, [dismissError])
 
   const value = useMemo(
-    () => ({ isBusy, error, runAction, reportError, dismissError }),
-    [isBusy, error, runAction, reportError, dismissError],
+    () => ({ isBusy, error, runAction, dismissError }),
+    [isBusy, error, runAction, dismissError],
   )
 
   return <BackgroundActionContext.Provider value={value}>{children}</BackgroundActionContext.Provider>

@@ -18,10 +18,16 @@ async function targets() {
 export async function connect(urlIncludes) {
   const list = await targets()
   const candidates = list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl)
-  // Without a filter prefer the main panel; the editor is a second window.
-  const page = urlIncludes
-    ? candidates.find((t) => (t.url || '').includes(urlIncludes))
-    : candidates.find((t) => !(t.url || '').includes('editor=1')) ?? candidates[0]
+  // Without a filter prefer the main panel; the editor is a second window, and the
+  // notification popup is a third. A popup that is still closing would otherwise be
+  // picked, and its window can close mid-evaluate, leaving the probe hung on a
+  // promise that never settles.
+  const page =
+    (urlIncludes
+      ? candidates.find((t) => (t.url || '').includes(urlIncludes))
+      : candidates.find(
+          (t) => !(t.url || '').includes('editor=1') && !(t.url || '').includes('notification='),
+        )) ?? candidates[0]
   if (!page) throw new Error('No debuggable page found')
 
   const ws = new WebSocket(page.webSocketDebuggerUrl)

@@ -1,7 +1,7 @@
 {
   "name": "rewind-desktop",
   "productName": "Rewind",
-  "version": "1.1.0-rc.1",
+  "version": "1.1.0",
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
   "author": {
@@ -30,23 +30,24 @@
     "selftest": "node scripts/selftest.js",
     "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs",
     "test:quickclip": "node scripts/probe-quick-clip.mjs",
-    "release": "npm run build && node scripts/stamp-exe.mjs && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",
+    "release": "npm run package && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",
     "release:local": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win --publish never && npm run package:stamp"
   },
   "dependencies": {
     "@streamlabs/obs-studio-node": "https://s3-us-west-2.amazonaws.com/obsstudionodes3.streamlabs.com/osn-0.25.77-release-win64.tar.gz",
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
-    "ffprobe-static": "^3.1.0",
     "get-windows": "^9.3.0",
     "koffi": "^3.3.3",
     "native-sound-mixer": "^3.4.6-win",
     "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
+    "@base-ui-components/react": "^1.0.0-rc.0",
     "@electron/rebuild": "^4.2.1",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource/geist-mono": "^5.3.0",
+    "@fontsource-variable/orbitron": "^5.3.0",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-query": "^5.90.2",
     "@tanstack/react-virtual": "^3.14.0",
@@ -57,7 +58,9 @@
     "clsx": "^2.1.1",
     "electron": "30.5.1",
     "electron-builder": "^25.1.8",
+    "ffprobe-static": "^3.1.0",
     "lucide-react": "^0.454.0",
+    "motion": "^14.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sonner": "^2.0.7",

@@ -8,6 +8,15 @@ directories:
 
 asar: true
 
+# The installer (download) size: maximum uses solid LZMA, which costs build time
+# and nothing at runtime. The installed footprint is unaffected.
+compression: maximum
+
+# Electron ships ~55 locale .pak files (37 MB installed) and the app is English
+# only. Keeping en-US alone drops the rest.
+electronLanguages:
+  - en-US
+
 # Native modules are already compiled against Electron's ABI by `npm run rebuild`
 # (@electron/rebuild). Letting electron-builder rebuild them itself needs Python
 # and the full toolchain, and fails outright on a machine without it -- while the
@@ -27,15 +36,13 @@ files:
   - out/**/*
   - package.json
   - '!**/*.map'
-  # The three large packages below are shipped by extraResources and located at
+  # The two large packages below are shipped by extraResources and located at
   # runtime through process.resourcesPath, never through node_modules -- see
-  # resolveFfmpeg, resolveFfprobe and resolveModulePath in obs-bind. They were
-  # previously unpacked from the asar as well, which shipped a second copy of
-  # each for no reason: about 1042 MB of duplication, including all three
-  # platforms' worth of ffprobe.
+  # resolveFfmpeg and resolveModulePath in obs-bind. They were previously unpacked
+  # from the asar as well, which shipped a second copy of each for no reason:
+  # about 1042 MB of duplication.
   - '!node_modules/@streamlabs/obs-studio-node/**'
   - '!node_modules/ffmpeg-static/**'
-  - '!node_modules/ffprobe-static/**'
 
 extraResources:
   # The main process resolves these from process.resourcesPath at runtime.
@@ -47,8 +54,6 @@ extraResources:
       - '!**/*.pdb'
   - from: node_modules/ffmpeg-static/ffmpeg.exe
     to: ffmpeg/ffmpeg.exe
-  - from: node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe
-    to: ffprobe/ffprobe.exe
   - from: assets/favicon.ico
     to: favicon.ico
 

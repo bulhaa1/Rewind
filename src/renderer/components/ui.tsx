@@ -16,6 +16,8 @@ import { createPortal } from 'react-dom'
 import { Loader2, X } from 'lucide-react'
 import { twMerge } from 'tailwind-merge'
 import clsx, { type ClassValue } from 'clsx'
+import { Switch as BaseSwitch } from '@base-ui-components/react/switch'
+import { Dialog as BaseDialog } from '@base-ui-components/react/dialog'
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
@@ -36,12 +38,11 @@ const VARIANTS = {
 const SIZES = {
   sm: 'h-7 px-2.5 text-xs',
   md: 'h-8 px-3 text-[13px]',
-  lg: 'h-9 px-4 text-sm',
   icon: 'h-7 w-7 p-0',
   iconSm: 'h-6 w-6 p-0',
 } as const
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: keyof typeof VARIANTS
   size?: keyof typeof SIZES
 }
@@ -72,11 +73,10 @@ export function InlineSpinner({ className }: { className?: string }) {
 }
 
 /** Full-area spinner, for windows that have nothing else to show yet. */
-export function CenteredSpinner({ label }: { label?: string }) {
+export function CenteredSpinner() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Loader2 className="h-4 w-4 animate-spin text-ink-faint" />
-      {label ? <span className="text-[12px] text-ink-muted">{label}</span> : null}
     </div>
   )
 }
@@ -178,15 +178,13 @@ export function PathRow({ label, path, onBrowse }: { label: string; path: string
 const TONES = {
   neutral: 'bg-raised text-ink-muted',
   accent: 'bg-accent-soft text-accent',
-  danger: 'bg-danger/15 text-danger',
-  warn: 'bg-warn/15 text-warn',
 } as const
 
 export function Badge({ tone = 'neutral', children }: { tone?: keyof typeof TONES; children: ReactNode }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none',
         TONES[tone],
       )}
     >
@@ -206,27 +204,31 @@ export function Switch({
   label: string
   disabled?: boolean
 }) {
+  /*
+   * Base UI's Switch instead of a styled button: it owns the role, the
+   * Space/Enter handling and the keyboard focus behaviour, so this stays
+   * presentational. The visual spec is unchanged - 32x18 track, 14px thumb,
+   * accent when on.
+   */
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
+    <BaseSwitch.Root
+      checked={checked}
+      onCheckedChange={onChange}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      aria-label={label}
       className={cn(
         'relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors duration-150',
         'disabled:pointer-events-none disabled:opacity-40',
         checked ? 'bg-accent' : 'bg-line-strong',
       )}
     >
-      <span
+      <BaseSwitch.Thumb
         className={cn(
           'block h-3.5 w-3.5 rounded-full bg-canvas transition-transform duration-150',
           checked ? 'translate-x-[15px]' : 'translate-x-[2px]',
         )}
       />
-    </button>
+    </BaseSwitch.Root>
   )
 }
 // ---------------------------------------------------------------------------
@@ -248,38 +250,42 @@ export function Dialog({
   footer?: ReactNode
   dismissible?: boolean
 }) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, dismissible])
-
-  if (!open) return null
-
+  /*
+   * Base UI's Dialog brings the focus trap, the inert background and the
+   * focus-return the hand-rolled version only pretended to have: it closed on
+   * Escape and on a backdrop click, but Tab walked straight out into the panel
+   * behind it. The visual shell is unchanged.
+   */
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={dismissible ? onClose : undefined} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="rise relative w-full max-w-[320px] rounded-lg border border-line bg-surface p-3 shadow-[var(--shadow-pop)]"
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold">{title}</h2>
-          {dismissible ? (
-            <Button variant="ghost" size="iconSm" onClick={onClose} aria-label="Close">
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-        </div>
-        {children}
-        {footer ? <div className="mt-3 flex gap-2">{footer}</div> : null}
-      </div>
-    </div>
+    <BaseDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        // Base UI reports Escape and outside presses here. `dismissible: false`
+        // (a busy hotkey capture, say) ignores them: the controlled `open` prop
+        // stays true, so the popup does not close.
+        if (next || !dismissible) return
+        onClose()
+      }}
+    >
+      <BaseDialog.Portal>
+        <BaseDialog.Backdrop className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px]" />
+        <BaseDialog.Popup
+          aria-label={title}
+          className="rise fixed left-1/2 top-1/2 z-50 w-full max-w-[320px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-3 shadow-[var(--shadow-pop)] outline-none"
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <BaseDialog.Title className="text-[13px] font-semibold">{title}</BaseDialog.Title>
+            {dismissible ? (
+              <Button variant="ghost" size="iconSm" onClick={onClose} aria-label="Close">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+          </div>
+          {children}
+          {footer ? <div className="mt-3 flex gap-2">{footer}</div> : null}
+        </BaseDialog.Popup>
+      </BaseDialog.Portal>
+    </BaseDialog.Root>
   )
 }
 
@@ -569,6 +575,3 @@ export function MenuItem({
   )
 }
 
-export function MenuSeparator() {
-  return <div className="my-0.5 h-px bg-line" />
-}

@@ -318,7 +318,7 @@ function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>
  * Builds the clip library by walking the output tree.
  *
  * Metadata is layered over filesystem facts: filename timestamp first, then the
- * persisted clip-meta record, then an ffprobe when duration is missing or the file
+ * persisted clip-meta record, then a probe when duration is missing or the file
  * changed since it was last measured.
  */
 export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
@@ -408,7 +408,13 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
      */
     const current = clipMeta.get('clips') ?? {}
     const merged: Record<string, ClipMeta> = { ...current }
-    for (const [p, rec] of Object.entries(metaUpdates)) merged[p] = { ...current[p], ...rec }
+    for (const [p, rec] of Object.entries(metaUpdates)) {
+      // A clip deleted while this scan was still walking appears in the snapshot but
+      // nowhere else. Writing it back would resurrect a record for a file that is
+      // gone, so check the disk before trusting the snapshot about a new key.
+      if (!(p in current) && !fs.existsSync(p)) continue
+      merged[p] = { ...current[p], ...rec }
+    }
     clipMeta.set('clips', merged)
   }
 
@@ -418,7 +424,7 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
 /**
  * Probes a saved clip and logs the full description.
  * Returns the probe so the caller can stamp the measured duration without a
- * second ffprobe pass.
+ * second probe pass.
  */
 export async function describeSavedClip(
   file: string,

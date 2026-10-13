@@ -3,8 +3,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
-import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
+import {
+  ALLOWED_FPS,
+  BUFFER_DURATION_MAX,
+  BUFFER_DURATION_MIN,
+  DEFAULT_SETTINGS,
+  MIC_GAIN,
+  QUICK_CLIP_MAX,
+  QUICK_CLIP_MIN,
+  SCREENSHOT_SUBDIR,
+  clampQuickClip,
+} from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
+import { hotkeyTitle } from './hotkey.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
@@ -17,6 +28,7 @@ import type {
   DeleteScope,
   DeviceKind,
   FolderKind,
+  HotkeyAction,
   IpcResult,
   ObsStatus,
   ScreenshotInfo,
@@ -83,9 +95,11 @@ export interface Services {
   /** Starts or stops the replay buffer. Shared with the start/stop hotkey. */
   toggleReplay: () => Promise<{ active: boolean }>
   /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
-  toggleRecording: () => Promise<{ recording: boolean }>
-  /** Saves the last N seconds of the buffer, using the quick-clip length setting. */
-  saveQuickClip: () => Promise<string>
+  toggleRecording: () => Promise<void>
+  /** Stops a running recording and registers the file. The panel's Stop button. */
+  stopRecording: () => Promise<string>
+  /** Saves the last N seconds of the buffer. Hotkey-only (startup and rebind). */
+  saveQuickClip: () => Promise<void>
   /**
    * Registers a recording the buffer finished on teardown.
    *
@@ -95,7 +109,8 @@ export interface Services {
    */
   registerFinishedFromBufferStop: (finished: string) => void
   reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
-  notify: (type: BufferStatus, message?: string) => void
+  /** `title` names the action and key on hotkey popups; `message` is the body line. */
+  notify: (type: BufferStatus, message?: string, title?: string) => void
   status: {
     get: () => { status: ObsStatus; message?: string }
     set: (s: { status: ObsStatus; message?: string }) => void
@@ -222,29 +237,9 @@ export function registerIpc(s: Services): void {
     if (!replay().isRecordingContinuously?.()) return fail('Not currently recording')
 
     try {
-      const file = await replay().stopContinuousRecording()
-      const sourceName = capture().getCurrentSourceName()
-      const cm = require('./clip-manager.js')
-      const meta = require('./clip-meta.js')
-
-      const moved = cm.moveIntoSourceFolder(file, sourceName, obsCore().getConfig().outputPath)
-      meta.setClipMeta(moved, {
-        recordedAt: Date.now(),
-        source: sourceName,
-        audioTracks: obsCore().audioTrackLabels(),
-      })
-
-      s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
-
-      void cm
-        .describeSavedClip(moved, replay().getActiveEncoderVendor(), replay().getActiveEncoder(), replay().getQualityTarget(), sourceName)
-        .then((info: { durationSec: number } | null) => cm.stampDuration(moved, info?.durationSec))
-        .catch(() => {
-          /* diagnostics only */
-        })
-
-      filesLog.info(`Recording saved: ${moved}`)
-      return ok({ outputPath: moved })
+      // One implementation with the start/stop hotkey, so the two cannot drift in
+      // what they do with the finished file.
+      return ok({ outputPath: await s.stopRecording() })
     } catch (e) {
       replayLog.error('Failed to stop recording:', e)
       return fail(messageOf(e))
@@ -495,7 +490,9 @@ export function registerIpc(s: Services): void {
   // -------------------------------------------------------------------------
 
   handle(IPC.openFolder, async (target?: unknown) => {
-    const root = getSetting('outputPath') as string
+    // The effective root (`<pick>\Rewind`), not the raw setting: it is where clips
+    // actually land and what the settings row shows.
+    const root = outputRoot()
     if (target === undefined || target === null) {
       // openPath resolves with an error string rather than throwing.
       const rootErr = await shell.openPath(root)
@@ -597,14 +594,32 @@ export function registerIpc(s: Services): void {
     const blocked = notReady()
     if (blocked) return blocked
 
+    const effective = rewindRoot(target)
+    const previous = getSetting('outputPath')
     try {
+      // Create the app's own folder the moment a location is picked: it is where
+      // clips actually land (`rewindRoot`), and OBS's output needs it to exist.
+      // Returning the effective path is what lets the panel show where files go
+      // rather than the raw pick, which the app never writes into directly.
+      fs.mkdirSync(effective, { recursive: true })
       return await withStatus(OBS_STATUS_MESSAGES.changingSettings, async () => {
+        // The engine first. The setting is what the library scans, so saving it before
+        // OBS agrees would leave the panel showing an empty folder while clips keep
+        // landing in the old one.
+        await obsCore().setOutputPath(effective)
         setSetting('outputPath', target)
-        await obsCore().setOutputPath(rewindRoot(target))
-        filesLog.info(`Output path set to: ${target}`)
-        return ok(target)
+        filesLog.info(`Output path set to: ${target} (clips land in ${effective})`)
+        return ok(effective)
       })
     } catch (e) {
+      // Best effort: put the engine back where it was. The setting never moved.
+      if (previous) {
+        try {
+          await obsCore().setOutputPath(rewindRoot(previous))
+        } catch {
+          /* the engine is the thing that just failed; report the original error */
+        }
+      }
       log.error('Failed to set output path:', e)
       return fail(messageOf(e))
     }
@@ -777,6 +792,10 @@ export function registerIpc(s: Services): void {
 
     try {
       deleteScreenshotMeta(resolved.path)
+      // Same as the clip path above: the cached thumbnail is ours, so deleting the
+      // shot has to take it along or the cache grows for the life of the install.
+      const { deleteThumbnail } = require('./thumbnail.js')
+      deleteThumbnail(resolved.path)
     } catch (e) {
       filesLog.warn('Deleted screenshot but failed to drop its metadata:', e)
     }
@@ -823,13 +842,13 @@ export function registerIpc(s: Services): void {
    * the same tier as volume and mute. Rebuilding the audio graph is what costs a
    * pipeline restart, and nothing here does that.
    */
-  handle(IPC.getQuickClipSeconds, () => ok(getSetting('quickClipSeconds')))
+  handle(IPC.getQuickClipSeconds, () => ok(clampQuickClip(getSetting('quickClipSeconds'))))
 
   handle(IPC.setQuickClipSeconds, (seconds: unknown) => {
-    // Bounded by the longest preset, so a value typed anywhere still resolves to
-    // something the hotkey can actually deliver against a short buffer.
-    if (typeof seconds !== 'number' || seconds < 5 || seconds > 300) {
-      return fail('Quick clip length must be between 5 and 300 seconds')
+    // Capped at the longest option, so the hotkey always delivers what it promises
+    // and nothing can set a longer window behind the picker's back.
+    if (typeof seconds !== 'number' || seconds < QUICK_CLIP_MIN || seconds > QUICK_CLIP_MAX) {
+      return fail(`Quick clip length must be between ${QUICK_CLIP_MIN} and ${QUICK_CLIP_MAX} seconds`)
     }
     setSetting('quickClipSeconds', Math.round(seconds))
     return ok()
@@ -897,6 +916,15 @@ export function registerIpc(s: Services): void {
   handle(IPC.downloadUpdate, async () => ok(await require('./updater.js').downloadUpdate()))
 
   handle(IPC.quitAndInstall, () => {
+    // Installing means the installer kills this process seconds later, so a recording
+    // still running would be cut off mid-stitch and never register. Refuse it, and say
+    // what to do, rather than losing the recording silently.
+    // `replay()` is null while the pipeline is being rebuilt, and the guard is read
+    // through optional chaining for exactly that window: a TypeError here would
+    // surface as a raw "Error invoking remote method" on the Install button.
+    if (replay()?.isRecordingContinuously?.()) {
+      return fail('Stop the recording first — installing now would cut it off')
+    }
     // The process is replaced by the installer, so this never really returns.
     require('./updater.js').quitAndInstall()
     return ok()
@@ -1120,7 +1148,7 @@ export function registerIpc(s: Services): void {
   const toggle = (
     getCh: string,
     setCh: string,
-    key: 'notificationsEnabled' | 'notificationSoundEnabled' | 'launchOnStartup',
+    key: 'notificationsEnabled' | 'notificationSoundEnabled' | 'launchOnStartup' | 'startMinimized',
     label: string,
     onChange?: (v: boolean) => void,
   ) => {
@@ -1143,6 +1171,7 @@ export function registerIpc(s: Services): void {
     'Launch on startup',
     (v) => app.setLoginItemSettings({ openAtLogin: v }),
   )
+  toggle(IPC.getStartMinimized, IPC.setStartMinimized, 'startMinimized', 'Start minimized')
 
   // -------------------------------------------------------------------------
   // Hotkeys
@@ -1279,7 +1308,7 @@ class NotReadyError extends Error {
 }
 
 /** Persist and notify. Shared by the IPC channel, the hotkey, and the tray. */
-export async function saveClipAndNotify(s: Services): Promise<string> {
+export async function saveClipAndNotify(s: Services, action?: HotkeyAction): Promise<string> {
   // Guards here rather than only at the callers so the panel button, the hotkey
   // and anything added later all refuse the same way. Without it the failure
   // surfaces from deep inside the flush as an opaque error.
@@ -1318,7 +1347,8 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
 
   // Notify immediately so the user gets instant feedback; probing for the log line
   // and duration stamp happens after, since it can take a moment.
-  s.notify('saved')
+  // The body is where the clip landed; `action` (hotkey/tray) names the key too.
+  s.notify('saved', path.dirname(moved), action ? hotkeyTitle(action, 'Clip saved') : undefined)
 
   // Tell the renderer to refresh. This must live here rather than in the hotkey
   // path, otherwise saving from the button (or the tray) leaves the list stale.
@@ -1352,7 +1382,7 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
  * The notification quotes what `keepTail` measured, so a request the buffer was too
  * short to satisfy says so instead of announcing a length no file has.
  */
-export async function saveQuickClipAndNotify(s: Services, seconds: number): Promise<string> {
+export async function saveQuickClipAndNotify(s: Services, seconds: number, action?: HotkeyAction): Promise<string> {
   if (!s.replay.isReplayBufferActive()) {
     throw new Error('The buffer is off - start it to save a clip')
   }
@@ -1388,16 +1418,19 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
   // (`wholeClip`), or the keyframe the cut snapped to was a little early. The first
   // is worth naming -- someone who asked for 60s and got the whole 25s buffer
   // deserves to know the buffer was the limit, not left guessing whether the
-  // hotkey misfired.
+  // hotkey misfired. On the hotkey path that number rides in the title ("Last 15s
+  // saved — Ctrl + Alt + 1") and the body carries the folder.
   const kept = tail.seconds
-  s.notify(
-    'saved',
+  const title = action
+    ? hotkeyTitle(action, kept <= 0 ? 'Clip saved' : tail.wholeClip ? `Saved all ${kept}s` : `Last ${kept}s saved`)
+    : undefined
+  const body =
     kept <= 0
       ? 'Clip saved'
       : tail.wholeClip
-        ? `Saved all ${kept}s - the buffer held no more`
-        : `Saved last ${kept}s`,
-  )
+        ? `The buffer held no more than ${kept}s`
+        : path.dirname(moved)
+  s.notify('saved', body, title)
   s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
 
   void cm
@@ -1413,7 +1446,7 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
   return moved
 }
 
-export async function takeScreenshot(s: Services): Promise<string> {
+export async function takeScreenshot(s: Services, action?: HotkeyAction): Promise<string> {
   const displayIndex = s.capture.getCurrentMonitor?.() ?? getSetting('displayIndex')
   const dir = screenshotPath()
   const file = await captureScreenshot(displayIndex, dir)
@@ -1423,7 +1456,7 @@ export async function takeScreenshot(s: Services): Promise<string> {
     source: s.capture.getCurrentSourceName(),
   })
 
-  s.notify('screenshot')
+  s.notify('screenshot', path.dirname(file), action ? hotkeyTitle(action, 'Screenshot taken') : undefined)
   s.getMainWindow()?.webContents.send('screenshot-saved', { path: file })
   return file
 }
@@ -1575,9 +1608,8 @@ const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'l
  * bound is the only thing standing between a user and an unbounded RAM
  * allocation -- it is a deliberate limit, not an arbitrary one.
  */
-const BUFFER_DURATION_MIN = 5
-const BUFFER_DURATION_MAX = 600
-
+// Bounds come from @shared/constants so the panel's custom-limit field and this
+// validator use exactly the same range.
 const isBufferDuration = (v: unknown): v is number =>
   typeof v === 'number' && v >= BUFFER_DURATION_MIN && v <= BUFFER_DURATION_MAX
 

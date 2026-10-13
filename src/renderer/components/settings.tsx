@@ -23,7 +23,6 @@ import {
 import { api, read } from '../lib/api'
 import { QK, SETTINGS, captureStateQuery, dedupeWindows, hotkeysQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
-import { Header } from './layout'
 import { HotkeyChip, VolumeControl } from './audio-controls'
 import { HotkeyDialog } from './record'
 import { Select, SettingSelect, SettingSwitchRow, type Option } from './controls'
@@ -41,31 +40,6 @@ import type { AudioChannel, AudioDevice, HotkeyAction, IpcResult } from '@shared
 
 /** Sentinel selecting "Auto detect launched game". */
 const AUTO_GAME = '__auto_game_capture__'
-
-export function SettingsPage({ onBack }: { onBack: () => void }) {
-  // Deliberately not gated on `isBusy`. Leaving a page must always work, and a
-  // back button that silently stops responding while a change is still being
-  // applied reads as a broken button rather than a busy one.
-  return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-canvas">
-      <Header title="Settings" onBack={onBack} />
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="h-full space-y-4 overflow-y-auto py-4 pl-3 pr-3">
-          <CaptureSection />
-          <AudioSection />
-          <NotificationsSection />
-          <StartupSection />
-          <ReplaysSection />
-          <ScreenshotsSection />
-          <QualitySection />
-          <HotkeysSection />
-          <DataSection />
-          <VersionFooter />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Capture source
@@ -606,11 +580,18 @@ function NotificationsSection() {
 function StartupSection() {
   return (
     <Section icon={<Power className="h-4 w-4" />} title="Startup">
-      <SettingSwitchRow
-        binding={SETTINGS.launchOnStartup}
-        label="Launch on startup"
-        description="Automatically start Rewind when you log in to Windows"
-      />
+      <div className="space-y-4">
+        <SettingSwitchRow
+          binding={SETTINGS.launchOnStartup}
+          label="Launch on startup"
+          description="Automatically start Rewind when you log in to Windows"
+        />
+        <SettingSwitchRow
+          binding={SETTINGS.startMinimized}
+          label="Start minimized"
+          description="Open to the tray with no window shown — the tray icon brings it back"
+        />
+      </div>
     </Section>
   )
 }
@@ -639,7 +620,9 @@ function useFolderPicker(
       const res = await binding.set(target)
       if (!res.success) throw new Error(res.error)
 
-      client.setQueryData([...binding.queryKey], target)
+      // The setter returns the effective path -- the app's own `Rewind` folder
+      // inside the pick -- so the row shows where files actually land.
+      client.setQueryData([...binding.queryKey], res.data ?? target)
       for (const key of invalidate) await client.invalidateQueries({ queryKey: [...(key as unknown[])] })
     })
   }, [client, runAction, binding, kind, invalidate])
@@ -911,3 +894,22 @@ function DataSection() {
     </Section>
   )
 }
+
+/**
+ * The settings sections, grouped the way the spine presents them.
+ *
+ * The old page was one column of every section in a fixed order. The spine view
+ * renders one group at a time instead, so the sections are exposed as data: each
+ * entry is the list of sections that belong under one spine item, in order.
+ * Sections keep everything they need internally; the view supplies only the frame.
+ */
+export const SETTINGS_SECTIONS = {
+  capture: [CaptureSection],
+  audio: [AudioSection],
+  encoder: [QualitySection],
+  replay: [ReplaysSection, ScreenshotsSection],
+  hotkeys: [HotkeysSection],
+  system: [NotificationsSection, StartupSection, DataSection, VersionFooter],
+} as const
+
+export type SettingsSectionId = keyof typeof SETTINGS_SECTIONS

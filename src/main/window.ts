@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, powerMonitor, session } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { scope } from './logger.js'
+import { getSetting } from './store.js'
 import { appIcon, resolveIconPath } from './icons.js'
 import { killChildren, OBS_EXE } from './process-lifetime.js'
 
@@ -12,20 +13,21 @@ const PRELOAD = path.join(__dirname, '../preload/index.js')
 const RENDERER_DIR = path.join(__dirname, '../renderer')
 const DEV_URL = process.env.REWIND_DEV_SERVER
 
-const MAIN_WIDTH = 400
-const MAIN_HEIGHT = 550
-// The panel is laid out for a fixed width: the capture card, the library rows and
-// the encoder settings rows all balance their two columns at 400px. Resizable with
-// no floor, dragging the corner made those rows wrap and clip.
-const MIN_WIDTH = 400
-const MIN_HEIGHT = 460
+const MAIN_WIDTH = 1000
+const MAIN_HEIGHT = 620
+// The landscape shell: the capture deck is fluid and the clips rail is resizable
+// (340px by default, dragged from the divider between them), so the floor is where
+// the rail's own floor plus the deck's floor still fit. The old panel was a fixed
+// 400px column, which is why the floor used to equal the width.
+const MIN_WIDTH = 860
+const MIN_HEIGHT = 540
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 
 /** True once a real quit is underway (used to distinguish hide-vs-quit). */
-export const lifecycle = { value: false }
+export const lifecycle = { value: false, installing: false }
 
 // ---------------------------------------------------------------------------
 // Crash dump bookkeeping
@@ -169,7 +171,17 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
     y: areaH - MAIN_HEIGHT,
     show: false,
     resizable: true,
-    frame: true,
+    // Frameless with a native overlay: Windows still draws the real caption
+    // buttons - snap layouts, the window menu and hover previews included - while
+    // the renderer owns the strip behind them, which is components/titlebar.tsx.
+    //
+    // `frame: false` is not optional here. With the default frame and a hidden
+    // title bar, the window settled at exactly its minimum size seconds after
+    // launch (measured: 1000x620 -> 860x540); with the frame genuinely gone the
+    // requested size holds.
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#131316', symbolColor: '#a7a7ad', height: 40 },
     transparent: false,
     alwaysOnTop: false,
     webPreferences: {
@@ -186,7 +198,13 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
   })
 
   win.setMenuBarVisibility(false)
-  win.once('ready-to-show', () => win.show())
+  // Starting minimized is the tray behaviour: the window is built and ready to be
+  // shown, it just stays off screen until the tray icon, a hotkey or a second
+  // launch asks for it. Read here rather than at quit time so the choice applies to
+  // every launch, login-launched or not.
+  win.once('ready-to-show', () => {
+    if (!getSetting('startMinimized')) win.show()
+  })
 
   onCreated?.(win)
 
@@ -274,6 +292,8 @@ export function bootstrap(hooks: {
   onInitPipeline: () => Promise<void>
   onPipelineWedge: () => Promise<void>
   onResume: () => Promise<void>
+  /** Milliseconds the engine teardown may take before Quit gives up on it. */
+  shutdownBudget: () => number
 }): void {
   startCrashReporter()
 
@@ -309,12 +329,40 @@ export function bootstrap(hooks: {
   app.on('before-quit', (e) => {
     if (lifecycle.value) return
     lifecycle.value = true
-    try {
-      hooks.onPipelineWedge()
-    } catch (err) {
-      log.error('Cleanup failed:', err)
+
+    // The installer is already running and force-kills this process a few seconds
+    // from now, so waiting for the engine here would only mean being killed mid-way
+    // through the stitch it is waiting for. The updater sets `installing` before it
+    // hands over, and the Install button refuses to start while a recording is
+    // running, so there is nothing to protect at this point.
+    if (lifecycle.installing) {
+      destroyTray()
+      return
     }
+
+    // Hold the quit until the engine has finished. `onPipelineWedge` is what stitches
+    // a running recording and writes a pending save, and `will-quit` force-kills the
+    // child - so quitting without waiting destroys the very file the user asked to
+    // keep. The budget comes from main: a recording in flight is stitched on the way
+    // out and needs far longer than a plain shutdown, and the wait sits two seconds
+    // past the engine's own budget so a wedged engine still lets Quit finish.
+    e.preventDefault()
     destroyTray()
+    // Nothing may reach the engine while it is being torn down: the panel is still
+    // polling, and a Stop or Save during the stitch would race the teardown. The
+    // window is about to go anyway, so it is disabled for the wait.
+    mainWindow?.setEnabled(false)
+    void (async () => {
+      try {
+        await Promise.race([
+          hooks.onPipelineWedge(),
+          new Promise((resolve) => setTimeout(resolve, hooks.shutdownBudget() + 2_000)),
+        ])
+      } catch (err) {
+        log.error('Cleanup failed:', err)
+      }
+      app.quit()
+    })()
   })
 
   app.on('will-quit', () => {

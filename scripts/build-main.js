@@ -29,7 +29,6 @@ const common = {
     'get-windows',
     'native-sound-mixer',
     'ffmpeg-static',
-    'ffprobe-static',
   ],
   logLevel: 'info',
 }

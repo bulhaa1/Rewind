@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { MotionConfig } from 'motion/react'
 import { queryClient } from './lib/queries'
 import { BackgroundActionProvider, ObsStatusProvider, useLibraryInvalidation } from './lib/context'
 import { useNotificationSound, usePopupWindow, useEditorClipPath } from './lib/hooks'
-import { HomePage } from './pages/Home'
-import { SettingsPage } from './components/settings'
+import { MainView } from './pages/MainView'
+import { SettingsView } from './components/settings/SettingsView'
 import { EditorPage } from './components/editor'
 import { NotificationOverlay } from './pages/NotificationOverlay'
 import { RestartOverlay } from './components/restart-overlay'
@@ -27,7 +28,7 @@ function Surface() {
   const popup = usePopupWindow()
   const editorClip = useEditorClipPath()
 
-  if (popup) return <NotificationOverlay type={popup.type} message={popup.message} onClick={popup.onClick} />
+  if (popup) return <NotificationOverlay type={popup.type} message={popup.message} title={popup.title} onClick={popup.onClick} />
   if (editorClip) return <EditorPage clipPath={editorClip} />
   return <RoutedPanel />
 }
@@ -73,7 +74,7 @@ function RoutedPanel() {
 
   return (
     <div className="h-full">
-      {route === '/settings' ? <SettingsPage onBack={goHome} /> : <HomePage />}
+      {route === '/settings' ? <SettingsView onBack={goHome} /> : <MainView />}
       {/*
         Mounted outside the routed surface so it survives navigation and covers
         whichever page is showing — a restart triggered from Settings must not
@@ -93,34 +94,36 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ObsStatusProvider>
-        <BackgroundActionProvider>
-          <AppEffects />
-          <div className="h-full">
-            <Surface />
-          </div>
-          {/*
-            Styled from the same tokens as everything else. These previously named
-            `--color-card` / `--color-border` / `--color-foreground`, which no longer
-            exist: an unresolvable var invalidates the whole declaration, so error
-            toasts — the one thing a user needs when a setting fails — rendered with
-            no background, no border and no text colour.
-          */}
-          <Toaster
-            position="bottom-center"
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: 'var(--color-raised)',
-                border: '1px solid var(--color-line-strong)',
-                color: 'var(--color-ink)',
-              },
-            }}
-          />
-        </BackgroundActionProvider>
-      </ObsStatusProvider>
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <ObsStatusProvider>
+          <BackgroundActionProvider>
+            <AppEffects />
+            <div className="h-full">
+              <Surface />
+            </div>
+            {/*
+              Styled from the same tokens as everything else. These previously named
+              `--color-card` / `--color-border` / `--color-foreground`, which no longer
+              exist: an unresolvable var invalidates the whole declaration, so error
+              toasts — the one thing a user needs when a setting fails — rendered with
+              no background, no border and no text colour.
+            */}
+            <Toaster
+              position="bottom-center"
+              theme="dark"
+              toastOptions={{
+                style: {
+                  background: 'var(--color-raised)',
+                  border: '1px solid var(--color-line-strong)',
+                  color: 'var(--color-ink)',
+                },
+              }}
+            />
+          </BackgroundActionProvider>
+        </ObsStatusProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   )
 }
 
