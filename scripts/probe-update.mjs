@@ -38,6 +38,15 @@ const INSTALL = path.join(ROOT, 'install')
 const PROFILE = path.join(ROOT, 'profile')
 const LOG = path.join(PROFILE, 'logs', 'main.log')
 const SETUP_110 = path.join(projectRoot, 'release', 'Rewind-1.1.0-setup.exe')
+/**
+ * The unpacked tree the update is compared against.
+ *
+ * Defaults to the local build, but when the feed is a *published* release (assets
+ * downloaded into BUILD) there is no unpacked tree there, and the comparison needs one
+ * for the same version -- `REWIND_UPDATE_FRESH_TREE` points at it. Without it every
+ * installed file looks stale, which is a harness bug that reads exactly like a finding.
+ */
+const FRESH_TREE = process.env.REWIND_UPDATE_FRESH_TREE || path.join(BUILD, 'win-unpacked')
 const CDP_PORT = process.env.CDP_PORT || '9223'
 
 let failures = 0
@@ -406,7 +415,12 @@ async function main() {
     // ---- 3. what the update left behind ------------------------------------
     line('\n--- leftovers ---')
     const installed = walk(path.join(INSTALL, 'resources'))
-    const fresh = walk(path.join(BUILD, 'win-unpacked', 'resources'))
+    const freshRoot = path.join(FRESH_TREE, 'resources')
+    if (!fs.existsSync(freshRoot)) {
+      check(false, 'a reference tree to compare against', `${freshRoot} not found`)
+      return
+    }
+    const fresh = walk(freshRoot)
     const stale = [...installed.keys()].filter((k) => !fresh.has(k) && !k.startsWith('app-update.yml'))
     const staleBytes = stale.reduce((sum, k) => sum + (installed.get(k) ?? 0), 0)
     check(stale.length === 0, 'no files the new version does not ship', `${stale.length} stale, ${(staleBytes / 1024 / 1024).toFixed(1)} MB`)

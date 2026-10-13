@@ -328,12 +328,16 @@ Not bugs, but they accumulate and are easy to forget.
 - **The updater cache is pruned on start** (1.2.0). It used to hold two copies of the
   same installer after one update — `installer.exe` (the renamed copy electron-updater
   executes) plus the original — measured at 379 MB after the 1.0.1 → 1.1.0 update. The app
-  now deletes the stale parts of that directory a few seconds after start and logs what it
-  freed (`Update cache pruned: 5 file(s), 5.2 MB`). Nothing in there can be applied across
-  a restart: the update state is in memory and starts at `idle`, so a stale download is
-  downloaded again rather than installed. Anything modified in the last two minutes is
-  left alone, because a second instance (a portable copy, a dev build) shares the
-  directory and may be mid-download.
+  now deletes that whole directory a few seconds after start and logs what it freed
+  (`Update cache pruned: 5 file(s), 214.4 MB`). Nothing in there can be applied across a
+  restart: the update state is in memory and starts at `idle`, so a stale download is
+  downloaded again rather than installed.
+  - The one cost: a **second instance** sharing the directory (a portable copy, a dev
+    build, another profile) loses a download in progress and fetches it again. Two
+    attempts to avoid that were measured and removed — a freshness window left a
+    15-second install's own leftovers in place, and a file held open for writing is not
+    protected either, because Node opens with `FILE_SHARE_DELETE` and Windows deletes it
+    anyway. A repeat download is the cheaper of the two failures.
 - **Differential downloads start with 1.1.0.** The `.blockmap` is now uploaded
   alongside `latest.yml` (1.1.0 onward), so updates from 1.1.0 ship only changed
   blocks. The 1.0.1 → 1.1.0 jump was necessarily a full download: 1.0.1 shipped no
