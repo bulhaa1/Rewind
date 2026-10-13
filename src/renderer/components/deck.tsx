@@ -158,7 +158,7 @@ function ActionRow({
         <span className={cn('truncate text-[13px]', tone === 'danger' ? 'text-danger' : 'text-ink')}>{label}</span>
         {busy ? <InlineSpinner /> : null}
       </button>
-      {hotkey && onEditHotkey ? <HotkeyChip hotkey={hotkey} onClick={onEditHotkey} /> : null}
+      {hotkey && onEditHotkey ? <HotkeyChip hotkey={hotkey} onClick={onEditHotkey} variant="keycap" /> : null}
     </div>
   )
 }
@@ -397,7 +397,11 @@ export function Deck({
           <span className="min-w-0 truncate text-[11px] text-ink-faint">kept by the quick-clip hotkey</span>
           {hotkeys?.['save-quick-clip'] ? (
             <span className="ml-auto">
-              <HotkeyChip hotkey={hotkeys['save-quick-clip']} onClick={() => setEditAction('save-quick-clip')} />
+              <HotkeyChip
+                hotkey={hotkeys['save-quick-clip']}
+                onClick={() => setEditAction('save-quick-clip')}
+                variant="keycap"
+              />
             </span>
           ) : null}
         </div>

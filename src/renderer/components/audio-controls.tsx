@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Volume2, VolumeX } from 'lucide-react'
+import { Pencil, Volume2, VolumeX } from 'lucide-react'
 import { api, formatHotkey } from '../lib/api'
 import { cn } from './ui'
 
@@ -104,8 +104,22 @@ export function VolumeControl({
  * guesswork about whether "Alt + 1" is one chord or two. Each key is its own cap
  * with a seam, which also makes multi-key combinations read at a glance.
  */
-export function HotkeyChip({ hotkey, onClick }: { hotkey: string; onClick?: () => void }) {
+export function HotkeyChip({
+  hotkey,
+  onClick,
+  variant = 'quiet',
+}: {
+  hotkey: string
+  onClick?: () => void
+  /**
+   * `keycap` is the capture deck's: the same keys, but sitting on their own
+   * surface with a rebind hint, because there the chip is a control you are meant
+   * to notice. The settings rows already read as a list of bindings.
+   */
+  variant?: 'quiet' | 'keycap'
+}) {
   const keys = formatHotkey(hotkey).split('+').map((k) => k.trim()).filter(Boolean)
+  const keycap = variant === 'keycap'
 
   return (
     <button
@@ -113,22 +127,38 @@ export function HotkeyChip({ hotkey, onClick }: { hotkey: string; onClick?: () =
       onClick={onClick}
       aria-label={onClick ? `Rebind shortcut, currently ${formatHotkey(hotkey)}` : undefined}
       title={onClick ? 'Click to rebind' : undefined}
-      className="flex min-w-[112px] items-center justify-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-raised"
+      className={cn(
+        'group/chip flex min-w-[112px] items-center justify-center gap-1 rounded-md px-1 py-1 transition-colors',
+        keycap ? 'cursor-pointer border border-line bg-raised hover:border-line-strong' : 'hover:bg-raised',
+      )}
     >
       {keys.length ? (
         keys.map((key, i) => (
           <kbd
             key={`${key}-${i}`}
-            className="rounded border border-line bg-raised px-1.5 py-0.5 font-mono text-[11px] leading-none text-ink-muted shadow-[0_1px_0_var(--color-line)]"
+            className={cn(
+              'rounded border px-1.5 py-0.5 font-mono text-[11px] leading-none',
+              keycap
+                ? 'border-line-strong/60 bg-line-strong/85 text-ink shadow-[0_1px_0_var(--color-line-strong)] group-hover/chip:bg-line-strong'
+                : 'border-line bg-raised text-ink-muted shadow-[0_1px_0_var(--color-line)]',
+            )}
           >
             {key}
           </kbd>
         ))
       ) : (
-        <kbd className="rounded border border-dashed border-line px-1.5 py-0.5 font-mono text-[11px] leading-none text-ink-faint">
+        <kbd
+          className={cn(
+            'rounded border border-dashed px-1.5 py-0.5 font-mono text-[11px] leading-none',
+            keycap ? 'border-line-strong text-ink-muted' : 'border-line text-ink-faint',
+          )}
+        >
           unbound
         </kbd>
       )}
+      {keycap ? (
+        <Pencil className="h-3 w-3 shrink-0 text-ink-faint transition-colors group-hover/chip:text-ink" strokeWidth={1.5} />
+      ) : null}
     </button>
   )
 }
