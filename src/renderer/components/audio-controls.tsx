@@ -129,7 +129,7 @@ export function HotkeyChip({
       title={onClick ? 'Click to rebind' : undefined}
       className={cn(
         'group/chip flex min-w-[112px] items-center justify-center gap-1 rounded-md px-1 py-1 transition-colors',
-        keycap ? 'cursor-pointer border border-line bg-raised hover:border-line-strong' : 'hover:bg-raised',
+        keycap ? 'cursor-pointer' : 'hover:bg-raised',
       )}
     >
       {keys.length ? (
@@ -137,7 +137,7 @@ export function HotkeyChip({
           <kbd
             key={`${key}-${i}`}
             className={cn(
-              'rounded border px-1.5 py-0.5 font-mono text-[11px] leading-none',
+              'rounded border px-1.5 py-0.5 text-[11px] leading-none',
               keycap
                 ? 'border-line-strong/60 bg-line-strong/85 text-ink shadow-[0_1px_0_var(--color-line-strong)] group-hover/chip:bg-line-strong'
                 : 'border-line bg-raised text-ink-muted shadow-[0_1px_0_var(--color-line)]',
@@ -149,7 +149,7 @@ export function HotkeyChip({
       ) : (
         <kbd
           className={cn(
-            'rounded border border-dashed px-1.5 py-0.5 font-mono text-[11px] leading-none',
+            'rounded border border-dashed px-1.5 py-0.5 text-[11px] leading-none',
             keycap ? 'border-line-strong text-ink-muted' : 'border-line text-ink-faint',
           )}
         >
