@@ -6,7 +6,7 @@ import { QK, bufferActiveQuery, clipsQuery, configQuery, screenshotsQuery, sourc
 import { useBackgroundAction, useObsStatus } from '../lib/context'
 import { useClipEvents } from '../lib/hooks'
 import { Titlebar } from '../components/titlebar'
-import { CaptureControls } from '../components/capture'
+import { Deck } from '../components/deck'
 import { ClipList, ScreenshotList } from '../components/library'
 import { Button, Dialog, cn } from '../components/ui'
 import type { DeleteScope } from '@shared/types.js'
@@ -98,11 +98,8 @@ export function MainView() {
     [bufferBusy, runAction, client],
   )
 
-  const startBuffer = useCallback(() => void setBuffer(true), [setBuffer])
-  const stopBuffer = useCallback(() => void setBuffer(false), [setBuffer])
-
-  // The slider previews locally and calls this once on release, so this runs at
-  // most once per drag rather than once per pixel.
+  // Changes the rolling window. The deck's limit chips call this once per click,
+  // and the config query is refetched so the strip shows what the engine accepted.
   const setBufferSeconds = useCallback(
     async (seconds: number) => {
       await runAction(async () => {
@@ -147,23 +144,21 @@ export function MainView() {
       <Titlebar />
 
       <div className="flex min-h-0 flex-1">
-        {/* The deck: capture controls now, the buffer dial once it lands. */}
+        {/* The deck: the buffer dial, the capture actions and the buffer limit. */}
         <div data-testid="deck-pane" className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <CaptureControls
-            status={status}
-            sourceName={source?.name ?? ''}
-            sourceInactive={!!source?.inactive}
-            saving={isSaving}
-            capturing={isCapturing}
-            lastSaved={lastSaved}
+          <Deck
             bufferActive={bufferActive}
             bufferBusy={bufferBusy}
-            bufferSeconds={config?.bufferDuration ?? 60}
-            onSaveReplay={saveClip}
+            startedAt={bufferState?.startedAt ?? 0}
+            duration={config?.bufferDuration ?? 60}
+            saving={isSaving}
+            capturing={isCapturing}
+            pulseKey={lastSaved ?? 0}
+            sourceName={source?.name ?? ''}
+            onToggleBuffer={() => void setBuffer(!bufferActive)}
+            onSaveClip={saveClip}
             onScreenshot={takeScreenshot}
-            onBufferStart={startBuffer}
-            onBufferStop={stopBuffer}
-            onBufferSeconds={setBufferSeconds}
+            onSetBufferSeconds={setBufferSeconds}
           />
 
           {status === 'error' ? (
