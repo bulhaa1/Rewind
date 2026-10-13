@@ -88,6 +88,44 @@ export default async function ({ evaluate }) {
   if (chips.count !== count) problems.push(`deck shows ${chips.count} chips, expected ${count}`)
   if (chips.active.length !== 1) problems.push(`deck highlights ${chips.active.length} chips, expected 1`)
 
+  // Clicking a chip switches, the same way the hotkey does.
+  const beforeClick = (await profiles()).data.activeProfile
+  const target = (beforeClick + 1) % count
+  const clicked = await evaluate(`(() => {
+    const chip = document.querySelector('[data-testid="profile-chip-${target}"]')
+    if (!chip) return 'missing'
+    chip.click()
+    return 'clicked'
+  })()`)
+  if (clicked !== 'clicked') problems.push(`chip ${target} could not be clicked (${clicked})`)
+  let afterClick = beforeClick
+  const clickDeadline = Date.now() + 20_000
+  while (Date.now() < clickDeadline && afterClick !== target) {
+    await sleep(500)
+    afterClick = (await profiles()).data.activeProfile
+  }
+  console.log(`${afterClick === target ? 'PASS' : 'FAIL'}  chip click: active ${beforeClick} -> ${afterClick} (expected ${target})`)
+  if (afterClick !== target) problems.push(`chip click moved ${beforeClick} -> ${afterClick}, expected ${target}`)
+
+  // The Settings section renders a row per profile.
+  await evaluate(`window.location.hash = '/settings'`)
+  await sleep(2000)
+  const opened = await evaluate(`(() => {
+    const item = document.querySelector('[data-testid="settings-nav-profiles"]')
+    if (!item) return 'no section'
+    item.click()
+    return 'clicked'
+  })()`)
+  if (opened !== 'clicked') problems.push(`settings has no Profiles section (${opened})`)
+  await sleep(1500)
+  const rows = await evaluate(
+    `[...document.querySelectorAll('input[aria-label$="name"]')].filter((i) => i.getAttribute('aria-label').startsWith('Profile ')).length`,
+  )
+  console.log(`${rows === count ? 'PASS' : 'FAIL'}  settings rows: ${rows} (expected ${count})`)
+  if (rows !== count) problems.push(`settings shows ${rows} profile rows, expected ${count}`)
+  await evaluate(`window.location.hash = '/'`)
+  await sleep(1000)
+
   if (problems.length) {
     console.log('FAIL probe-profiles: ' + problems.join('; '))
     throw new Error('profile assertion failed')
