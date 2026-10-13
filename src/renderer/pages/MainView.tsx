@@ -368,7 +368,7 @@ function StatusStrip({
       ) : status === 'saving' ? (
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Saving clip…
+          {message ?? 'Saving clip…'}
         </span>
       ) : status === 'ready' ? (
         <span className="flex items-center gap-3">

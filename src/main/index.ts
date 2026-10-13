@@ -736,6 +736,16 @@ function main(): void {
       shutdownHotkeys()
       cleanupEditor()
       dismissPanel()
+      // The quit waits for the engine (see window.ts), so say what it is waiting for.
+      // Without this the panel just sits there for the length of a stitch and reads
+      // as a hang. A recording still running is the case that actually takes seconds.
+      setStatus(
+        {
+          status: 'saving',
+          message: replay?.isRecordingContinuously?.() ? 'Finishing the recording…' : 'Closing the engine…',
+        },
+        getMainWindow(),
+      )
       await shutdownPipeline()
     },
     onResume: async () => {
