@@ -120,6 +120,8 @@ export const IPC = {
   setNotificationSoundEnabled: 'set-notification-sound-enabled',
   getLaunchOnStartup: 'get-launch-on-startup',
   setLaunchOnStartup: 'set-launch-on-startup',
+  getStartMinimized: 'get-start-minimized',
+  setStartMinimized: 'set-start-minimized',
 
   // notifications
   notificationClick: 'notification-click',

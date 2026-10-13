@@ -580,11 +580,18 @@ function NotificationsSection() {
 function StartupSection() {
   return (
     <Section icon={<Power className="h-4 w-4" />} title="Startup">
-      <SettingSwitchRow
-        binding={SETTINGS.launchOnStartup}
-        label="Launch on startup"
-        description="Automatically start Rewind when you log in to Windows"
-      />
+      <div className="space-y-4">
+        <SettingSwitchRow
+          binding={SETTINGS.launchOnStartup}
+          label="Launch on startup"
+          description="Automatically start Rewind when you log in to Windows"
+        />
+        <SettingSwitchRow
+          binding={SETTINGS.startMinimized}
+          label="Start minimized"
+          description="Open to the tray with no window shown — the tray icon brings it back"
+        />
+      </div>
     </Section>
   )
 }

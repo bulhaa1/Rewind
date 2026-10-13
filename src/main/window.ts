@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, powerMonitor, session } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { scope } from './logger.js'
+import { getSetting } from './store.js'
 import { appIcon, resolveIconPath } from './icons.js'
 import { killChildren, OBS_EXE } from './process-lifetime.js'
 
@@ -197,7 +198,13 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
   })
 
   win.setMenuBarVisibility(false)
-  win.once('ready-to-show', () => win.show())
+  // Starting minimized is the tray behaviour: the window is built and ready to be
+  // shown, it just stays off screen until the tray icon, a hotkey or a second
+  // launch asks for it. Read here rather than at quit time so the choice applies to
+  // every launch, login-launched or not.
+  win.once('ready-to-show', () => {
+    if (!getSetting('startMinimized')) win.show()
+  })
 
   onCreated?.(win)
 

@@ -64,6 +64,9 @@ export const DEFAULT_SETTINGS = {
   // can be switched back on under Settings > Notifications.
   notificationSoundEnabled: false,
   launchOnStartup: false,
+  // Off by default: a launch that shows nothing is indistinguishable from a launch
+  // that failed, so it is only worth switching on once there is a tray habit.
+  startMinimized: false,
   fps: 30,
   nvencMultipass: 'disabled',
   nvencPreset: 'p4',

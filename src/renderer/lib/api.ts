@@ -172,6 +172,8 @@ export interface RewindApi {
   setNotificationSoundEnabled(value: boolean): Promise<IpcResult>
   getLaunchOnStartup(): Promise<IpcResult<boolean>>
   setLaunchOnStartup(value: boolean): Promise<IpcResult>
+  getStartMinimized(): Promise<IpcResult<boolean>>
+  setStartMinimized(value: boolean): Promise<IpcResult>
 
   notificationClick(): Promise<IpcResult>
 

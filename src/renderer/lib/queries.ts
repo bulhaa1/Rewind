@@ -70,6 +70,7 @@ export const SETTINGS = defineSettings({
     set: api.setNotificationSoundEnabled,
   },
   launchOnStartup: { queryKey: QK.setting('launchOnStartup'), get: api.getLaunchOnStartup, set: api.setLaunchOnStartup },
+  startMinimized: { queryKey: QK.setting('startMinimized'), get: api.getStartMinimized, set: api.setStartMinimized },
   micGain: { queryKey: QK.setting('micGain'), get: api.getMicGain, set: api.setMicGain },
   quickClipSeconds: {
     queryKey: QK.setting('quickClipSeconds'),

@@ -1127,7 +1127,7 @@ export function registerIpc(s: Services): void {
   const toggle = (
     getCh: string,
     setCh: string,
-    key: 'notificationsEnabled' | 'notificationSoundEnabled' | 'launchOnStartup',
+    key: 'notificationsEnabled' | 'notificationSoundEnabled' | 'launchOnStartup' | 'startMinimized',
     label: string,
     onChange?: (v: boolean) => void,
   ) => {
@@ -1150,6 +1150,7 @@ export function registerIpc(s: Services): void {
     'Launch on startup',
     (v) => app.setLoginItemSettings({ openAtLogin: v }),
   )
+  toggle(IPC.getStartMinimized, IPC.setStartMinimized, 'startMinimized', 'Start minimized')
 
   // -------------------------------------------------------------------------
   // Hotkeys
