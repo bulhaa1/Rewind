@@ -142,6 +142,23 @@ export default async function ({ evaluate }) {
   check('quick-clip failure: title names the action and key', /Clip not saved/.test(quickFail ?? '') && /Ctrl \+ Alt \+ 1/.test(quickFail ?? ''), quickFail ?? 'no popup')
   check('quick-clip failure: body carries the engine reason', /Buffer is off/.test(quickFail ?? ''), quickFail ?? 'no popup')
 
+  // After a rebind the failure must still pop, and name the new key: the rebind
+  // path installs its own callbacks, so a service that throws without catching
+  // would be silent here while the startup path still worked.
+  const originalQuick = await evaluate(`window.electronAPI.getHotkeys().then(r => r.data['save-quick-clip'])`)
+  const rebound = await evaluate(`window.electronAPI.setHotkey('save-quick-clip', 'Alt+5').then(r => JSON.stringify(r)).catch(e => 'THREW: ' + e.message)`)
+  check('quick-clip rebound to Alt+5', String(rebound).includes('"success":true'), rebound)
+  const reboundFail = await popupText('%5')
+  console.log('rebound quick-clip failure popup:', JSON.stringify(reboundFail))
+  check(
+    'after a rebind: the failure still pops, with the new key',
+    /Clip not saved/.test(reboundFail ?? '') && /Alt \+ 5/.test(reboundFail ?? '') && /Buffer is off/.test(reboundFail ?? ''),
+    reboundFail ?? 'no popup',
+  )
+  await evaluate(`window.electronAPI.setHotkey('save-quick-clip', ${JSON.stringify(originalQuick)}).catch(() => 0)`)
+  const restoredQuick = await evaluate(`window.electronAPI.getHotkeys().then(r => r.data['save-quick-clip'])`)
+  check('quick-clip binding restored', restoredQuick === originalQuick, `${restoredQuick} vs ${originalQuick}`)
+
   const recordFail = await popupText('%3')
   console.log('record failure popup:', JSON.stringify(recordFail))
   check('record failure: title names the action and key', /Recording not started/.test(recordFail ?? '') && /Alt \+ 3/.test(recordFail ?? ''), recordFail ?? 'no popup')

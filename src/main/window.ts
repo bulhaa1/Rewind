@@ -348,6 +348,10 @@ export function bootstrap(hooks: {
     // past the engine's own budget so a wedged engine still lets Quit finish.
     e.preventDefault()
     destroyTray()
+    // Nothing may reach the engine while it is being torn down: the panel is still
+    // polling, and a Stop or Save during the stitch would race the teardown. The
+    // window is about to go anyway, so it is disabled for the wait.
+    mainWindow?.setEnabled(false)
     void (async () => {
       try {
         await Promise.race([

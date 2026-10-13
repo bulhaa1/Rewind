@@ -690,12 +690,16 @@ const services = {
   takeScreenshotHotkey: () => saveScreenshotFromHotkey(),
   /** Shared by the panel's toggle and the start/stop hotkey. */
   toggleReplay: () => toggleReplayForUser(),
-  /** Hotkey-only (startup and rebind): names the key in its popups. */
-  toggleRecording: () => toggleRecordingForUser('toggle-record'),
+  /**
+   * Hotkey-only (startup and rebind). Points at the same catching wrapper the
+   * startup path installs, so a failure after a rebind still pops with its reason
+   * instead of rejecting silently into the unhandled-rejection log.
+   */
+  toggleRecording: () => toggleRecordingFromHotkey(),
   /** The panel's Stop button: the same function the start/stop hotkey uses. */
   stopRecording: () => stopRecordingAndRegister(),
   /** Hotkey-only (startup and rebind): names the key in its popups. */
-  saveQuickClip: () => saveQuickClipAndNotify(services, clampQuickClip(getSetting('quickClipSeconds')), 'save-quick-clip'),
+  saveQuickClip: () => saveQuickClipFromHotkey(),
   /**
    * Registers a recording the buffer finished on teardown.
    *

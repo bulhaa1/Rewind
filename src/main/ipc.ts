@@ -95,11 +95,11 @@ export interface Services {
   /** Starts or stops the replay buffer. Shared with the start/stop hotkey. */
   toggleReplay: () => Promise<{ active: boolean }>
   /** Starts or stops the manual recording. Driven by the Start/Stop Recording hotkey. */
-  toggleRecording: () => Promise<{ recording: boolean }>
+  toggleRecording: () => Promise<void>
   /** Stops a running recording and registers the file. The panel's Stop button. */
   stopRecording: () => Promise<string>
-  /** Saves the last N seconds of the buffer, using the quick-clip length setting. */
-  saveQuickClip: () => Promise<string>
+  /** Saves the last N seconds of the buffer. Hotkey-only (startup and rebind). */
+  saveQuickClip: () => Promise<void>
   /**
    * Registers a recording the buffer finished on teardown.
    *
@@ -490,7 +490,9 @@ export function registerIpc(s: Services): void {
   // -------------------------------------------------------------------------
 
   handle(IPC.openFolder, async (target?: unknown) => {
-    const root = getSetting('outputPath') as string
+    // The effective root (`<pick>\Rewind`), not the raw setting: it is where clips
+    // actually land and what the settings row shows.
+    const root = outputRoot()
     if (target === undefined || target === null) {
       // openPath resolves with an error string rather than throwing.
       const rootErr = await shell.openPath(root)
@@ -917,7 +919,10 @@ export function registerIpc(s: Services): void {
     // Installing means the installer kills this process seconds later, so a recording
     // still running would be cut off mid-stitch and never register. Refuse it, and say
     // what to do, rather than losing the recording silently.
-    if (replay().isRecordingContinuously?.()) {
+    // `replay()` is null while the pipeline is being rebuilt, and the guard is read
+    // through optional chaining for exactly that window: a TypeError here would
+    // surface as a raw "Error invoking remote method" on the Install button.
+    if (replay()?.isRecordingContinuously?.()) {
       return fail('Stop the recording first — installing now would cut it off')
     }
     // The process is replaced by the installer, so this never really returns.
