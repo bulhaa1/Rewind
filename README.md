@@ -78,12 +78,18 @@ To update:
    settings gear.
 2. Press **Check for updates**.
 3. If a version is available, press **Download**, then **Restart and install**.
-   Your clips, settings and hotkeys carry over.
+   The installer runs silently — no wizard, no clicks — and the app comes back up
+   on the new version. Your clips, settings and hotkeys carry over, and the
+   installer it downloaded is deleted on the next start rather than left behind.
 
 <img width="268" alt="The update tab: 'Rewind only contacts the network when you check', with a Check for updates button" src="assets/preview/update-tab.png" />
 
 The same tab shows why if a check fails, and nothing is ever downloaded until you
 press Download.
+
+What your machine can encode, and what Rewind does when it cannot, is documented in
+[`docs/hardware-compatibility.md`](docs/hardware-compatibility.md) — including a
+checklist for a machine nobody has tried yet.
 
 ## How it compares
 
