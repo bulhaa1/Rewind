@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, CircleDot, Save } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, CircleDot, Save } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { api } from '../lib/api'
 import { QK, SETTINGS, hotkeysQuery } from '../lib/queries'
@@ -21,6 +21,9 @@ const LIMIT_OPTIONS = [
   { seconds: 120, label: '2m' },
   { seconds: 300, label: '5m' },
 ]
+
+/** One press of the custom limit's stepper, in seconds. */
+const LIMIT_STEP = 5
 
 /**
  * The buffer dial.
@@ -310,6 +313,16 @@ export function Deck({
     if (clamped !== duration) onSetBufferSeconds(clamped)
   }
 
+  // The stepper's own presses, which land immediately: one press is one intent,
+  // unlike typing "120" which is three.
+  const stepLimit = (delta: number) => {
+    const typed = Math.round(Number(customLimit))
+    const from = Number.isFinite(typed) && customLimit.trim() !== '' ? typed : duration
+    const next = Math.min(Math.max(from + delta, BUFFER_DURATION_MIN), BUFFER_DURATION_MAX)
+    setCustomLimit(String(next))
+    if (next !== duration) onSetBufferSeconds(next)
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-clean p-6">
       <div className="flex items-center gap-8">
@@ -393,8 +406,10 @@ export function Deck({
           })}
           </div>
 
-          {/* Any window the presets do not cover, inside the engine's 5-600s range. */}
-          <label className="ml-auto flex items-center gap-1.5">
+          {/* Any window the presets do not cover, inside the engine's 5-600s range.
+              The spinner is the deck's own: the native one is a light grey box that
+              belongs to no other control here. */}
+          <div className="ml-auto flex h-7 items-center rounded-md border border-line bg-raised/50 focus-within:border-accent">
             <input
               type="number"
               inputMode="numeric"
@@ -405,14 +420,42 @@ export function Deck({
               onBlur={applyCustomLimit}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  stepLimit(LIMIT_STEP)
+                }
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  stepLimit(-LIMIT_STEP)
+                }
               }}
               aria-label="Custom buffer limit in seconds"
               title={`Custom limit, ${BUFFER_DURATION_MIN}-${BUFFER_DURATION_MAX} seconds`}
               data-testid="buffer-limit-custom"
-              className="tabular h-7 w-[72px] rounded-md border border-line bg-raised/50 px-2 text-right text-[12px] outline-none focus:border-accent"
+              className="tabular h-full w-[46px] bg-transparent px-2 text-right text-[12px] outline-none"
             />
-            <span className="text-[11px] text-ink-faint">s</span>
-          </label>
+            <span className="flex h-full flex-col border-l border-line">
+              <button
+                type="button"
+                aria-label="Longer buffer"
+                title="Longer"
+                onClick={() => stepLimit(LIMIT_STEP)}
+                className="flex h-1/2 w-4 items-center justify-center rounded-tr-[5px] text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+              >
+                <ChevronUp className="h-2.5 w-2.5" strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Shorter buffer"
+                title="Shorter"
+                onClick={() => stepLimit(-LIMIT_STEP)}
+                className="flex h-1/2 w-4 items-center justify-center rounded-br-[5px] text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+              >
+                <ChevronDown className="h-2.5 w-2.5" strokeWidth={2} />
+              </button>
+            </span>
+            <span className="pl-1 pr-1.5 text-[11px] text-ink-faint">s</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

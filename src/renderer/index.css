@@ -133,6 +133,21 @@
   button:disabled {
     cursor: not-allowed;
   }
+
+  /* Chromium draws its own number spinner as a light grey box, which fights this
+     panel. The deck has a stepper of its own (components/deck.tsx), so the native
+     one is removed here rather than left to sit on the dark surface. */
+  input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
 }
 
 @layer utilities {
