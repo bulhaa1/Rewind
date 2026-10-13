@@ -34,12 +34,14 @@
     "release:local": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win --publish never && npm run package:stamp"
   },
   "dependencies": {
+    "@base-ui-components/react": "^1.0.0-rc.0",
     "@streamlabs/obs-studio-node": "https://s3-us-west-2.amazonaws.com/obsstudionodes3.streamlabs.com/osn-0.25.77-release-win64.tar.gz",
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "get-windows": "^9.3.0",
     "koffi": "^3.3.3",
+    "motion": "^14.1.1",
     "native-sound-mixer": "^3.4.6-win",
     "uiohook-napi": "^1.5.5"
   },

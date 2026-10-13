@@ -161,6 +161,25 @@
   .rise {
     animation: rise 0.18s ease-out;
   }
+
+  /*
+   * Film grain. A fixed, non-interactive wash that keeps the off-black canvas
+   * from reading as flat digital paint.
+   *
+   * It is `position: fixed` on purpose: attached to a scrolling container it
+   * would repaint the whole viewport on every wheel event. Opacity stays at a
+   * register the eye reads as texture rather than noise, and the layer never
+   * takes pointer events.
+   */
+  .grain {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+  }
 }
 
 /*

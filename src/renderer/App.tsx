@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { MotionConfig } from 'motion/react'
 import { queryClient } from './lib/queries'
 import { BackgroundActionProvider, ObsStatusProvider, useLibraryInvalidation } from './lib/context'
 import { useNotificationSound, usePopupWindow, useEditorClipPath } from './lib/hooks'
@@ -93,34 +94,36 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ObsStatusProvider>
-        <BackgroundActionProvider>
-          <AppEffects />
-          <div className="h-full">
-            <Surface />
-          </div>
-          {/*
-            Styled from the same tokens as everything else. These previously named
-            `--color-card` / `--color-border` / `--color-foreground`, which no longer
-            exist: an unresolvable var invalidates the whole declaration, so error
-            toasts — the one thing a user needs when a setting fails — rendered with
-            no background, no border and no text colour.
-          */}
-          <Toaster
-            position="bottom-center"
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: 'var(--color-raised)',
-                border: '1px solid var(--color-line-strong)',
-                color: 'var(--color-ink)',
-              },
-            }}
-          />
-        </BackgroundActionProvider>
-      </ObsStatusProvider>
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <ObsStatusProvider>
+          <BackgroundActionProvider>
+            <AppEffects />
+            <div className="h-full">
+              <Surface />
+            </div>
+            {/*
+              Styled from the same tokens as everything else. These previously named
+              `--color-card` / `--color-border` / `--color-foreground`, which no longer
+              exist: an unresolvable var invalidates the whole declaration, so error
+              toasts — the one thing a user needs when a setting fails — rendered with
+              no background, no border and no text colour.
+            */}
+            <Toaster
+              position="bottom-center"
+              theme="dark"
+              toastOptions={{
+                style: {
+                  background: 'var(--color-raised)',
+                  border: '1px solid var(--color-line-strong)',
+                  color: 'var(--color-ink)',
+                },
+              }}
+            />
+          </BackgroundActionProvider>
+        </ObsStatusProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   )
 }
 
