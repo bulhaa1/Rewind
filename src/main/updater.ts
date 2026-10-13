@@ -1,4 +1,6 @@
 import { app } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import { scope } from './logger.js'
 import { lifecycle } from './window.js'
 
@@ -77,6 +79,15 @@ function load(): typeof import('electron-updater').autoUpdater | null {
     // means the user presses the button, not that closing the window applies it.
     au.autoInstallOnAppQuit = false
 
+    // Test hook: an update can be exercised against a local server without publishing
+    // a release. Nobody sets this in normal use, and the feed it points at still has
+    // to serve a signed-by-version latest.yml for anything to happen.
+    const feed = process.env.REWIND_UPDATE_FEED
+    if (feed) {
+      log.warn(`Update feed overridden by REWIND_UPDATE_FEED: ${feed}`)
+      au.setFeedURL({ provider: 'generic', url: feed })
+    }
+
     au.logger = {
       info: (m: string) => log.info(m),
       warn: (m: string) => log.warn(m),
@@ -149,10 +160,105 @@ export async function downloadUpdate(): Promise<UpdateState> {
 }
 
 /**
+ * The directory electron-updater downloads into.
+ *
+ * `updaterCacheDirName` is written into `app-update.yml` at package time and is the
+ * name electron-updater itself uses. A dev build has no `app-update.yml`, and the
+ * default there is the package name.
+ */
+function updateCacheDirName(): string {
+  try {
+    const yml = fs.readFileSync(path.join(process.resourcesPath, 'app-update.yml'), 'utf8')
+    const match = /^updaterCacheDirName:\s*(\S+)\s*$/m.exec(yml)
+    if (match) return match[1]
+  } catch {
+    /* not packaged */
+  }
+  // The same default electron-builder writes into app-update.yml: the *package* name,
+  // not the product name. `app.name` is the product name ("Rewind"), which resolves to
+  // a directory nothing ever writes to.
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as { name?: string }
+    if (pkg.name) return `${pkg.name}-updater`
+  } catch {
+    /* fall through */
+  }
+  return `${app.name}-updater`
+}
+
+/** The directory electron-updater downloads into. */
+function updateCacheDir(): string {
+  // Mirrors electron-updater's own `getAppCacheDir`, which uses LOCALAPPDATA on
+  // Windows rather than Electron's paths -- Electron has no `cache` key.
+  const base = process.env.LOCALAPPDATA ?? path.join(app.getPath('home'), 'AppData', 'Local')
+  return path.join(base, updateCacheDirName())
+}
+
+function countFiles(dir: string): { files: number; bytes: number } {
+  let files = 0
+  let bytes = 0
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      const inner = countFiles(full)
+      files += inner.files
+      bytes += inner.bytes
+    } else {
+      files++
+      try {
+        bytes += fs.statSync(full).size
+      } catch {
+        /* vanished under us */
+      }
+    }
+  }
+  return { files, bytes }
+}
+
+/**
+ * Deletes what the updater left behind, once per start.
+ *
+ * After one update the directory holds two copies of the same installer --
+ * `installer.exe`, the renamed copy electron-updater executes, and the original --
+ * plus a blockmap. Measured on this machine: 379 MB for one version, and it grows
+ * with every release.
+ *
+ * Nothing there can be applied across a restart: the update state lives in memory and
+ * starts at `idle`, so a stale download is downloaded again rather than installed.
+ * Deleting it costs a repeat download at worst, and it is the difference between an
+ * install folder that stays the size it was installed at and one that grows forever.
+ */
+export function pruneUpdateCache(): { path: string; files: number; bytes: number } {
+  const dir = updateCacheDir()
+  let counted = { files: 0, bytes: 0 }
+  try {
+    if (!fs.existsSync(dir)) {
+      log.info(`Update cache: nothing to prune at ${dir}`)
+      return { path: dir, ...counted }
+    }
+    counted = countFiles(dir)
+    fs.rmSync(dir, { recursive: true, force: true })
+  } catch (e) {
+    // A locked installer (one is mid-run) or a permission problem. Never fatal.
+    log.warn('Could not prune the update cache:', e)
+  }
+  if (counted.files > 0) {
+    log.info(
+      `Update cache pruned: ${counted.files} file(s), ${(counted.bytes / 1024 / 1024).toFixed(1)} MB (${dir})`,
+    )
+  }
+  return { path: dir, ...counted }
+}
+
+/**
  * Exits and runs the installer.
  *
- * The update is installed by a separate process on quit, so nothing here should
- * have run after this returns.
+ * Silent, because the wizard is the thing being removed: an update that asks the user
+ * to click through an installer they did not ask for is not an update, it is a chore.
+ * `isForceRunAfter` brings the app back up once the installer finishes.
+ *
+ * The update is installed by a separate process on quit, so nothing here should have
+ * run after this returns.
  */
 export function quitAndInstall(): void {
   const au = load()
@@ -163,7 +269,5 @@ export function quitAndInstall(): void {
   // The installer kills this process itself a few seconds in, so the quit must not
   // stop to finish a recording: `installing` tells window.ts to skip that wait.
   lifecycle.installing = true
-  // isSilent = false and isForceRunAfter = true: the user should see the installer
-  // running, and the app should come back up afterwards.
-  au.quitAndInstall(false, true)
+  au.quitAndInstall(true, true)
 }

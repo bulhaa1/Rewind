@@ -780,6 +780,14 @@ function main(): void {
       } catch (e) {
         log.warn('Thumbnail cache prune failed:', e)
       }
+
+      // The same housekeeping for the updater: an update leaves two copies of its
+      // installer behind, and nothing in there can be applied after a restart.
+      try {
+        require('./updater.js').pruneUpdateCache()
+      } catch (e) {
+        log.warn('Update cache prune failed:', e)
+      }
     }, 5_000)
 
     // Pushes the initial update state to the panel. This does not check for
@@ -916,6 +924,7 @@ function main(): void {
     if (process.env.REWIND_SELFTEST_SETTINGS === '1') void runSettingsSelfTest()
     if (process.env.REWIND_SELFTEST_AUDIOTRACKS === '1') void runAudioTrackSelfTest()
     if (process.env.REWIND_SELFTEST_DISPLAY === '1') void runDisplaySelfTest()
+    if (process.env.REWIND_SELFTEST_DISPLAY_WATCH === '1') void runDisplayWatchSelfTest()
   })
 
 /**
@@ -1142,6 +1151,89 @@ async function runDisplaySelfTest(): Promise<void> {
   } finally {
     // See runRecordSelfTest: the redirect persists, and an unrestored one leaves the
     // app saving into temp forever.
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore.setOutputPath(realOutputPath).catch(() => {})
+    }
+  }
+
+  app.exit(exitCode)
+}
+
+/** The primary display's physical pixel size, which is what the canvas follows. */
+function primaryPhysicalSize(): { width: number; height: number } {
+  const d = screen.getPrimaryDisplay()
+  return {
+    width: Math.round(d.bounds.width * (d.scaleFactor || 1)),
+    height: Math.round(d.bounds.height * (d.scaleFactor || 1)),
+  }
+}
+
+/** Waits for the primary display's physical size to differ from `from`. */
+async function waitForDisplayChange(from: { width: number; height: number }, timeoutMs: number): Promise<{ width: number; height: number }> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const now = primaryPhysicalSize()
+    if (now.width !== from.width || now.height !== from.height) return now
+    await sleep(500)
+  }
+  throw new Error(`Primary display did not change from ${from.width}x${from.height} within ${timeoutMs}ms`)
+}
+
+/**
+ * Waits for a real display change, then saves a clip on each side of it.
+ *
+ * The forced-canvas test (runDisplaySelfTest) proves the mechanism, but nothing but a
+ * real resolution change exercises the path a user takes: Windows' metrics event,
+ * Electron's listener, the debounce, and the source re-fit. The machine's display is
+ * changed by scripts/probe-resolution-change.mjs while this half only watches and
+ * saves, so the disruptive part stays in the script and this stays a measurement.
+ */
+async function runDisplayWatchSelfTest(): Promise<void> {
+  const outDir = process.env.REWIND_SELFTEST_OUT ?? path.join(app.getPath('temp'), 'rewind-display-watch')
+  if (!obsCore || !replay || !capture) {
+    log.error('REWIND_SELFTEST_DISPLAY_WATCH set without a pipeline')
+    app.exit(2)
+    return
+  }
+
+  const realOutputPath = getSetting('outputPath')
+  let exitCode = 0
+  try {
+    fs.mkdirSync(outDir, { recursive: true })
+    await waitForBuffer(replay, 60_000)
+    await sleep(3_000)
+    setSetting('outputPath', outDir)
+    detector?.stop()
+    await obsCore.setOutputPath(outDir)
+    await waitForBuffer(replay, 30_000)
+    await sleep(12_000)
+
+    const start = primaryPhysicalSize()
+    log.info(`DISPLAY-WATCH start=${start.width}x${start.height} - waiting for the display to change`)
+
+    const changed = await waitForDisplayChange(start, 150_000)
+    log.info(`DISPLAY-WATCH changed=${changed.width}x${changed.height}`)
+    // The sync stops and restarts the chain, so the new buffer needs frames.
+    await sleep(12_000)
+    const changedClip = await replay.saveReplayBuffer('display')
+    log.info(`DISPLAY-WATCH clip=changed path=${changedClip}`)
+
+    const restored = await waitForDisplayChange(changed, 150_000)
+    log.info(`DISPLAY-WATCH restored=${restored.width}x${restored.height}`)
+    await sleep(12_000)
+    const restoredClip = await replay.saveReplayBuffer('display')
+    log.info(`DISPLAY-WATCH clip=restored path=${restoredClip}`)
+
+    fs.writeFileSync(
+      path.join(outDir, 'watch.json'),
+      JSON.stringify({ start, changed, restored, clips: { changed: changedClip, restored: restoredClip } }, null, 2),
+    )
+    log.info('DISPLAY-WATCH complete')
+  } catch (e) {
+    log.error('DISPLAY-WATCH failed:', e)
+    exitCode = 1
+  } finally {
     if (realOutputPath) {
       setSetting('outputPath', realOutputPath)
       await obsCore.setOutputPath(realOutputPath).catch(() => {})
