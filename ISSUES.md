@@ -3,10 +3,11 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-13, after the UI redesign landed on branch `feat/ui-redesign`
-(landscape deck + media rail, signal-path settings, Base UI primitives, motion), on
-top of making pause stop capture, fixing the NVENC preset mapping and the frame-rate
-profile write, and measuring the capture and idle cost (`docs/perf-testing.md`).
+Last updated: 2026-10-13, at the 1.1.0 release: the UI redesign (landscape deck +
+media rail, signal-path settings), the correctness fixes underneath it, the size
+pass (ffprobe removed, one locale, maximum compression: 190 MB download / 635 MB
+installed), hotkey popups that name the action and key, and the 1.0.1 → 1.1.0
+update verified end to end.
 
 Status values:
 
@@ -161,6 +162,16 @@ so the canvas would not update. Should be handled; not yet.
 
 ## Verified
 
+### 1.0.1 → 1.1.0 updates end to end
+
+Run 2026-10-13 on this machine: the installed 1.0.1 (`Z:\Apps\Rewind`) pressed
+**Check for updates**, was offered 1.1.0, downloaded it (189 MB — 1.0.1's updater
+auto-downloads once an update is found), pressed **Restart and install**, and came
+back as 1.1.0 with the save location, screenshot location and every existing hotkey
+unchanged. New bindings filled in with defaults (quick clip `Ctrl+Alt+1`, record
+toggle `Alt+3`). Scripted as `scripts/probe-update-101.mjs` +
+`scripts/probe-after-update.mjs` (5/5), driven over CDP against the installed build.
+
 ### `separateAudioTracks` produces genuinely separate tracks
 
 Measured end to end on 2026-10-11 with `node scripts/audiotracktest.js`, which
@@ -303,10 +314,10 @@ Not bugs, but they accumulate and are easy to forget.
   `%LOCALAPPDATA%\rewind-desktop-updater\pending\` held two copies of the same
   installer after one update — `installer.exe` (the renamed copy electron-updater
   executes) plus the original. 421 MB for one version, and it grows per release.
-- **Differential downloads are not in use.** The `.blockmap` is built into
-  `release/` but is not uploaded, so the updater 404s on it and falls back to a
-  full 210 MB fetch every time. Uploading the blockmap alongside `latest.yml`
-  would make updates ship only changed blocks.
+- **Differential downloads start with 1.1.0.** The `.blockmap` is now uploaded
+  alongside `latest.yml` (1.1.0 onward), so updates from 1.1.0 ship only changed
+  blocks. The 1.0.1 → 1.1.0 jump was necessarily a full download: 1.0.1 shipped no
+  blockmap to diff against.
 - **obs-studio-node's stats getters are garbage.** `Global.cpuPercentage`,
   `currentFrameRate`, `averageFrameRenderTime` and `laggedFrames` — and the
   `Video` info object — returned `"337769986 fps"` and `"3989852819 ms"` in
