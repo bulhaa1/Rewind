@@ -30,7 +30,9 @@ Rewind — Play. Capture. Keep.
 
 <img width="990" alt="The Rewind panel: the rolling buffer on the left, the clip rail on the right" src="assets/preview/panel.png" />
 
-<img width="430" alt="The clip editor: trim range, per-track volume and a waveform per audio track" src="assets/preview/editor.png" /> <img width="430" alt="Settings are a signal path — here, the encoder section" src="assets/preview/settings.png" />
+<img width="990" alt="The clip editor: trim range, per-track volume and a waveform per audio track" src="assets/preview/editor.png" />
+
+<img width="990" alt="Settings are a signal path — here, the encoder section" src="assets/preview/settings.png" />
 
 ## Install
 
