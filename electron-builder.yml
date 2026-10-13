@@ -68,6 +68,49 @@ extraResources:
       - '!**/libEGL.dll'
       - '!**/libGLESv2.dll'
       - '!obs-plugins/64bit/locales/**'
+      # Modules Rewind never loads. OBS enumerates every plugin in this folder
+      # at startup; none of these is reachable from the app's capture, audio,
+      # encoder or output paths. Keep win-capture, win-wasapi, obs-nvenc,
+      # obs-qsv11, obs-ffmpeg, obs-x264, obs-filters (the mic gain filter),
+      # obs-outputs and rtmp-services (the service stub the replay chain uses).
+      - '!**/mediasoup-connector.dll'
+      - '!**/datachannel.dll'
+      - '!**/obs-vst.dll'
+      - '!**/win-streamlabs-vst.exe'
+      - '!**/Spout.dll'
+      - '!**/SpoutDX.dll'
+      - '!**/SpoutLibrary.dll'
+      - '!**/win-spout.dll'
+      - '!**/win-dshow.dll'
+      - '!**/obs-ndi.dll'
+      - '!**/obs-webrtc.dll'
+      - '!**/decklink.dll'
+      - '!**/vlc-video.dll'
+      - '!**/obs-text.dll'
+      - '!**/text-freetype2.dll'
+      - '!**/obs-transitions.dll'
+      - '!**/motion-transition.dll'
+      - '!**/image-source.dll'
+      - '!**/coreaudio-encoder.dll'
+      - '!**/openvr_api.dll'
+      - '!**/win-openvr.dll'
+      # Their data directories are dead weight once the DLL is gone.
+      - '!data/obs-plugins/coreaudio-encoder/**'
+      - '!data/obs-plugins/decklink/**'
+      - '!data/obs-plugins/image-source/**'
+      - '!data/obs-plugins/motion-transition/**'
+      - '!data/obs-plugins/obs-browser/**'
+      - '!data/obs-plugins/obs-ndi/**'
+      - '!data/obs-plugins/obs-text/**'
+      - '!data/obs-plugins/obs-transitions/**'
+      - '!data/obs-plugins/obs-vst/**'
+      - '!data/obs-plugins/obs-webrtc/**'
+      - '!data/obs-plugins/text-freetype2/**'
+      - '!data/obs-plugins/vlc-video/**'
+      - '!data/obs-plugins/win-dshow/**'
+      - '!data/obs-plugins/win-openvr/**'
+      - '!data/obs-plugins/win-spout/**'
+      - '!data/win-streamlabs-vst/**'
   - from: node_modules/ffmpeg-static/ffmpeg.exe
     to: ffmpeg/ffmpeg.exe
   - from: assets/favicon.ico
