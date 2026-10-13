@@ -238,6 +238,7 @@ async function initPipeline(): Promise<void> {
     'save-quick-clip': () => void saveQuickClipFromHotkey(),
     screenshot: () => void saveScreenshotFromHotkey(),
     'toggle-record': () => void toggleRecordingFromHotkey(),
+    'next-profile': () => void cycleProfileFromHotkey(),
   })
 
   try {
@@ -543,6 +544,29 @@ async function saveQuickClipFromHotkey(): Promise<void> {
   }
 }
 
+/**
+ * Cycles to the next profile, from the hotkey.
+ *
+ * Wraps at the end, and says which profile it landed on: a hotkey that silently
+ * changes how the next clip is captured is a hotkey nobody can trust.
+ */
+async function cycleProfileFromHotkey(): Promise<void> {
+  const { profiles, activeProfile } = getProfiles()
+  const next = (activeProfile + 1) % profiles.length
+  const target = profiles[next]
+  try {
+    await applyProfile(next)
+    showNotification(
+      'saved',
+      `${target.name} · ${target.bufferDuration}s · ${target.fps}fps · ${target.visualQuality}`,
+      hotkeyTitle('next-profile', `Profile ${next + 1}`),
+    )
+  } catch (e) {
+    log.error('Failed to switch profile:', e)
+    showNotification('error', errorMessage(e), hotkeyTitle('next-profile', 'Profile not switched'))
+  }
+}
+
 async function saveScreenshotFromHotkey(): Promise<void> {
   try {
     await takeScreenshot(services, 'screenshot')
@@ -762,6 +786,7 @@ const services = {
    */
   registerFinishedFromBufferStop,
   applyProfile,
+  cycleProfile: cycleProfileFromHotkey,
   getProfiles,
   reinitPipeline,
   notify: (type: BufferStatus, message?: string, title?: string) => showNotification(type, message, title),

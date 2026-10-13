@@ -112,6 +112,8 @@ export interface Services {
   registerFinishedFromBufferStop: (finished: string) => void
   /** Switches to a profile: writes its settings, then applies them once. */
   applyProfile: (index: number) => Promise<void>
+  /** Cycles to the next profile, for a rebind made in the panel. */
+  cycleProfile?: () => Promise<void>
   getProfiles: () => { profiles: Profile[]; activeProfile: number }
   reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
   /** `title` names the action and key on hotkey popups; `message` is the body line. */
@@ -1267,6 +1269,7 @@ export function registerIpc(s: Services): void {
       screenshot: () => void s.takeScreenshotHotkey(),
       'save-quick-clip': () => void s.saveQuickClip(),
       'toggle-record': () => void s.toggleRecording?.(),
+      'next-profile': () => void s.cycleProfile?.(),
     }
 
     if (!hk.registerHotkey(action as any, accelerator, HOTKEY_CALLBACKS[action as import('./hotkey.js').HotkeyAction])) {

@@ -1,13 +1,14 @@
 import { scope } from './logger.js'
 import { getSetting, setSetting } from './store.js'
 import { titleWithHotkey } from '@shared/constants.js'
+import type { HotkeyAction } from '@shared/types.js'
 
 const log = scope('Hotkey')
 
-export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record'
+export type { HotkeyAction }
 
 interface HotkeySpec {
-  setting: 'saveReplayHotkey' | 'quickClipHotkey' | 'screenshotHotkey' | 'toggleRecordHotkey'
+  setting: 'saveReplayHotkey' | 'quickClipHotkey' | 'screenshotHotkey' | 'toggleRecordHotkey' | 'nextProfileHotkey'
   label: string
 }
 
@@ -16,6 +17,7 @@ export const HOTKEYS: Record<HotkeyAction, HotkeySpec> = {
   'save-quick-clip': { setting: 'quickClipHotkey', label: 'Save Quick Clip' },
   screenshot: { setting: 'screenshotHotkey', label: 'Screenshot' },
   'toggle-record': { setting: 'toggleRecordHotkey', label: 'Start / Stop Recording' },
+  'next-profile': { setting: 'nextProfileHotkey', label: 'Next Profile' },
 }
 
 export const ACTIONS: HotkeyAction[] = Object.keys(HOTKEYS) as HotkeyAction[]

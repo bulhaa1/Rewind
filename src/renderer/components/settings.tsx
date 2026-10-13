@@ -21,22 +21,26 @@ import {
   X,
 } from 'lucide-react'
 import { api, read } from '../lib/api'
-import { QK, SETTINGS, captureStateQuery, dedupeWindows, hotkeysQuery } from '../lib/queries'
+import { QK, SETTINGS, captureStateQuery, dedupeWindows, hotkeysQuery, profilesQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
 import { HotkeyChip, VolumeControl } from './audio-controls'
 import { HotkeyDialog } from './record'
 import { Select, SettingSelect, SettingSwitchRow, type Option } from './controls'
 import { Button, Badge, InlineSpinner, Menu, MenuItem, PathRow, Row, Section, SectionHeading, cn } from './ui'
 import {
+  ALLOWED_FPS,
+  BUFFER_DURATION_MAX,
+  BUFFER_DURATION_MIN,
   CODEC_OPTIONS,
   FPS_OPTIONS,
   MIC_GAIN,
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
   OUTPUT_RESOLUTION_OPTIONS,
+  VISUAL_QUALITIES,
   VISUAL_QUALITY_OPTIONS,
 } from '@shared/constants.js'
-import type { AudioChannel, AudioDevice, HotkeyAction, IpcResult } from '@shared/types.js'
+import type { AudioChannel, AudioDevice, HotkeyAction, IpcResult, Profile } from '@shared/types.js'
 
 /** Sentinel selecting "Auto detect launched game". */
 const AUTO_GAME = '__auto_game_capture__'
@@ -808,10 +812,104 @@ const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
   { action: 'save-quick-clip', label: 'Save Quick Clip' },
   { action: 'screenshot', label: 'Screenshot' },
   { action: 'toggle-record', label: 'Start / Stop Recording' },
+  { action: 'next-profile', label: 'Next Profile' },
 ]
 
-function HotkeysSection() {
+/**
+ * The four capture presets.
+ *
+ * Editing the active profile applies through the same path a switch uses; editing an
+ * inactive one only stores it, so the panel never restarts the engine for a profile the
+ * user is not on.
+ */
+function ProfilesSection() {
   const client = useQueryClient()
+  const { data } = useQuery(profilesQuery)
+  const [busy, setBusy] = useState(false)
+  const profiles: Profile[] = data?.profiles ?? []
+  const activeProfile = data?.activeProfile ?? 0
+
+  const save = async (index: number, patch: Partial<Profile>) => {
+    setBusy(true)
+    try {
+      const res = await api.setProfileValues(index, patch)
+      if (!res.success) throw new Error(res.error)
+    } catch (e) {
+      console.error('Profile edit failed:', e)
+    } finally {
+      setBusy(false)
+      await client.invalidateQueries({ queryKey: QK.profiles })
+    }
+  }
+
+  return (
+    <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">
+      <div className="space-y-3">
+        <p className="text-[11px] text-ink-faint">
+          Four presets. Switch with the Next Profile hotkey or the numbered buttons on the main page; edits to
+          the active profile apply immediately.
+        </p>
+        {profiles.map((profile, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn('w-4 text-center text-[12px] font-medium', i === activeProfile ? 'text-accent' : 'text-ink-faint')}
+              title={i === activeProfile ? 'Active profile' : undefined}
+            >
+              {i + 1}
+            </span>
+            <input
+              type="text"
+              defaultValue={profile.name}
+              maxLength={24}
+              aria-label={`Profile ${i + 1} name`}
+              onBlur={(e) => void save(i, { name: e.target.value })}
+              className="h-7 w-28 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
+            />
+            <label className="flex items-center gap-1 text-[11px] text-ink-faint">
+              <input
+                type="number"
+                defaultValue={profile.bufferDuration}
+                min={BUFFER_DURATION_MIN}
+                max={BUFFER_DURATION_MAX}
+                aria-label={`Profile ${i + 1} buffer seconds`}
+                onBlur={(e) => void save(i, { bufferDuration: Number(e.target.value) })}
+                className="h-7 w-16 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
+              />
+              s
+            </label>
+            <select
+              value={profile.fps}
+              aria-label={`Profile ${i + 1} fps`}
+              onChange={(e) => void save(i, { fps: Number(e.target.value) })}
+              className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
+            >
+              {ALLOWED_FPS.map((fps) => (
+                <option key={fps} value={fps}>
+                  {fps} fps
+                </option>
+              ))}
+            </select>
+            <select
+              value={profile.visualQuality}
+              aria-label={`Profile ${i + 1} quality`}
+              onChange={(e) => void save(i, { visualQuality: e.target.value as Profile['visualQuality'] })}
+              className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
+            >
+              {VISUAL_QUALITIES.map((quality) => (
+                <option key={quality} value={quality}>
+                  {quality}
+                </option>
+              ))}
+            </select>
+            {busy && i === activeProfile ? <InlineSpinner /> : null}
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function HotkeysSection() {  const client = useQueryClient()
   const { data } = useQuery(hotkeysQuery)
   const [editing, setEditing] = useState<HotkeyAction | null>(null)
 
@@ -907,6 +1005,7 @@ export const SETTINGS_SECTIONS = {
   capture: [CaptureSection],
   audio: [AudioSection],
   encoder: [QualitySection],
+  profiles: [ProfilesSection],
   replay: [ReplaysSection, ScreenshotsSection],
   hotkeys: [HotkeysSection],
   system: [NotificationsSection, StartupSection, DataSection, VersionFooter],

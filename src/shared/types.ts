@@ -10,7 +10,7 @@
 export type CaptureMode = 'display' | 'window' | 'game'
 
 /** Bindable actions the global keyboard hook can trigger. */
-export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record'
+export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record' | 'next-profile'
 
 export type EncoderVendor = 'auto' | 'nvenc' | 'amf' | 'qsv' | 'x264'
 

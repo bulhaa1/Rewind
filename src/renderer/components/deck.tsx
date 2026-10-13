@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, ChevronDown, ChevronUp, CircleDot, Save } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { api } from '../lib/api'
-import { QK, SETTINGS, hotkeysQuery } from '../lib/queries'
+import { QK, SETTINGS, hotkeysQuery, profilesQuery } from '../lib/queries'
 import { useHeldSeconds } from '../lib/hooks'
 import { HotkeyChip } from './audio-controls'
 import { SettingSelect } from './controls'
@@ -233,7 +233,27 @@ export function Deck({
 }) {
   const client = useQueryClient()
   const { data: hotkeys } = useQuery(hotkeysQuery)
+  const { data: profileState } = useQuery(profilesQuery)
   const [editAction, setEditAction] = useState<HotkeyAction | null>(null)
+  const [profileBusy, setProfileBusy] = useState(false)
+
+  const profiles = profileState?.profiles ?? []
+  const activeProfile = profileState?.activeProfile ?? 0
+
+  const switchProfile = (index: number) => {
+    if (index === activeProfile || profileBusy) return
+    setProfileBusy(true)
+    void api
+      .setProfile(index)
+      .then((res) => {
+        if (!res.success) throw new Error(res.error)
+      })
+      .catch((e: unknown) => console.error('Profile switch failed:', e))
+      .finally(() => {
+        setProfileBusy(false)
+        void client.invalidateQueries({ queryKey: QK.profiles })
+      })
+  }
 
   // How much footage is recoverable right now, from the one implementation in
   // lib/hooks.ts, so the dial and the status strip cannot disagree about it.
@@ -460,6 +480,47 @@ export function Deck({
             </span>
             <span className="pl-1 pr-1.5 text-[11px] text-ink-faint">s</span>
           </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="label shrink-0">Profile</span>
+          <div className="flex items-center gap-1">
+            {profiles.map((profile, i) => (
+              <button
+                key={i}
+                type="button"
+                data-testid={`profile-chip-${i}`}
+                data-active={i === activeProfile}
+                aria-pressed={i === activeProfile}
+                aria-label={`Profile ${i + 1}: ${profile.name}`}
+                title={`${profile.name} · ${profile.bufferDuration}s · ${profile.fps}fps · ${profile.visualQuality}`}
+                disabled={profileBusy}
+                onClick={() => switchProfile(i)}
+                className={cn(
+                  'h-6 w-6 rounded text-[11px] font-medium transition-colors disabled:opacity-60',
+                  i === activeProfile
+                    ? 'bg-accent text-canvas'
+                    : 'text-ink-muted hover:bg-raised hover:text-ink',
+                )}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <span className="min-w-0 truncate text-[11px] text-ink-faint">
+            {profiles[activeProfile]
+              ? `${profiles[activeProfile].name} · ${profiles[activeProfile].bufferDuration}s · ${profiles[activeProfile].fps}fps`
+              : ''}
+          </span>
+          {hotkeys?.['next-profile'] ? (
+            <span className="ml-auto">
+              <HotkeyChip
+                hotkey={hotkeys['next-profile']}
+                onClick={() => setEditAction('next-profile')}
+                variant="keycap"
+              />
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3">

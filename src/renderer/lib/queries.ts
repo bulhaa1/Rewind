@@ -28,6 +28,7 @@ export const QK = {
   captureState: ['capture-state'] as const,
   encoderState: ['encoder-state'] as const,
   appVersion: ['app-version'] as const,
+  profiles: ['profiles'] as const,
   setting: (key: string) => ['setting', key] as const,
 }
 
@@ -156,4 +157,9 @@ export const configQuery = {
 export const hotkeysQuery = {
   queryKey: QK.hotkeys,
   queryFn: () => once(api.getHotkeys),
+}
+
+export const profilesQuery = {
+  queryKey: QK.profiles,
+  queryFn: () => once(api.getProfiles),
 }

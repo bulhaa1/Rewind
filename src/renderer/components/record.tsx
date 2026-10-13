@@ -10,6 +10,7 @@ const LABELS: Record<HotkeyAction, string> = {
   'save-quick-clip': 'Save Quick Clip',
   screenshot: 'Screenshot',
   'toggle-record': 'Start / Stop Recording',
+  'next-profile': 'Next Profile',
 }
 
 /**

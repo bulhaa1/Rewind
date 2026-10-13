@@ -18,9 +18,10 @@ const SECTIONS: { id: SettingsSectionId; index: string; label: string }[] = [
   { id: 'capture', index: '01', label: 'Capture' },
   { id: 'audio', index: '02', label: 'Audio' },
   { id: 'encoder', index: '03', label: 'Encoder' },
-  { id: 'replay', index: '04', label: 'Replay' },
-  { id: 'hotkeys', index: '05', label: 'Hotkeys' },
-  { id: 'system', index: '06', label: 'System' },
+  { id: 'profiles', index: '04', label: 'Profiles' },
+  { id: 'replay', index: '05', label: 'Replay' },
+  { id: 'hotkeys', index: '06', label: 'Hotkeys' },
+  { id: 'system', index: '07', label: 'System' },
 ]
 
 /** Escape and the arrows must not fight a field the user is typing in. */
