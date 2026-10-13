@@ -79,8 +79,8 @@ To update:
 2. Press **Check for updates**.
 3. If a version is available, press **Download**, then **Restart and install**.
    The installer runs silently — no wizard, no clicks — and the app comes back up
-   on the new version. Your clips, settings and hotkeys carry over, and the
-   installer it downloaded is deleted on the next start rather than left behind.
+   on the new version. Your clips, settings and hotkeys carry over, and what the
+   updater downloaded is cleared from disk shortly afterwards instead of piling up.
 
 <img width="268" alt="The update tab: 'Rewind only contacts the network when you check', with a Check for updates button" src="assets/preview/update-tab.png" />
 
@@ -129,6 +129,18 @@ npm run dev          # run against node_modules
 npm run build        # compile main + renderer
 npm start            # build then run
 npm run package      # build the NSIS installer into release/
+```
+
+Verification, per area — each one runs the real path and reports what it measured:
+
+```bash
+npm run test:ui            # the panel regression suite (needs a running app on CDP 9222)
+npm run test:display       # the capture canvas follows the display, buffer live or paused
+npm run test:resolution    # a real display mode change, both directions (blanks the screen briefly)
+npm run test:profiles      # the four presets: tiers, write-through, pause preservation
+npm run test:update-cache  # the updater cache is emptied on start
+npm run test:update        # 1.1.0 -> 1.2.0 end to end against a local feed
+npm run selftest           # save, screenshot and library paths end to end
 ```
 
 Native modules must be built against Electron's ABI first:

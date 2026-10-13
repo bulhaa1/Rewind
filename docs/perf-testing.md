@@ -153,3 +153,62 @@ Engine floor, for reference (from the section above): ~17.6% of one core @120 fp
 3.9% @30, paused with the source removed. Klip's entire app measured 18.4% — i.e. Rewind's
 floor plus about one point. The ~12 points of non-floor work are the attack surface:
 obs-studio-node polling, AV1 submit at these bitrates, three audio tracks, Electron utilities.
+
+---
+
+## What the Klip-derived work changed (1.1.0 → 1.2.0)
+
+Four changes, each measured before and after on this machine. Nothing here is a codec or a
+quality trade: the same clips come out of the same encoder.
+
+| Measure | 1.1.0 | 1.2.0 | Command |
+|---|---|---|---|
+| Installer | 189.3 MB | 107.1 MB | `Get-ChildItem release\Rewind-*-setup.exe` |
+| Installed | 627 MB / 1695 files | 371 MB / 1327 files | `Get-ChildItem 'Z:\Apps\Rewind' -Recurse -File \| Measure-Object Length -Sum` |
+| obs-studio-node tree | 317 MB | 62 MB | `Get-ChildItem resources\obs-studio-node -Recurse -File \| Measure-Object Length -Sum` |
+| Processes while buffering | 6 | 5 | `Get-Process \| Where-Object ProcessName -match 'rewind\|obs64'` |
+| Modules in obs64 | 142 | 118 | `(Get-Process obs64).Modules.Count` |
+
+What was removed, and why each is safe:
+
+- **CEF and obs-browser** (~214 MB): the app has no browser sources, and only
+  `obs-browser.dll` links `libcef`, so dropping that DLL is what stops a 170 MB browser
+  engine being loaded into `obs64` at all. Verified by the module count above and by a
+  recording that still produces frames.
+- **Unused OBS plugins** (~32 MB): dshow, NDI, VST, Spout, decklink, text, transitions,
+  image-source, WebRTC and their data directories — none reachable from the app's capture,
+  audio, encoder or output paths.
+- **The Electron audio service process**: audio runs in-process; verified by the process
+  count and by a recording that still has signal on all three tracks.
+- **The panel's work while hidden**: the deck's status poll is gated on `document.hidden`,
+  and orphaned thumbnails are pruned at startup.
+
+CPU, same harness, 2560x1440 @120 fps, AV1 vs H.264 at CQP 20 (settings only):
+
+| Codec | obs64 | encode engine |
+|---|---|---|
+| AV1 NVENC | 7.71% | 13.3% |
+| H.264 NVENC | 10.94% | 19.9% |
+
+AV1 is the cheaper choice on this hardware, so no "light codec" profile was added. On older
+GPUs the comparison would go the other way; that is what the quality tiers are for.
+
+The 60-minute soak (30 minutes visible, 30 hidden) was cancelled by the user, so the
+long-session numbers above are the 10-minute ones. What that soak was for: distinguishing a
+leak from a full buffer. The 10-minute A/B found no leak in either app — obs64 sawtoothed
+280–348 MB and returned to baseline each cycle, and the Electron side stayed flat.
+
+The update path was measured too (1.1.0 → 1.2.0, `npm run test:update`): the installer leaves
+**no** files behind that the new version does not ship, and the updater cache — 379 MB after
+one update, two copies of the same installer — is emptied by the new version on its first
+start (214 MB freed in the measured run).
+
+Verification commands added by this work:
+
+```powershell
+npm run test:display        # canvas changes apply while the buffer is live
+npm run test:resolution     # a real display mode change, both directions
+npm run test:profiles       # the four presets, their tiers and their write-through
+npm run test:update-cache   # the updater cache is cleared on start
+npm run test:update         # 1.1.0 -> 1.2.0 end to end against a local feed
+```

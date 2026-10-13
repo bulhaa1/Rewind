@@ -118,6 +118,22 @@ for the idle cost. Not started; not obviously right for a replay tool.
 
 ## Verified
 
+### 1.1.0 → 1.2.0 updates end to end, silently
+
+Run 2026-10-14 on this machine, `npm run test:update`: the published 1.1.0 installer into a
+scratch directory, pointed at a local feed serving a locally built 1.2.0, driven through
+the panel's own IPC.
+
+- The idle app made no update activity in 30 seconds: no check, no download, nothing.
+- Check offered 1.2.0, Download reached `ready`, and the app quit for the installer.
+- **No wizard.** The app came back by itself, which only happens if the install ran
+  silently — a wizard would have sat waiting for a click.
+- The install left **0 files** that 1.2.0 does not ship (compared against a fresh 1.2.0
+  tree, `resources` subtree, name and size). The NSIS update replaces the tree rather
+  than extracting over it, so the ~255 MB of engine files 1.2.0 dropped are gone.
+- The new version emptied the updater cache on its first start:
+  `Update cache pruned: 5 file(s), 214.4 MB`.
+
 ### Display resolution changes mid-capture
 
 **First shipped:** `4075a73` (canvas sync). **Fixed properly:** this branch.
@@ -273,6 +289,9 @@ CPU fallback, and the regression suite confirms
 `encoder vendors detected -> ["auto","nvenc","x264"]`. But "works on AMD and
 Intel" is untested. The README's "Any GPU" column rests on the fallback being
 architecturally sound, not on a machine without an NVIDIA card having run it.
+`docs/hardware-compatibility.md` is the analysis, with every claim labelled
+measured / vendor docs / needs a machine; the checklist in it is what a machine
+without an NVIDIA card should be run through.
 
 ---
 
@@ -290,10 +309,10 @@ Verified behaviour, shipped this way on purpose.
 
 Product calls, not engineering ones.
 
-- **Installer visibility.** `quitAndInstall(false, ...)` shows the NSIS wizard
-  even though the user just pressed "Restart and install". Passing `true` would
-  remove it, but SmartScreen prompts regardless, so leaving it visible means the
-  prompt is not a surprise.
+- **Installer visibility.** Settled in 1.2.0: `quitAndInstall(true, ...)` installs
+  silently, so no wizard appears at all. SmartScreen may still prompt on the first
+  run of an unsigned installer, which is the reason this sat open — but the wizard
+  itself was a second, avoidable interruption.
 - **Code signing.** The one thing that cannot be solved in this repository.
 - **Should the exclusion list be editable?** `Open Exclusion List` exports the
   compiled-in list to `exclusion-list.json` and reveals it. Nothing reads it back.
@@ -306,10 +325,15 @@ Product calls, not engineering ones.
 
 Not bugs, but they accumulate and are easy to forget.
 
-- **The updater cache is never pruned.**
-  `%LOCALAPPDATA%\rewind-desktop-updater\pending\` held two copies of the same
-  installer after one update — `installer.exe` (the renamed copy electron-updater
-  executes) plus the original. 421 MB for one version, and it grows per release.
+- **The updater cache is pruned on start** (1.2.0). It used to hold two copies of the
+  same installer after one update — `installer.exe` (the renamed copy electron-updater
+  executes) plus the original — measured at 379 MB after the 1.0.1 → 1.1.0 update. The app
+  now deletes the stale parts of that directory a few seconds after start and logs what it
+  freed (`Update cache pruned: 5 file(s), 5.2 MB`). Nothing in there can be applied across
+  a restart: the update state is in memory and starts at `idle`, so a stale download is
+  downloaded again rather than installed. Anything modified in the last two minutes is
+  left alone, because a second instance (a portable copy, a dev build) shares the
+  directory and may be mid-download.
 - **Differential downloads start with 1.1.0.** The `.blockmap` is now uploaded
   alongside `latest.yml` (1.1.0 onward), so updates from 1.1.0 ship only changed
   blocks. The 1.0.1 → 1.1.0 jump was necessarily a full download: 1.0.1 shipped no
