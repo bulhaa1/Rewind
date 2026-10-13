@@ -145,13 +145,6 @@ export const VBR_KBPS_BY_QUALITY: Record<VisualQuality, number> = {
   highest: 20000,
 }
 
-/** NVENC quality-preset index (settings.nvencPreset). */
-export const NVENC_PRESET_INDEX: Record<'p3' | 'p4' | 'p5', string> = {
-  p3: '3',
-  p4: '4',
-  p5: '5',
-}
-
 /** Keyframe interval, in seconds. */
 export const KEYINT_SEC = 2
 

@@ -37,6 +37,14 @@ export interface ObsModule {
     setOutputSource: (slot: number, source: unknown) => void
     getOutputSource: (slot: number) => { name?: string } | null
   }
+  /*
+   * obs-studio-node also declares live stats on `Global` (cpuPercentage,
+   * currentFrameRate, averageFrameRenderTime, laggedFrames) and a `Video` info
+   * object. Both return garbage on this build — measured "337769986 fps" and a
+   * 3.9e9 ms render time — so they are deliberately absent from this type until a
+   * version returns sane numbers. External sampling is the honest alternative:
+   * `scripts/perf-sample.ps1`.
+   */
   InputFactory: { create: (type: string, name: string, settings: Record<string, unknown>) => any }
   VideoEncoderFactory: { create: (id: string, name: string, settings: Record<string, unknown>) => any; types(): string[] }
   AudioTrackFactory: {

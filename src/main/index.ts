@@ -312,8 +312,17 @@ async function shutdownPipeline(): Promise<void> {
  * A failure has to land on `error` rather than `ready`, or the panel would claim to
  * be recording with no engine behind it.
  */
-async function reinitPipeline(reason?: string): Promise<void> {
+async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean } = {}): Promise<void> {
   await reinitMutex.run(async () => {
+    /*
+     * A rebuild boots the engine the way the app boots: buffer running. A user who
+     * paused before changing a setting stays paused — the boot path cannot know
+     * about the pause, and the alternative is a recording they did not ask for.
+     * Wedge recovery deliberately does not pass this: its whole point is a live
+     * buffer again.
+     */
+    const wasPaused = opts.preservePaused === true && currentStatus.status === 'paused'
+
     log.info(`Reinitializing OBS pipeline${reason ? ` (${reason})` : ''}...`)
     setStatus(reason ? { status: 'initializing', message: reason } : OBS_STATUS_MESSAGES.initializing, getMainWindow())
 
@@ -321,6 +330,10 @@ async function reinitPipeline(reason?: string): Promise<void> {
       await shutdownPipeline()
       buildPipeline()
       await startPipeline()
+      if (wasPaused) {
+        await replay!.pauseReplayBuffer()
+        await capture!.pauseCapture()
+      }
     } catch (e) {
       log.error(`Pipeline reinit failed${reason ? ` (${reason})` : ''}:`, e)
       setStatus({ status: 'error', message: errorMessage(e) }, getMainWindow())
@@ -565,6 +578,7 @@ async function toggleReplayForUser(): Promise<{ active: boolean }> {
 
   if (buffer.isReplayBufferActive()) {
     await buffer.pauseReplayBuffer()
+    await capture.pauseCapture()
     services.status.set(OBS_STATUS_MESSAGES.paused)
 
     // Stopping while a continuous recording was running finishes that recording
@@ -580,7 +594,7 @@ async function toggleReplayForUser(): Promise<{ active: boolean }> {
       }
     }
   } else {
-    await buffer.startReplayBuffer(true)
+    await capture.resumeCapture()
     services.status.set(OBS_STATUS_MESSAGES.ready)
   }
 

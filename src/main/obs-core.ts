@@ -50,7 +50,6 @@ export function rewindRoot(configured?: string): string {
   return path.join(base, APP_FOLDER)
 }
 
-/** Scales the canvas down to a 16:9 ceiling, preserving aspect and even dimensions. */
 /**
  * Output size to write into the OBS profile at startup.
  *
@@ -76,39 +75,6 @@ function readSectionParams(section: unknown): Record<string, unknown> {
     for (const p of params) out[p.name] = p.currentValue
   }
   return out
-}
-
-/**
- * Writes the output frame rate into the OBS video profile.
- *
- * OBS's `FPSCommon` is an *enum index*, not a frame rate: 0 means "highest", 1 is
- * 30 and 2 is 60. Writing a frame rate into it — as `FPSCommon = 120` — is an
- * invalid enum, which OBS discards and leaves on its previous value. That is how a
- * 60 fps capture ends up labelled 120 fps. Anything outside the two common values
- * has to go through `Custom FPS Value`, so 120 needs an explicit num/den pair.
- */
-export function applyOutputFps(section: unknown, fps: number): void {
-  const whole = Math.max(1, Math.round(fps))
-  const results: string[] = []
-
-  const set = (name: string, value: string) => {
-    results.push(`${name}=${setSettingValue(section, name, value) ? 'ok' : 'MISSING'}`)
-  }
-
-  if (whole === 30 || whole === 60) {
-    set('FPSType', 'Common FPS Values')
-    set('FPSCommon', whole === 30 ? '1' : '2')
-  } else {
-    set('FPSType', 'Integer FPS Value')
-    set('FPSCommon', '0')
-  }
-
-  // Numerator and denominator are read regardless of FPSType, so keep them truthful
-  // in case the user switches modes in OBS itself.
-  set('FPSNum', String(whole))
-  set('FPSDen', '1')
-
-  log.info(`applyOutputFps(${whole}): ${results.join(' ')}`)
 }
 
 export function resolveOutputSize(
@@ -198,10 +164,11 @@ export class ObsCore {
     // OBS reads the frame rate out of the profile while starting, and its runtime
     // settings API quietly refuses to change it, so the file is written first.
     const startupSize = resolveStartupSize(this.config, screen.getPrimaryDisplay())
-    if (writeProfileVideoSettings(dataPath, startupSize, this.config.fps)) {
+    let wroteProfile = writeProfileVideoSettings(dataPath, startupSize, this.config.fps)
+    if (wroteProfile) {
       log.info(`Profile written for ${this.config.fps} fps at ${startupSize.width}x${startupSize.height}`)
     } else {
-      log.warn('Could not write the OBS profile; the capture may use the previous frame rate')
+      log.warn('OBS profile does not exist yet; it is written once the engine has created it')
     }
 
     // Host our own IPC pipe so we own the obs64 child process. The counter lets a
@@ -218,6 +185,19 @@ export class ObsCore {
     if (rc !== 0) throw new Error(`OBS initialization failed with code: ${rc}`)
 
     log.info('API initialized successfully')
+
+    if (!wroteProfile) {
+      // First run: OBS just created its profile. Writing it now takes effect on the
+      // next start; without this, a fresh install silently stayed on OBS's 30 fps
+      // default until something else restarted the engine.
+      wroteProfile = writeProfileVideoSettings(dataPath, startupSize, this.config.fps)
+      log.warn(
+        wroteProfile
+          ? 'OBS profile written after engine start; the frame rate applies from the next restart'
+          : 'OBS profile still missing; the frame rate is left at OBS defaults',
+      )
+    }
+
     this.configureVideo()
     this.configureAudio()
 
@@ -248,34 +228,24 @@ export class ObsCore {
 
     setSettingValue(section, 'Base', `${size.width}x${size.height}`)
     setSettingValue(section, 'Output', `${out.width}x${out.height}`)
-    applyOutputFps(section, this.config.fps)
 
     saveSettingSection('Video', section)
 
-    // Read the values back: `FPSType` is an enum that OBS silently keeps at its
-    // previous value when given something invalid, which is how a 120 fps request
-    // ends up quietly recording at whatever rate came before.
-    // Read the values back. `FPSType` is an enum, and OBS keeps its previous value
-    // when handed something invalid — which is precisely how a 120 fps request ends
-    // up quietly recording at the old rate. Only reading it back tells the two
-    // apart.
     const back = readSectionParams(getSettingSection('Video'))
     log.info(`Video configured: base=${size.width}x${size.height} output=${out.width}x${out.height} @ ${this.config.fps}fps`)
     log.info(
       'Video settings as OBS stored them: ' +
-        (['Base', 'Output', 'FPSType', 'FPSCommon', 'FPSNum', 'FPSDen']
+        (['Base', 'Output', 'FPSType', 'FPSCommon']
           .filter((k) => k in back)
           .map((k) => `${k}=${back[k]}`)
           .join(' ') || '(section empty)'),
     )
 
-    const applied = Number(back.FPSNum)
-    if (applied !== Math.round(this.config.fps)) {
-      log.warn(
-        `OBS is configured for ${applied || 'an unknown'} fps but ${this.config.fps} was requested; ` +
-          'clips will not match the requested frame rate',
-      )
-    }
+    // The frame rate cannot be changed live: the settings-section readback carries no
+    // FPSNum, and OBS only reads [Video] while starting — the profile writer is what
+    // actually applies it. The OBS-side log's `video info set` block remains the
+    // authoritative readback; obs-studio-node's own stats getters (Global.cpuPercentage,
+    // currentFrameRate, …) return garbage on this build (measured: 3.4e8 "fps").
 
     try {
       mod.NodeObs.OBS_service_resetVideoContext()
@@ -299,9 +269,8 @@ export class ObsCore {
    * OBS_service_resetVideoContext(), which is the same call configureVideo()
    * ends on.
    *
-   * Frame rate is deliberately not re-applied. It goes through applyOutputFps,
-   * and OBS normalises FPSType on write -- the reason 60fps silently records at
-   * 30 -- so a resize must not reopen that.
+   * Frame rate is deliberately left alone. It is applied by the profile writer at
+   * engine start and cannot be changed live, so a resize must not reopen that.
    *
    * Returns whether anything actually changed, so the caller can skip a refit
    * when a metrics event fires without a real resolution change (a scale-factor

@@ -54,6 +54,8 @@ export class CaptureManager {
   private sourceGeneration = 0
   private hookWaiter: { sourceName: string; processName: string; resolve: () => void } | null = null
   private onHookFallback = false
+  /** True while the buffer is paused; no source should be live in that state. */
+  private capturePaused = false
 
   constructor(private readonly obsCore: {
     obs: ObsModule | null
@@ -188,6 +190,10 @@ export class CaptureManager {
             window: windowId,
             capture_cursor: true,
             capture_audio: false,
+            // Without this the hook copies frames at up to twice the video frame
+            // rate, and a replay buffer only ever needs one copy per tick. The
+            // extra copies are pure overhead inside the game process.
+            limit_framerate: true,
           },
         }
       : {
@@ -347,6 +353,14 @@ export class CaptureManager {
     // Stopping first means no frames are encoded from a half-removed source.
     await this.replayBuffer.stopReplayBuffer(true)
 
+    // While the buffer is paused there is nothing to capture for. The requested
+    // source is remembered in settings and installed by `resumeCapture`, so a
+    // source change made in the paused state costs nothing now.
+    if (this.capturePaused) {
+      log.info('Capture is paused; the source change applies on resume')
+      return
+    }
+
     try {
       this.removeCurrentSource()
       this.createSourceFromConfig(config)
@@ -483,8 +497,65 @@ export class CaptureManager {
     const gd = this.gameDetector
     if (gd?.isRunning?.()) {
       gd.stop()
-      log.info('Game detector stopped (manual source switch)')
+      log.info('Game detector stopped')
     }
+  }
+
+  /**
+   * Stops capture entirely: the detector stops, the live source is removed and the
+   * game hook goes with it.
+   *
+   * OBS's game capture only stops copying frames once its source is gone; pausing
+   * the replay buffer alone left it reading the game's frames at up to twice the
+   * video rate, burning CPU and GPU for an output nothing consumed.
+   */
+  async pauseCapture(): Promise<void> {
+    this.capturePaused = true
+    // Invalidate any hook watch already in flight, or it can install a fresh
+    // source moments after this teardown.
+    this.sourceGeneration++
+    this.hookWaiter = null
+    this.stopGameDetector()
+    await this.switchMutex.run(async () => {
+      this.removeCurrentSource()
+    })
+    log.info('Capture stopped (buffer paused)')
+  }
+
+  /**
+   * Re-installs the source the user last selected, restarts auto-detect and lets
+   * the buffer start ride on the source install.
+   */
+  async resumeCapture(): Promise<void> {
+    this.assertReady()
+    this.capturePaused = false
+
+    const mode = getSetting('captureMode')
+    const displayIndex = getSetting('displayIndex')
+    const windowId = getSetting('windowId')
+
+    if (mode === 'game') {
+      await this.setAutoDetectCapture(displayIndex)
+      log.info('Capture resumed (auto-detect)')
+      return
+    }
+    if (mode === 'window' && windowId) {
+      try {
+        await this.setWindow(windowId)
+        this.refreshWindowList()
+      } catch {
+        log.warn('Failed to restore window capture, falling back to display')
+        await this.setMonitor(displayIndex)
+      }
+      log.info('Capture resumed (window)')
+      return
+    }
+    await this.setMonitor(displayIndex)
+    log.info('Capture resumed (display)')
+  }
+
+  isCapturePaused(): boolean {
+    return this.capturePaused
   }
 
   // -------------------------------------------------------------------------

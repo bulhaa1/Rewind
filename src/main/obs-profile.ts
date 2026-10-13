@@ -17,7 +17,13 @@ import path from 'node:path'
  * is one path that behaves the same on every version, and it is the path verified to
  * produce a genuine 120 fps output.
  *
- * @returns whether the profile was found and updated.
+ * Every wanted key is ensured, not only the ones already present. The previous
+ * version rewrote existing lines and left missing keys missing while still
+ * reporting success — a profile without `FPSInt` stayed without it, OBS fell back
+ * to its 30 fps default, and the caller logged "Profile written for 60 fps"
+ * anyway. That is how a user can set 60 fps and record 30.
+ *
+ * @returns whether the profile file exists and was written.
  */
 export function writeProfileVideoSettings(
   dir: string,
@@ -49,18 +55,33 @@ export function writeProfileVideoSettings(
   }
 
   const lines = text.split(/\r?\n/)
-  let inVideo = false
-  const seen = new Set<string>()
 
+  // Locate the [Video] section. When the profile has none (a fresh or foreign
+  // profile), one is appended so the frame rate can still be written.
+  let videoStart = -1
+  let videoEnd = lines.length
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (/^\s*\[/.test(line)) {
-      inVideo = line.trim().toLowerCase() === '[video]'
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(lines[i])
+    if (!header) continue
+    if (videoStart === -1 && header[1].trim().toLowerCase() === 'video') {
+      videoStart = i
       continue
     }
-    if (!inVideo) continue
+    if (videoStart !== -1) {
+      videoEnd = i
+      break
+    }
+  }
+  if (videoStart === -1) {
+    if (lines.length && lines[lines.length - 1].trim() !== '') lines.push('')
+    videoStart = lines.length
+    lines.push('[Video]')
+    videoEnd = lines.length
+  }
 
-    const m = /^\s*([A-Za-z0-9_]+)\s*=/.exec(line)
+  const seen = new Set<string>()
+  for (let i = videoStart + 1; i < videoEnd; i++) {
+    const m = /^\s*([A-Za-z0-9_]+)\s*=/.exec(lines[i])
     if (!m) continue
     const key = m[1]
     if (!(key in wanted)) continue
@@ -68,9 +89,10 @@ export function writeProfileVideoSettings(
     lines[i] = `${key}=${wanted[key]}`
   }
 
-  // A profile without the keys we expect would silently ignore everything, so report
-  // that rather than pretending the write worked.
-  if (!seen.size) return false
+  const missing = Object.keys(wanted).filter((k) => !seen.has(k))
+  if (missing.length) {
+    lines.splice(videoEnd, 0, ...missing.map((k) => `${k}=${wanted[k]}`))
+  }
 
   try {
     fs.writeFileSync(file, lines.join('\n'), 'utf8')

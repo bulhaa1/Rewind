@@ -94,7 +94,7 @@ export interface Services {
    * `toggleReplay`, so nothing else consumes `finishedOnTeardown` for it.
    */
   registerFinishedFromBufferStop: (finished: string) => void
-  reinitPipeline: (reason?: string) => Promise<void>
+  reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
   notify: (type: BufferStatus, message?: string) => void
   status: {
     get: () => { status: ObsStatus; message?: string }
@@ -279,10 +279,13 @@ export function registerIpc(s: Services): void {
       }
 
       if (want) {
-        await replay().startReplayBuffer(true)
+        // Resume re-installs the capture source the pause removed; the buffer start
+        // rides on that install, so pausing genuinely stops the capture stack.
+        await capture().resumeCapture()
         s.status.set(OBS_STATUS_MESSAGES.ready)
       } else {
         await replay().pauseReplayBuffer()
+        await capture().pauseCapture()
         s.status.set(OBS_STATUS_MESSAGES.paused)
 
         /*
@@ -473,6 +476,12 @@ export function registerIpc(s: Services): void {
 
   handle(IPC.getCurrentSourceName, () => {
     if (!capture) return ok({ name: describeSourceFromSettings(), inactive: false })
+    if (capture().isCapturePaused?.()) {
+      // Nothing is live while the buffer is paused; naming a source here would
+      // claim it is being captured. Screenshots read the capture service directly,
+      // so their metadata is unaffected by this field.
+      return ok({ name: 'Not capturing', inactive: true })
+    }
     const mode = getSetting('captureMode') as CaptureMode
     const isWindow = mode === 'window'
     if (isWindow) capture().refreshWindowListIfStale()
@@ -1019,7 +1028,7 @@ export function registerIpc(s: Services): void {
       // Name the change so the panel can say what is happening. A bare "restarting"
       // for thirteen seconds tells someone nothing about whether it worked.
       if (tier === 'full' || !obsCore()?.isInitialized()) {
-        return s.reinitPipeline(`Applying ${SETTING_LABELS[key] ?? key}...`)
+        return s.reinitPipeline(`Applying ${SETTING_LABELS[key] ?? key}...`, { preservePaused: true })
       }
       bufferLog.info(`${key} change: rebuilding replay chain only`)
       await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => replay().rebuildAndRestart())

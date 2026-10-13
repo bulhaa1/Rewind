@@ -11,7 +11,6 @@ import {
   CQP_BY_QUALITY,
   ENCODER_TABLE,
   KEYINT_SEC,
-  NVENC_PRESET_INDEX,
   OBS_FILE_FORMAT,
   OBS_SOURCE_NAMES,
   QSV_H264_LEGACY,
@@ -154,6 +153,8 @@ export class ReplayBuffer {
   private builtMixerMask: number | null = null
   private active = false
   private startedAt = 0
+  /** True while the buffer is paused by the user; settings changes must not silently resume it. */
+  private userPaused = false
   private pendingSave: ReturnType<typeof deferred<string>> | null = null
   private pendingStop: ReturnType<typeof deferred<void>> | null = null
   private pendingStart: ReturnType<typeof deferred<void>> | null = null
@@ -293,11 +294,20 @@ export class ReplayBuffer {
 
     if (encoderId.startsWith('obs_nvenc_')) {
       const profile = encoderId === 'obs_nvenc_h264_tex' ? 'high' : 'main'
+      /*
+       * The preset must be one of `p1`..`p7`. The bundled obs-nvenc reads
+       * `preset` and silently falls back to P5 for anything it cannot match —
+       * which is what the legacy `"hq"` name always did, so every NVENC preset
+       * choice in the UI encoded at P5. `preset2` carries the same value for the
+       * older plugin generation that read it instead; one extra key is cheaper
+       * than two codepaths.
+       */
+      const preset = getSetting('nvencPreset')
       return {
         rate_control: 'CQP',
         cqp,
-        preset: 'hq',
-        preset2: NVENC_PRESET_INDEX[getSetting('nvencPreset')],
+        preset,
+        preset2: preset,
         tune: 'hq',
         multipass: getSetting('nvencMultipass'),
         profile,
@@ -521,6 +531,7 @@ export class ReplayBuffer {
 
       this.active = true
       this.startedAt = Date.now()
+      this.userPaused = false
       if (!this.usingSoftwareEncoder) this.hardwareFailures = 0
       this.startResourceSampling()
     } catch (e) {
@@ -599,6 +610,7 @@ export class ReplayBuffer {
     await this.startWithSignal(TIMING.START_RETRY)
     this.active = true
     this.startedAt = Date.now()
+    this.userPaused = false
     log.info('Replay buffer started successfully with software encoder')
   }
 
@@ -617,6 +629,7 @@ export class ReplayBuffer {
   }
 
   async pauseReplayBuffer(): Promise<void> {
+    this.userPaused = true
     await this.destroyRunningChain()
     log.info('Replay buffer paused')
   }
@@ -1091,22 +1104,33 @@ handleSignal(ev: ObsSignal): void {
     // Re-probe before rebuilding. Switching encoder vendor changes which codecs are
     // reachable, and without this the new chain is built from the previous vendor's
     // capabilities — which is why changing the encoder used to need a full restart.
+    const wasActive = this.active
     this.probeAvailableCodecs()
     await this.destroyRunningChain()
     this.createReplayBufferInstances()
-    await this.startReplayBuffer(true)
-    log.info(
-      `Replay buffer restarted with encoder=${this.getActiveEncoder()} ` +
-        `vendor=${this.getActiveEncoderVendor()} codecs=${JSON.stringify(this.codecsByVendor)}`,
-    )
+    if (wasActive) {
+      await this.startReplayBuffer(true)
+      log.info(
+        `Replay buffer restarted with encoder=${this.getActiveEncoder()} ` +
+          `vendor=${this.getActiveEncoderVendor()} codecs=${JSON.stringify(this.codecsByVendor)}`,
+      )
+    } else {
+      // A settings change while paused must not resume the buffer: the user
+      // paused it, and an empty scene would record black until resume.
+      log.info(
+        `Replay chain rebuilt while paused: encoder=${this.getActiveEncoder()} ` +
+          `vendor=${this.getActiveEncoderVendor()}`,
+      )
+    }
   }
 
   async setBufferDuration(seconds: number): Promise<void> {
     if (!this.obsCore.isInitialized()) throw new Error('OBS not initialized')
+    const wasActive = this.active
     await this.stopReplayBuffer(true)
     if (this.replayBuffer) this.replayBuffer.duration = seconds
-    await this.startReplayBuffer(true)
-    log.info(`Buffer duration updated to ${seconds}s`)
+    if (wasActive) await this.startReplayBuffer(true)
+    log.info(`Buffer duration updated to ${seconds}s${wasActive ? '' : ' (buffer stays paused)'}`)
   }
 
   clearSoftwareFallback(): void {
@@ -1131,7 +1155,11 @@ handleSignal(ev: ObsSignal): void {
     if (this.resourceTimer) return
     this.lastCpu = process.cpuUsage()
     this.lastSampleAt = Date.now()
-    this.resourceTimer = setInterval(() => this.sampleResources(), RESOURCE_SAMPLE_INTERVAL_MS)
+    // The interval is overridable for diagnostics runs, where waiting five minutes
+    // for the first sample is not workable. The default is unchanged.
+    const override = Number(process.env.REWIND_RESOURCE_SAMPLE_MS)
+    const interval = Number.isFinite(override) && override >= 1000 ? override : RESOURCE_SAMPLE_INTERVAL_MS
+    this.resourceTimer = setInterval(() => this.sampleResources(), interval)
   }
 
   private stopResourceSampling(): void {
@@ -1151,6 +1179,13 @@ handleSignal(ev: ObsSignal): void {
     const cpuPct = ((usage.user + usage.system) / 1000 / elapsed) * 100
     const rssMb = process.memoryUsage.rss() / (1024 * 1024)
 
+    /*
+     * Main process only, deliberately: obs-studio-node's Global stats getters
+     * (cpuPercentage, currentFrameRate, averageFrameRenderTime) return garbage on
+     * this build — measured "337769986 fps" and "3.9e9 ms" render time — so they
+     * are not trusted here. External sampling (`scripts/perf-sample.ps1`) is the
+     * way to see obs64/GPU cost.
+     */
     log.info(
       `Resource sample (main proc only): cpu=${cpuPct.toFixed(1)}% rss=${rssMb.toFixed(0)}MB ` +
       `encoder=${this.getActiveEncoder()} bufferDuration=${this.obsCore.getConfig().bufferDuration}s`,
