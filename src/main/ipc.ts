@@ -1339,6 +1339,9 @@ export async function saveClipAndNotify(s: Services): Promise<string> {
  * Shares the save, folder, metadata and notification path with `saveClipAndNotify`
  * so a quick clip is an ordinary clip everywhere downstream -- the editor, the
  * library, and the per-game folders all see no difference.
+ *
+ * The notification quotes what `keepTail` measured, so a request the buffer was too
+ * short to satisfy says so instead of announcing a length no file has.
  */
 export async function saveQuickClipAndNotify(s: Services, seconds: number): Promise<string> {
   if (!s.replay.isReplayBufferActive()) {
@@ -1361,8 +1364,8 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
     savedPath = await s.replay.saveReplayBuffer(s.capture.getCaptureMode())
   }
 
-  const trimmed = await require('./ffmpeg.js').keepTail(savedPath, seconds)
-  const moved = cm.moveIntoSourceFolder(trimmed, sourceName, outputRoot)
+  const tail = await require('./ffmpeg.js').keepTail(savedPath, seconds)
+  const moved = cm.moveIntoSourceFolder(tail.file, sourceName, outputRoot)
 
   meta.setClipMeta(moved, {
     recordedAt: Date.now(),
@@ -1370,9 +1373,22 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number): Prom
     audioTracks: s.obsCore.audioTrackLabels(),
   })
 
-  // Names the length, because a clip that came back shorter than asked (the cut
-  // lands on a keyframe) would otherwise be indistinguishable from a bug.
-  s.notify('saved', `Saved last ${seconds}s`)
+  // Reports the length the file actually has, not the one that was asked for.
+  //
+  // Two ways to come back with less than requested: the buffer simply held less
+  // (`wholeClip`), or the keyframe the cut snapped to was a little early. The first
+  // is worth naming -- someone who asked for 60s and got the whole 25s buffer
+  // deserves to know the buffer was the limit, not left guessing whether the
+  // hotkey misfired.
+  const kept = tail.seconds
+  s.notify(
+    'saved',
+    kept <= 0
+      ? 'Clip saved'
+      : tail.wholeClip
+        ? `Saved all ${kept}s - the buffer held no more`
+        : `Saved last ${kept}s`,
+  )
   s.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
 
   void cm

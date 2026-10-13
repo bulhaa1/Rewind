@@ -52,6 +52,8 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
   let trimmedCount = 0
   /** End of the slice the previous segment covered; the next one continues from here. */
   let previousEnd = opts.startedAt
+  /** Pre-press footage deliberately dropped at the head of the recording. */
+  let headroomLost = 0
 
   for (let i = 0; i < opts.segments.length; i++) {
     const seg = opts.segments[i]
@@ -105,6 +107,8 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
     const dur = Math.min((windowEnd - cursor) / 1000, Math.max(0, actualSec - lead))
 
     previousEnd = windowEnd
+
+    if (i === 0) headroomLost = Math.max(0, (cursor - anchor) / 1000)
 
     if (dur <= 0.2) continue
     if (lead <= 0.05 && dur >= actualSec - 0.2) {
@@ -176,10 +180,32 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
 
   if (durationSec < 0.5) throw new Error('The joined file has no readable video')
 
-  // Badly wrong means the seams lost real footage, which is worth surfacing rather
-  // than shipping a recording that silently skipped a minute of a game.
-  if (wanted > 5 && durationSec < wanted * 0.8) {
-    log.warn(`Recording kept ${durationSec.toFixed(1)}s of the ${wanted.toFixed(1)}s recorded`)
+  /*
+   * Warns only about footage genuinely lost, not about the footage deliberately cut.
+   *
+   * The first cut drops up to KEYINT_SEC so the recording cannot open with frames from
+   * before the press, and each input-side seek snaps back to the keyframe in front of
+   * the point asked for. Those are the intended shape of the result, so they are
+   * subtracted before comparing.
+   *
+   * The old test was a flat `duration < wanted * 0.8`, which ignored both. It fired on
+   * perfectly good short recordings -- a 5.3s one loses 2s of headroom, which is 38%,
+   * over the threshold -- so the warning cried wolf on every short take and taught the
+   * reader to ignore it. That is worse than not warning at all: the log line meant to
+   * catch a minute of a game vanishing was sitting next to routine entries.
+   *
+   * Measured on current code: a 34s take across 5 segments kept 32.0s, and a 68s take
+   * across 10 segments kept 66.0s. Both losses are the 2s headroom, neither grows with
+   * the segment count, and neither should warn.
+   */
+  const intended = headroomLost + KEYINT_SEC
+  if (wanted > 10 && durationSec < wanted - intended) {
+    const lost = wanted - durationSec - intended
+    log.warn(
+      `Recording kept ${durationSec.toFixed(1)}s of the ${wanted.toFixed(1)}s recorded; ` +
+        `${intended.toFixed(1)}s of that is the cut that keeps pre-press footage out, ` +
+        `so roughly ${lost.toFixed(1)}s went missing across ${parts.length} segment(s)`,
+    )
   }
 
   return { file: opts.outputPath, durationSec }

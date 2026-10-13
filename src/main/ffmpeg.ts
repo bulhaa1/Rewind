@@ -229,6 +229,25 @@ export async function probeDuration(file: string): Promise<number> {
 }
 
 /**
+ * What a tail trim actually produced, measured rather than requested.
+ *
+ * `seconds` is probed from the output file, never echoed back from the request.
+ * It cannot always be honoured twice over: a request longer than the clip simply
+ * keeps everything, and an input-side `-ss` lands on the keyframe at or before the
+ * cut so the result can come back a little under. Either way the caller needs the
+ * number it got, not the number it asked for -- reporting the request is how a
+ * 60s request came to be announced as "Saved last 60s" over a 25s file.
+ */
+export interface TailResult {
+  /** The file in force afterwards. Differs from the input only if the trim failed. */
+  file: string
+  /** Seconds kept, probed from the output. */
+  seconds: number
+  /** True when the request exceeded the clip, so nothing was trimmed away. */
+  wholeClip: boolean
+}
+
+/**
  * Keeps only the last `seconds` of a clip, in place.
  *
  * `-ss` goes BEFORE `-i` deliberately. An input-side seek lands on a keyframe and
@@ -238,20 +257,16 @@ export async function probeDuration(file: string): Promise<number> {
  *
  * `-map 0` is not optional. Without it ffmpeg keeps only the FIRST stream of each
  * type, which silently reduces a three-track clip to a single audio track -- that
-   is what made recordings reach the editor with the Desktop and Microphone lanes
-   missing.
+ * is what made recordings reach the editor with the Desktop and Microphone lanes
+ * missing.
  *
- * The result is at most `seconds`, sometimes a little under: the cut lands on a
- * keyframe, so the clip can come back shorter than asked but never carries footage
- * from before the requested window.
- *
- * Returns the path in force afterwards, which differs from `file` only when the
- * trim had to be abandoned.
+ * Asking for more than the clip holds keeps the whole clip rather than failing,
+ * which is also what someone who has just lengthened the buffer expects.
  */
-export async function keepTail(file: string, seconds: number): Promise<string> {
+export async function keepTail(file: string, seconds: number): Promise<TailResult> {
   const total = await probeDuration(file)
-  if (!total) return file
-  if (seconds >= total) return file
+  if (!total) return { file, seconds: 0, wholeClip: true }
+  if (seconds >= total) return { file, seconds: total, wholeClip: true }
 
   const lead = Math.max(0, total - seconds)
   const dir = path.dirname(file)
@@ -273,7 +288,7 @@ export async function keepTail(file: string, seconds: number): Promise<string> {
     // The clip is already saved and playable. Losing the trim is a far smaller
     // failure than losing the clip, so report it and keep the original.
     log.warn(`Tail trim failed, keeping the full clip: ${(e as Error).message}`)
-    return file
+    return { file, seconds: total, wholeClip: true }
   }
 
   const kept = await probeDuration(out)
@@ -284,7 +299,7 @@ export async function keepTail(file: string, seconds: number): Promise<string> {
     } catch {
       /* best effort */
     }
-    return file
+    return { file, seconds: total, wholeClip: true }
   }
 
   // Back to the original name. The trimmed file was written as `-tail` only so the
@@ -297,10 +312,10 @@ export async function keepTail(file: string, seconds: number): Promise<string> {
   } catch (e) {
     // The trimmed copy still stands on its own; only the name came out wrong.
     log.warn('Kept the trimmed file under its temporary name:', e)
-    return out
+    return { file: out, seconds: kept, wholeClip: false }
   }
   log.info(`Kept last ${kept}s of a ${total}s clip`)
-  return file
+  return { file, seconds: kept, wholeClip: false }
 }
 
 export interface ClipProbe {
