@@ -45,6 +45,19 @@ export const QUICK_CLIP_DEFAULT = 30
 export const clampQuickClip = (seconds: number) =>
   Math.min(Math.max(Math.round(seconds), QUICK_CLIP_MIN), QUICK_CLIP_MAX)
 
+/**
+ * The four presets a fresh install starts with.
+ *
+ * Chosen so the first one is what the app already did, and the other three are the
+ * reasons someone would switch: reach further back, run smoother, or cost less.
+ */
+export const DEFAULT_PROFILES: import('./types.js').Profile[] = [
+  { name: 'Balanced', bufferDuration: 60, fps: 30, visualQuality: 'high' },
+  { name: 'Long buffer', bufferDuration: 120, fps: 30, visualQuality: 'standard' },
+  { name: 'Smooth', bufferDuration: 30, fps: 60, visualQuality: 'high' },
+  { name: 'Light', bufferDuration: 60, fps: 30, visualQuality: 'low' },
+]
+
 export const DEFAULT_SETTINGS = {
   captureMode: 'game' as CaptureMode,
   displayIndex: 0,
@@ -84,6 +97,9 @@ export const DEFAULT_SETTINGS = {
   visualQuality: 'high',
   videoCodec: 'h264' as VideoCodec,
   videoEncoder: 'auto' as EncoderVendor,
+  profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
+  activeProfile: 0,
+  nextProfileHotkey: 'Alt+4',
 } satisfies Omit<import('./types.js').PersistedSettings, never> as import('./types.js').PersistedSettings
 
 /** Screenshots default to `<outputPath>/Screenshots`. */
@@ -141,6 +157,9 @@ export const QSV_H264_LEGACY = 'obs_qsv11'
 export const X264_ENCODER = 'obs_x264'
 
 export type VisualQuality = 'low' | 'standard' | 'high' | 'highest'
+
+/** Every quality tier, in the order the settings panel shows them. */
+export const VISUAL_QUALITIES: VisualQuality[] = ['low', 'standard', 'high', 'highest']
 
 /** Constant-QP targets for hardware encoders. */
 export const CQP_BY_QUALITY: Record<VisualQuality, number> = {

@@ -17,6 +17,10 @@ export const IPC = {
   getConfig: 'get-config',
   getBufferDuration: 'get-buffer-duration',
   setBufferDuration: 'set-buffer-duration',
+  // Profiles. Four capture presets the user switches between.
+  getProfiles: 'get-profiles',
+  setProfile: 'set-profile',
+  setProfileValues: 'set-profile-values',
   recoverReplayBuffer: 'recover-replay-buffer',
   reinitOBS: 'reinit-obs',
   retryOBSInit: 'retry-obs-init',

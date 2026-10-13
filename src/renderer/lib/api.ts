@@ -14,6 +14,7 @@ import type {
   IpcResult,
   MonitorInfo,
   ObsStatus,
+  Profile,
   SaveClipArgs,
   ScreenshotInfo,
   WindowInfo,
@@ -63,6 +64,8 @@ export interface RewindApi {
   checkForUpdates(): Promise<IpcResult<UpdateState>>
   downloadUpdate(): Promise<IpcResult<UpdateState>>
   quitAndInstall(): Promise<IpcResult<void>>
+  /** Opens an http(s) URL in the default browser. Non-web schemes are refused. */
+  openExternal(url: string): Promise<IpcResult<void>>
   toggleReplayBuffer(): Promise<IpcResult<{ active: boolean }>>
   getStatus(): Promise<IpcResult<{ status: ObsStatus; message?: string }>>
   getConfig(): Promise<IpcResult<{ bufferDuration: number; fps: number; outputPath: string; fpsActual?: number }>>
@@ -75,6 +78,10 @@ export interface RewindApi {
   setReplayBufferActive(active: boolean): Promise<IpcResult<{ active: boolean; changed: boolean }>>
   isReplayBufferActive(): Promise<IpcResult<{ active: boolean; startedAt: number }>>
   setBufferDuration(seconds: number): Promise<IpcResult>
+  // Profiles: four capture presets, cycled with a hotkey.
+  getProfiles(): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  setProfile(index: number): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  setProfileValues(index: number, patch: Partial<Profile>): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
   recoverReplayBuffer(): Promise<IpcResult>
   reinitOBS(): Promise<IpcResult>
   retryOBSInit(): Promise<IpcResult<{ success?: boolean; alreadyReady?: boolean }>>

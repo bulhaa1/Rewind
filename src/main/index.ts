@@ -24,6 +24,7 @@ import {
 import { getClipMeta, setClipMeta } from './clip-meta.js'
 import { openEditorWindow, currentEditorClip, closeEditorWindow, cleanupEditor, saveClip } from './editor.js'
 import { getSetting, setSetting } from './store.js'
+import { captureActiveProfileValues, getProfiles, planProfileChange } from './profiles.js'
 import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
@@ -376,6 +377,51 @@ async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean 
 }
 
 /**
+ * Switches to a profile: writes its three settings, then applies them once.
+ *
+ * The diff decides the cost. Identical settings cost nothing; a length change restarts
+ * the chain (about a second); a quality change rebuilds it; an fps change takes the
+ * engine down and back up (about ten seconds), because the frame rate is only read from
+ * OBS's profile at startup. Applying each setting through its own handler would pay the
+ * heaviest tier up to three times.
+ */
+async function applyProfile(index: number): Promise<void> {
+  const { profiles } = getProfiles()
+  const target = profiles[index]
+  if (!target) throw new Error(`No profile ${index}`)
+
+  const current = {
+    fps: getSetting('fps'),
+    visualQuality: getSetting('visualQuality'),
+    bufferDuration: getSetting('bufferDuration'),
+  }
+  const tier = planProfileChange(current, target)
+
+  setSetting('fps', target.fps)
+  setSetting('visualQuality', target.visualQuality)
+  setSetting('bufferDuration', target.bufferDuration)
+  setSetting('activeProfile', index)
+
+  try {
+    if (tier === 'full') {
+      await reinitPipeline(`Applying ${target.name}...`, { preservePaused: true })
+    } else if (tier === 'chain' && replay?.isReplayBufferActive()) {
+      await replay.rebuildAndRestart()
+    } else if (tier === 'duration' && replay?.isReplayBufferActive()) {
+      await replay.setBufferDuration(target.bufferDuration)
+    }
+  } catch (e) {
+    // Put the previous settings back so the panel and the profile agree again.
+    setSetting('fps', current.fps)
+    setSetting('visualQuality', current.visualQuality)
+    setSetting('bufferDuration', current.bufferDuration)
+    throw e
+  }
+
+  log.info(`Profile ${index} (${target.name}) applied: tier=${tier}, ${target.bufferDuration}s @ ${target.fps}fps ${target.visualQuality}`)
+}
+
+/**
  * Recovers a wedged encoder. Falls back to a full relaunch when the in-process
  * reinit doesn't produce a live buffer, since a wedged OBS can poison itself.
  */
@@ -715,6 +761,8 @@ const services = {
    * `toggleReplayForUser`, and so never touched `finishedOnTeardown`.
    */
   registerFinishedFromBufferStop,
+  applyProfile,
+  getProfiles,
   reinitPipeline,
   notify: (type: BufferStatus, message?: string, title?: string) => showNotification(type, message, title),
   status: {
@@ -925,6 +973,7 @@ function main(): void {
     if (process.env.REWIND_SELFTEST_AUDIOTRACKS === '1') void runAudioTrackSelfTest()
     if (process.env.REWIND_SELFTEST_DISPLAY === '1') void runDisplaySelfTest()
     if (process.env.REWIND_SELFTEST_DISPLAY_WATCH === '1') void runDisplayWatchSelfTest()
+    if (process.env.REWIND_SELFTEST_PROFILES === '1') void runProfilesSelfTest()
   })
 
 /**
@@ -1240,6 +1289,88 @@ async function runDisplayWatchSelfTest(): Promise<void> {
     }
   }
 
+  app.exit(exitCode)
+}
+
+/**
+ * Exercises the profile paths and exits.
+ *
+ * The tier checks are the point of the feature: a switch must cost the cheapest thing
+ * that can apply it, and applying each setting through its own handler would pay the
+ * heaviest tier up to three times.
+ */
+async function runProfilesSelfTest(): Promise<void> {
+  if (!replay || !obsCore || !capture) {
+    log.error('REWIND_SELFTEST_PROFILES set without a pipeline')
+    app.exit(2)
+    return
+  }
+
+  const results: string[] = []
+  let exitCode = 0
+  const expect = (ok: boolean, label: string) => {
+    results.push(`${ok ? 'PASS' : 'FAIL'} ${label}`)
+    if (!ok) exitCode = 1
+  }
+
+  try {
+    await waitForBuffer(replay, 60_000)
+    await sleep(5_000)
+
+    const { planProfileChange, getProfiles, captureActiveProfileValues, writeProfileValues } =
+      require('./profiles.js') as typeof import('./profiles.js')
+
+    const base = { fps: 30, visualQuality: 'high' as const, bufferDuration: 60 }
+    expect(planProfileChange(base, { ...base, name: 'x' }) === 'none', 'tier: no change -> none')
+    expect(planProfileChange(base, { ...base, bufferDuration: 120, name: 'x' }) === 'duration', 'tier: length -> duration')
+    expect(planProfileChange(base, { ...base, visualQuality: 'low', name: 'x' }) === 'chain', 'tier: quality -> chain')
+    expect(planProfileChange(base, { ...base, fps: 60, name: 'x' }) === 'full', 'tier: fps -> full')
+
+    // A switch writes the profile's values into the live settings.
+    const profiles = getProfiles().profiles
+    await applyProfile(1)
+    const live = {
+      fps: getSetting('fps'),
+      visualQuality: getSetting('visualQuality'),
+      bufferDuration: getSetting('bufferDuration'),
+    }
+    expect(
+      live.fps === profiles[1].fps && live.visualQuality === profiles[1].visualQuality && live.bufferDuration === profiles[1].bufferDuration,
+      `switch applies the profile's values (${JSON.stringify(live)})`,
+    )
+    expect(getSetting('activeProfile') === 1, 'active profile moved to 1')
+
+    // An edit to a live setting belongs to the profile that is active.
+    setSetting('fps', 120)
+    captureActiveProfileValues()
+    expect(getProfiles().profiles[1].fps === 120, 'editing fps writes through to the active profile')
+
+    // Editing an inactive profile does not touch the live settings.
+    writeProfileValues(2, { bufferDuration: 45 })
+    expect(getSetting('bufferDuration') !== 45, 'editing an inactive profile leaves the live settings alone')
+    expect(getProfiles().profiles[2].bufferDuration === 45, 'the inactive profile kept the edit')
+
+    // A paused buffer stays paused across a switch, including the full tier. Paused the
+    // way the panel pauses it: the status the reinit consults is the app's, not the
+    // buffer's, so pausing below that layer would test the wrong thing.
+    await services.toggleReplay()
+    expect(replay.isReplayBufferActive() === false, 'paused through the panel path')
+    await applyProfile(3)
+    expect(replay.isReplayBufferActive() === false, 'a paused buffer stays paused across a full-tier switch')
+
+    // Put it back the way it was found.
+    await applyProfile(0)
+    await services.toggleReplay()
+    await waitForBuffer(replay, 30_000)
+    log.info('PROFILES TEST complete')
+  } catch (e) {
+    log.error('PROFILES TEST failed:', e)
+    results.push(`FAIL threw: ${e instanceof Error ? e.message : String(e)}`)
+    exitCode = 1
+  }
+
+  for (const r of results) log.info(`PROFILES TEST ${r}`)
+  fs.writeFileSync(path.join(app.getPath('temp'), 'rewind-profiles-test.txt'), results.join('\n'))
   app.exit(exitCode)
 }
 

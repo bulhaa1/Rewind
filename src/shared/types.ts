@@ -79,6 +79,25 @@ export interface PersistedSettings {
   visualQuality: 'low' | 'standard' | 'high' | 'highest'
   videoCodec: VideoCodec
   videoEncoder: EncoderVendor
+  /** Four capture presets, cycled with a hotkey. */
+  profiles: Profile[]
+  /** Index into `profiles` of the preset the live settings belong to. */
+  activeProfile: number
+  nextProfileHotkey: string
+}
+
+/**
+ * One capture preset.
+ *
+ * Only the three settings that change what a clip is: how far back it reaches, how
+ * smooth it is, and how good it looks. Paths, devices and hotkeys are not per-profile
+ * -- switching a profile must never move where clips are saved.
+ */
+export interface Profile {
+  name: string
+  bufferDuration: number
+  fps: number
+  visualQuality: 'low' | 'standard' | 'high' | 'highest'
 }
 
 export interface MonitorInfo {

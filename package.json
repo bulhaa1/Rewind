@@ -1,7 +1,7 @@
 {
   "name": "rewind-desktop",
   "productName": "Rewind",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
   "author": {
@@ -31,6 +31,8 @@
     "test:display": "node scripts/displaytest.js",
     "test:resolution": "node scripts/probe-resolution-change.mjs",
     "test:update-cache": "node scripts/probe-update-cache.mjs",
+    "test:update": "node scripts/probe-update.mjs",
+    "test:profiles": "node scripts/probe-profiles-selftest.mjs",
     "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs",
     "test:quickclip": "node scripts/probe-quick-clip.mjs",
     "release": "npm run package && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",

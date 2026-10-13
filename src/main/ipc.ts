@@ -12,6 +12,7 @@ import {
   QUICK_CLIP_MAX,
   QUICK_CLIP_MIN,
   SCREENSHOT_SUBDIR,
+  VISUAL_QUALITIES,
   clampQuickClip,
 } from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
@@ -19,6 +20,7 @@ import { hotkeyTitle } from './hotkey.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
 import { isInside, isWritable, nonEmptyString } from './util.js'
+import type { Profile } from '@shared/types.js'
 import { defaultOutputPath, rewindRoot } from './obs-core.js'
 import { channelLevel, deviceAvailable, listAudioApps, listDevices, channelDevices } from './audio.js'
 import type {
@@ -108,6 +110,9 @@ export interface Services {
    * `toggleReplay`, so nothing else consumes `finishedOnTeardown` for it.
    */
   registerFinishedFromBufferStop: (finished: string) => void
+  /** Switches to a profile: writes its settings, then applies them once. */
+  applyProfile: (index: number) => Promise<void>
+  getProfiles: () => { profiles: Profile[]; activeProfile: number }
   reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
   /** `title` names the action and key on hotkey popups; `message` is the body line. */
   notify: (type: BufferStatus, message?: string, title?: string) => void
@@ -330,6 +335,7 @@ export function registerIpc(s: Services): void {
         obsCore().setBufferDuration(seconds)
         await replay().setBufferDuration(seconds)
         setSetting('bufferDuration', seconds)
+        require('./profiles.js').captureActiveProfileValues()
         return ok()
       })
     } catch (e) {
@@ -1008,6 +1014,57 @@ export function registerIpc(s: Services): void {
   })
 
   // -------------------------------------------------------------------------
+  // Profiles
+  // -------------------------------------------------------------------------
+
+  handle(IPC.getProfiles, () => ok(s.getProfiles()))
+
+  handle(IPC.setProfile, async (index: unknown) => {
+    const { PROFILE_COUNT } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= PROFILE_COUNT) {
+      return fail('Invalid profile')
+    }
+    try {
+      await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => s.applyProfile(index))
+      return ok(s.getProfiles())
+    } catch (e) {
+      return fail(messageOf(e))
+    }
+  })
+
+  /**
+   * Edits one profile. Editing the active one applies the change like a switch would;
+   * editing any other only stores it.
+   */
+  handle(IPC.setProfileValues, async (index: unknown, patch: unknown) => {
+    const { PROFILE_COUNT, getProfiles, writeProfileValues } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= PROFILE_COUNT) {
+      return fail('Invalid profile')
+    }
+    if (!patch || typeof patch !== 'object') return fail('Invalid profile values')
+    const p = patch as Record<string, unknown>
+    if (p.name !== undefined && (typeof p.name !== 'string' || p.name.length > 24)) return fail('Invalid profile name')
+    if (p.bufferDuration !== undefined && !isBufferDuration(p.bufferDuration)) {
+      return fail(`Buffer duration must be between ${BUFFER_DURATION_MIN} and ${BUFFER_DURATION_MAX} seconds`)
+    }
+    if (p.fps !== undefined && !ALLOWED_FPS.includes(p.fps as (typeof ALLOWED_FPS)[number])) return fail('Invalid FPS value')
+    if (p.visualQuality !== undefined && !VISUAL_QUALITIES.includes(p.visualQuality as never)) {
+      return fail('Invalid visual quality value')
+    }
+
+    writeProfileValues(index, p)
+    const { activeProfile } = getProfiles()
+    if (index === activeProfile) {
+      try {
+        await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => s.applyProfile(index))
+      } catch (e) {
+        return fail(messageOf(e))
+      }
+    }
+    return ok(s.getProfiles())
+  })
+
+  // -------------------------------------------------------------------------
   // Quality / encoder
   // -------------------------------------------------------------------------
 
@@ -1064,6 +1121,10 @@ export function registerIpc(s: Services): void {
 
     try {
       await apply()
+      // The live settings are the active profile's values: an edit made in Settings
+      // belongs to the profile that is active, and is not lost on the next switch.
+      const { captureActiveProfileValues } = require('./profiles.js')
+      captureActiveProfileValues()
       // Must return a result: `apply()` resolves to void, and returning that would
       // resolve the renderer call to `undefined`, which surfaces as
       // "Cannot read properties of undefined (reading 'success')" even on success.
