@@ -15,24 +15,14 @@ const log = scope('Ffmpeg')
 const SCREENSHOT_TIMEOUT_MS = 20_000
 
 let ffmpegPath: string | null = null
-let ffprobePath: string | null = null
 
-/** Packaged builds ship static binaries in resources; dev falls back to the npm packages. */
+/** Packaged builds ship the static binary in resources; dev falls back to the npm package. */
 export function resolveFfmpeg(): string {
   if (ffmpegPath) return ffmpegPath
   const resolved = app.isPackaged
     ? path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
     : (require('ffmpeg-static') as unknown as string)
   ffmpegPath = resolved
-  return resolved
-}
-
-export function resolveFfprobe(): string {
-  if (ffprobePath) return ffprobePath
-  const resolved = app.isPackaged
-    ? path.join(process.resourcesPath, 'ffprobe', 'ffprobe.exe')
-    : (require('ffprobe-static') as { path: string }).path
-  ffprobePath = resolved
   return resolved
 }
 export class CancelledError extends Error {
@@ -129,9 +119,8 @@ export interface ProbeStream {
   width?: number
   height?: number
   r_frame_rate?: string
-  pix_fmt?: string
   /**
-   * Container stream tags. ffprobe emits these without being asked, but nothing
+   * Container stream tags. ffmpeg prints these without being asked, but nothing
    * typed them, so a caller that needs the handler name had no way to read it.
    */
   tags?: Record<string, string>
@@ -152,27 +141,85 @@ export type StreamVolume =
 
 export interface ProbeResult {
   streams: ProbeStream[]
-  format?: { duration?: string; size?: string; bit_rate?: string }
+  format?: { duration?: string; bit_rate?: string }
 }
 
-/** ffprobe wrapper. Resolves null (never throws) when the file is unreadable. */
+/**
+ * Reads the facts out of `ffmpeg -i`'s input block.
+ *
+ * ffmpeg prints the same block ffprobe parses -- duration, bitrate, one line per
+ * stream with its tags -- to stderr, and then exits 1 for the want of an output
+ * file, so the exit code is not the signal; the block is. Duration and bitrate
+ * share a line (`Duration: 00:00:40.00, start: ..., bitrate: 331 kb/s`), and tag
+ * lines are indented under their stream.
+ */
+function parseInputBlock(text: string): ProbeResult | null {
+  const streams: ProbeStream[] = []
+  let duration: string | undefined
+  let bitRate: string | undefined
+  let current: ProbeStream | null = null
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, '')
+
+    const streamMatch = /^\s*Stream #\d+:\d+[^:]*:\s*(Video|Audio|Subtitle|Data|Attachment):\s*(.*)$/.exec(line)
+    if (streamMatch) {
+      current = { codec_type: streamMatch[1].toLowerCase() }
+      const codec = /^([A-Za-z0-9_]+)/.exec(streamMatch[2])
+      if (codec) current.codec_name = codec[1]
+      // Two digits minimum before the `x`: a hex literal like `0x6134706D` has a
+      // single `0` there and must not read as a resolution.
+      const size = /(\d{2,5})x(\d{2,5})/.exec(streamMatch[2])
+      if (size) {
+        current.width = Number(size[1])
+        current.height = Number(size[2])
+      }
+      const fps = /([\d.]+)\s*fps\b/.exec(streamMatch[2])
+      if (fps) current.r_frame_rate = `${fps[1]}/1`
+      streams.push(current)
+      continue
+    }
+
+    if (!current) {
+      const d = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(line)
+      if (d) duration = String(Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]))
+      const b = /bitrate:\s*(\d+)\s*kb\/s/.exec(line)
+      if (b) bitRate = String(Number(b[1]) * 1000)
+      continue
+    }
+
+    // A stream's own metadata, indented under its line: `handler_name : SoundHandler`.
+    const tag = /^\s+([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/.exec(line)
+    if (tag && tag[1] !== 'Metadata') {
+      current.tags = { ...(current.tags ?? {}), [tag[1]]: tag[2] }
+    }
+  }
+
+  if (!duration && streams.length === 0) return null
+  return { streams, format: { duration, bit_rate: bitRate } }
+}
+
+/**
+ * Probes a media file through ffmpeg alone.
+ *
+ * The app used to ship ffprobe as a second ~70MB binary for this one job; ffmpeg
+ * reports the same facts on the same line formats. Resolves null (never throws)
+ * when the file is unreadable.
+ */
 export function probe(file: string): Promise<ProbeResult | null> {
   return new Promise((resolve) => {
     execFile(
-      resolveFfprobe(),
-      ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file],
+      resolveFfmpeg(),
+      // No output file on purpose: ffmpeg prints the input block and exits 1.
+      ['-hide_banner', '-i', file],
       { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
-      (err, stdout) => {
-        if (err) {
-          log.warn(`ffprobe failed for ${path.basename(file)}:`, err.message)
-          resolve(null)
-          return
+      (_err, _stdout, stderr) => {
+        const parsed = parseInputBlock(String(stderr ?? ''))
+        if (!parsed) {
+          const reason = String(stderr ?? '').trim().split(/\r?\n/).filter(Boolean).pop() ?? 'no output'
+          log.warn(`Could not read ${path.basename(file)}: ${reason}`)
         }
-        try {
-          resolve(JSON.parse(stdout) as ProbeResult)
-        } catch {
-          resolve(null)
-        }
+        resolve(parsed)
       },
     )
   })

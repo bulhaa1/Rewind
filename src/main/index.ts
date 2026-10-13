@@ -1042,7 +1042,7 @@ async function runAudioTrackSelfTest(): Promise<void> {
     log.info(`AUDIO TRACK TEST: saved ${file}`)
 
     const info = await probe(file)
-    if (!info) throw new Error('ffprobe could not read the saved clip')
+    if (!info) throw new Error('ffmpeg could not read the saved clip')
 
     const audio = info.streams.filter((s) => s.codec_type === 'audio')
     log.info(`AUDIO TRACK TEST: ${audio.length} audio stream(s), tags=${JSON.stringify(audio.map((s) => s.tags ?? {}))}`)

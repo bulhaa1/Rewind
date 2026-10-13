@@ -318,7 +318,7 @@ function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>
  * Builds the clip library by walking the output tree.
  *
  * Metadata is layered over filesystem facts: filename timestamp first, then the
- * persisted clip-meta record, then an ffprobe when duration is missing or the file
+ * persisted clip-meta record, then a probe when duration is missing or the file
  * changed since it was last measured.
  */
 export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
@@ -424,7 +424,7 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
 /**
  * Probes a saved clip and logs the full description.
  * Returns the probe so the caller can stamp the measured duration without a
- * second ffprobe pass.
+ * second probe pass.
  */
 export async function describeSavedClip(
   file: string,
