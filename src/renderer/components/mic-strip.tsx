@@ -52,7 +52,6 @@ export function MicStrip() {
   const muted = levels?.microphone.muted ?? false
   const volume = levels?.microphone.volume ?? 1
   const shown = drag ?? (muted ? 0 : volume)
-  const percent = Math.round(shown * 100)
   const MuteIcon = muted ? VolumeX : Mic
 
   const commit = () => {
@@ -75,7 +74,8 @@ export function MicStrip() {
   return (
     <div
       data-testid="mic-strip"
-      className="ml-auto flex w-12 shrink-0 flex-col items-center gap-1.5 rounded-md border border-line bg-canvas px-1.5 py-2"
+      title={device ? `Microphone: ${device}` : 'Microphone'}
+      className="ml-auto flex w-9 shrink-0 flex-col items-center gap-2 rounded-md border border-line bg-canvas px-1.5 py-2"
     >
       <button
         type="button"
@@ -92,17 +92,13 @@ export function MicStrip() {
         />
       </button>
 
-      <span className="w-full truncate text-center text-[10px] text-ink-faint" title={device ?? 'Default'}>
-        {device ?? 'Default'}
-      </span>
-
       <input
         type="range"
         min={0}
         max={1}
         step={0.01}
         value={shown}
-        aria-label="Microphone volume"
+        aria-label={device ? `Microphone volume (${device})` : 'Microphone volume'}
         onChange={(e) => setDrag(Number(e.target.value))}
         onPointerUp={commit}
         onKeyUp={commit}
@@ -111,8 +107,6 @@ export function MicStrip() {
         style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
         className="h-12 w-1.5 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
       />
-
-      <span className="tabular text-[10px] text-ink-faint">{muted ? 'muted' : `${percent}%`}</span>
     </div>
   )
 }
