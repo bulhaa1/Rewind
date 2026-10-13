@@ -52,6 +52,22 @@ extraResources:
       - '**/*'
       # Microsoft debug symbols: 311 MB that ships to nobody.
       - '!**/*.pdb'
+      # CEF. Rewind has no browser sources, and only obs-browser.dll links
+      # libcef -- so dropping obs-browser.dll is what stops a 170 MB browser
+      # engine from being loaded into obs64 at all. The rest are its data,
+      # locales and ANGLE libraries. ~214 MB installed, measured.
+      - '!**/libcef.dll'
+      - '!**/chrome_elf.dll'
+      - '!**/obs-browser.dll'
+      - '!**/obs-browser-page.exe'
+      - '!**/icudtl.dat'
+      - '!**/resources.pak'
+      - '!**/chrome_*.pak'
+      - '!**/snapshot_blob.bin'
+      - '!**/v8_context_snapshot.bin'
+      - '!**/libEGL.dll'
+      - '!**/libGLESv2.dll'
+      - '!obs-plugins/64bit/locales/**'
   - from: node_modules/ffmpeg-static/ffmpeg.exe
     to: ffmpeg/ffmpeg.exe
   - from: assets/favicon.ico
