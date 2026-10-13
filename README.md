@@ -28,7 +28,9 @@ Rewind — Play. Capture. Keep.
 
 ## Preview
 
-<img width="603" height="986" alt="Screenshot 2026-10-11 012117" src="https://github.com/user-attachments/assets/8557028b-d783-438c-9607-09bb00915286" /> <img width="582" height="676" alt="Screenshot 2026-10-11 012149" src="https://github.com/user-attachments/assets/f884d4ab-0960-432f-8143-48b2a185992c" /> <img width="613" height="493" alt="Screenshot 2026-10-11 012221" src="https://github.com/user-attachments/assets/cd81f6db-64b1-4af2-a5a0-e0b1827fad73" /> <img width="1189" height="862" alt="Screenshot 2026-10-11 012335" src="https://github.com/user-attachments/assets/54c58e90-1aed-4f63-bd65-887439bccbce" /> 
+<img width="990" alt="The Rewind panel: the rolling buffer on the left, the clip rail on the right" src="assets/preview/panel.png" />
+
+<img width="430" alt="The clip editor: trim range, per-track volume and a waveform per audio track" src="assets/preview/editor.png" /> <img width="430" alt="Settings are a signal path — here, the encoder section" src="assets/preview/settings.png" />
 
 ## Install
 
@@ -38,8 +40,8 @@ account.
 Recording, editing and clips are all local files. Rewind contains no analytics,
 no telemetry and no crash reporting, and it makes no network request on its own —
 the only way it ever contacts the network is if you press **Check for updates**
-in the header. Nothing polls, nothing downloads unasked, and quitting the app
-does not install an update you have not applied.
+in the header (see [Updating](#updating)). Nothing polls, nothing downloads
+unasked, and quitting the app does not install an update you have not applied.
 
 **Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build YET.
 
@@ -60,6 +62,26 @@ closed, so closing the window never costs you a clip. The strip along the bottom
 the panel shows how much is buffered at that moment.
 
 Clips, screenshots and the editor are all reachable from the tray menu.
+
+## Updating
+
+Rewind is privacy-first, and the updater is built the same way: **it never checks
+for updates on its own.** There is no background poll, no silent download, and
+quitting the app never installs anything. You only hear about a new version when
+you go looking for it.
+
+To update:
+
+1. Click the download-arrow icon at the top-right of the panel, next to the
+   settings gear.
+2. Press **Check for updates**.
+3. If a version is available, press **Download**, then **Restart and install**.
+   Your clips, settings and hotkeys carry over.
+
+<img width="268" alt="The update tab: 'Rewind only contacts the network when you check', with a Check for updates button" src="assets/preview/update-tab.png" />
+
+The same tab shows why if a check fails, and nothing is ever downloaded until you
+press Download.
 
 ## How it compares
 

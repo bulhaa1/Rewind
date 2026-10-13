@@ -7,6 +7,8 @@
  * Usage: node scripts/cdp.mjs <script.js>
  */
 import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const PORT = process.env.CDP_PORT || '9222'
 
@@ -97,7 +99,10 @@ export async function connect(urlIncludes) {
 
 const scriptPath = process.argv[2]
 const targetFilter = process.argv[3]
-if (scriptPath) {
+// Only act as a CLI when run directly. Importing connect() from another script
+// must not re-enter this block (that circular import hangs on the second load).
+const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isCli && scriptPath) {
   const mod = await import(`file://${process.cwd()}\\${scriptPath}`)
   const cdp = await connect(targetFilter)
   await mod.default(cdp)
