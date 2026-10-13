@@ -324,56 +324,65 @@ export function CaptureControls({
         </div>
 
         {/*
-          Four actions, two per row. Screenshot used to span the second row alone,
-          which left a hole the width of a button when it was the third cell of a
-          two-column grid -- and a gap in the middle of the primary controls reads as
-          a control that failed to load. Mic mute fills the row and earns its place:
-          it is the one audio action someone needs mid-session, and Settings stays
-          the full control.
+          Record and Save Clip are the two things you press mid-moment, so they get a
+          row each at full width of a half-panel.
+
+          Screenshot shares its row with the microphone toggle, which is icon-only
+          because it is a persistent switch rather than a one-off action: nobody needs
+          to read the word Mute to know a microphone glyph is clickable, and a fourth
+          full-width button made the panel shout four things at once. Left as a cell in
+          the two-column grid above it would have been worse -- a mostly empty cell
+          reads as a control that failed to load.
         */}
-        <div className="grid grid-cols-2 gap-1.5 border-t border-line p-2">
-          <Button
-            variant={recording ? 'danger' : 'secondary'}
-            size="md"
-            disabled={!ready || busy}
-            onClick={() => void toggleRecording().catch(() => {})}
-            title={recording ? 'Stop recording and save' : 'Record continuously until stopped'}
-          >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : recording ? <Square className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-            {recording ? 'Stop' : 'Record'}
-            <HotkeyHint accel={hotkeys?.['toggle-record']} />
-          </Button>
+        <div className="border-t border-line p-2">
+          <div className="grid grid-cols-2 gap-1.5">
+            <Button
+              variant={recording ? 'danger' : 'secondary'}
+              size="md"
+              disabled={!ready || busy}
+              onClick={() => void toggleRecording().catch(() => {})}
+              title={recording ? 'Stop recording and save' : 'Record continuously until stopped'}
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : recording ? <Square className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+              {recording ? 'Stop' : 'Record'}
+              <HotkeyHint accel={hotkeys?.['toggle-record']} />
+            </Button>
 
-          <Button variant="secondary" size="md" disabled={!ready || saving} onClick={onSaveReplay}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save Clip
-            <HotkeyHint accel={hotkeys?.['save-replay']} />
-          </Button>
+            <Button variant="secondary" size="md" disabled={!ready || saving} onClick={onSaveReplay}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Save Clip
+              <HotkeyHint accel={hotkeys?.['save-replay']} />
+            </Button>
+          </div>
 
-          <Button
-            variant="ghost"
-            size="md"
-            disabled={capturing}
-            onClick={onScreenshot}
-            title="Take a screenshot of the captured display"
-          >
-            {capturing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-            Screenshot
-            <HotkeyHint accel={hotkeys?.screenshot} />
-          </Button>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="md"
+              className="flex-1"
+              disabled={capturing}
+              onClick={onScreenshot}
+              title="Take a screenshot of the captured display"
+            >
+              {capturing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              Screenshot
+              <HotkeyHint accel={hotkeys?.screenshot} />
+            </Button>
 
-          <Button
-            variant="ghost"
-            size="md"
-            disabled={micBusy}
-            onClick={() => void toggleMic()}
-            title={micMuted ? 'Unmute the microphone' : 'Mute the microphone'}
-            aria-pressed={micMuted}
-            className={micMuted ? 'text-danger' : undefined}
-          >
-            {micMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-            {micMuted ? 'Unmute' : 'Mute Mic'}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={micBusy}
+              onClick={() => void toggleMic()}
+              title={micMuted ? 'Unmute the microphone' : 'Mute the microphone'}
+              // Icon-only, so the name has to live here rather than in the contents.
+              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+              aria-pressed={micMuted}
+              className={micMuted ? 'text-danger' : undefined}
+            >
+              {micMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
         </div>
 
         {/*
