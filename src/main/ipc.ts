@@ -592,16 +592,22 @@ export function registerIpc(s: Services): void {
     const blocked = notReady()
     if (blocked) return blocked
 
+    const effective = rewindRoot(target)
     const previous = getSetting('outputPath')
     try {
+      // Create the app's own folder the moment a location is picked: it is where
+      // clips actually land (`rewindRoot`), and OBS's output needs it to exist.
+      // Returning the effective path is what lets the panel show where files go
+      // rather than the raw pick, which the app never writes into directly.
+      fs.mkdirSync(effective, { recursive: true })
       return await withStatus(OBS_STATUS_MESSAGES.changingSettings, async () => {
         // The engine first. The setting is what the library scans, so saving it before
         // OBS agrees would leave the panel showing an empty folder while clips keep
         // landing in the old one.
-        await obsCore().setOutputPath(rewindRoot(target))
+        await obsCore().setOutputPath(effective)
         setSetting('outputPath', target)
-        filesLog.info(`Output path set to: ${target}`)
-        return ok(target)
+        filesLog.info(`Output path set to: ${target} (clips land in ${effective})`)
+        return ok(effective)
       })
     } catch (e) {
       // Best effort: put the engine back where it was. The setting never moved.

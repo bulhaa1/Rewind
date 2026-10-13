@@ -620,7 +620,9 @@ function useFolderPicker(
       const res = await binding.set(target)
       if (!res.success) throw new Error(res.error)
 
-      client.setQueryData([...binding.queryKey], target)
+      // The setter returns the effective path -- the app's own `Rewind` folder
+      // inside the pick -- so the row shows where files actually land.
+      client.setQueryData([...binding.queryKey], res.data ?? target)
       for (const key of invalidate) await client.invalidateQueries({ queryKey: [...(key as unknown[])] })
     })
   }, [client, runAction, binding, kind, invalidate])
