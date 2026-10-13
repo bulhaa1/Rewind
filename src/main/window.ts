@@ -12,13 +12,13 @@ const PRELOAD = path.join(__dirname, '../preload/index.js')
 const RENDERER_DIR = path.join(__dirname, '../renderer')
 const DEV_URL = process.env.REWIND_DEV_SERVER
 
-const MAIN_WIDTH = 400
-const MAIN_HEIGHT = 550
-// The panel is laid out for a fixed width: the capture card, the library rows and
-// the encoder settings rows all balance their two columns at 400px. Resizable with
-// no floor, dragging the corner made those rows wrap and clip.
-const MIN_WIDTH = 400
-const MIN_HEIGHT = 460
+const MAIN_WIDTH = 1000
+const MAIN_HEIGHT = 620
+// The landscape shell: the capture deck is fluid and the clips rail is a fixed
+// 340px, so the floor is where the deck's rows start to crowd. The old panel was a
+// fixed 400px column, which is why the floor used to equal the width.
+const MIN_WIDTH = 860
+const MIN_HEIGHT = 540
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -169,7 +169,17 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
     y: areaH - MAIN_HEIGHT,
     show: false,
     resizable: true,
-    frame: true,
+    // Frameless with a native overlay: Windows still draws the real caption
+    // buttons - snap layouts, the window menu and hover previews included - while
+    // the renderer owns the strip behind them, which is components/titlebar.tsx.
+    //
+    // `frame: false` is not optional here. With the default frame and a hidden
+    // title bar, the window settled at exactly its minimum size seconds after
+    // launch (measured: 1000x620 -> 860x540); with the frame genuinely gone the
+    // requested size holds.
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#131316', symbolColor: '#a7a7ad', height: 40 },
     transparent: false,
     alwaysOnTop: false,
     webPreferences: {

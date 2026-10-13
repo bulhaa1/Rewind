@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import { QK, bufferActiveQuery, clipsQuery, configQuery, screenshotsQuery, sourceNameQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
 import { useClipEvents } from '../lib/hooks'
-import { Header } from '../components/layout'
+import { Titlebar } from '../components/titlebar'
 import { CaptureControls } from '../components/capture'
 import { ClipList, ScreenshotList } from '../components/library'
 import { Button, Dialog, cn } from '../components/ui'
@@ -139,7 +139,7 @@ export function HomePage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <Header title="Rewind" />
+      <Titlebar />
 
       <CaptureControls
         status={status}
