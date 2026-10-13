@@ -5,7 +5,7 @@ import { MotionConfig } from 'motion/react'
 import { queryClient } from './lib/queries'
 import { BackgroundActionProvider, ObsStatusProvider, useLibraryInvalidation } from './lib/context'
 import { useNotificationSound, usePopupWindow, useEditorClipPath } from './lib/hooks'
-import { HomePage } from './pages/Home'
+import { MainView } from './pages/MainView'
 import { SettingsPage } from './components/settings'
 import { EditorPage } from './components/editor'
 import { NotificationOverlay } from './pages/NotificationOverlay'
@@ -74,7 +74,7 @@ function RoutedPanel() {
 
   return (
     <div className="h-full">
-      {route === '/settings' ? <SettingsPage onBack={goHome} /> : <HomePage />}
+      {route === '/settings' ? <SettingsPage onBack={goHome} /> : <MainView />}
       {/*
         Mounted outside the routed surface so it survives navigation and covers
         whichever page is showing — a restart triggered from Settings must not

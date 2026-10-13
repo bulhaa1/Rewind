@@ -21,12 +21,17 @@ async function expect<T>(p: Promise<{ success: boolean; data?: T; error?: string
 }
 
 /**
- * The main panel.
+ * The main window.
  *
- * Three bands: capture controls, the media library, and a status strip. Everything
- * is local — Rewind has no account, no sync state and no network calls.
+ * Two panes under one custom bar: the capture deck on the left (fluid) and the
+ * clips rail on the right (fixed 340px). Everything is local — Rewind has no
+ * account, no sync state and no network calls.
+ *
+ * This component owns the state both panes share: the buffer, the save
+ * gestures, the current media view and the last-saved timestamp the rail
+ * animates from.
  */
-export function HomePage() {
+export function MainView() {
   const client = useQueryClient()
   const { status, message } = useObsStatus()
   const { runAction } = useBackgroundAction()
@@ -138,74 +143,85 @@ export function HomePage() {
   }, [client])
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-hidden">
       <Titlebar />
 
-      <CaptureControls
-        status={status}
-        sourceName={source?.name ?? ''}
-        sourceInactive={!!source?.inactive}
-        saving={isSaving}
-        capturing={isCapturing}
-        lastSaved={lastSaved}
-        bufferActive={bufferActive}
-        bufferBusy={bufferBusy}
-        bufferSeconds={config?.bufferDuration ?? 60}
-        onSaveReplay={saveClip}
-        onScreenshot={takeScreenshot}
-        onBufferStart={startBuffer}
-        onBufferStop={stopBuffer}
-        onBufferSeconds={setBufferSeconds}
-      />
+      <div className="flex min-h-0 flex-1">
+        {/* The deck: capture controls now, the buffer dial once it lands. */}
+        <div data-testid="deck-pane" className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <CaptureControls
+            status={status}
+            sourceName={source?.name ?? ''}
+            sourceInactive={!!source?.inactive}
+            saving={isSaving}
+            capturing={isCapturing}
+            lastSaved={lastSaved}
+            bufferActive={bufferActive}
+            bufferBusy={bufferBusy}
+            bufferSeconds={config?.bufferDuration ?? 60}
+            onSaveReplay={saveClip}
+            onScreenshot={takeScreenshot}
+            onBufferStart={startBuffer}
+            onBufferStop={stopBuffer}
+            onBufferSeconds={setBufferSeconds}
+          />
 
-      {status === 'error' ? (
-        <div className="mx-3 mb-2 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-medium text-danger">Recording not ready</p>
-            <p className="text-[11px] text-ink-muted">{message ?? 'Recording failed to start'}</p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              void runAction(async () => {
-                const res = await api.retryOBSInit()
-                if (!res.success) throw new Error(res.error)
-              })
-            }
-          >
-            Retry
-          </Button>
+          {status === 'error' ? (
+            <div className="mx-3 mb-2 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium text-danger">Recording not ready</p>
+                <p className="text-[11px] text-ink-muted">{message ?? 'Recording failed to start'}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void runAction(async () => {
+                    const res = await api.retryOBSInit()
+                    if (!res.success) throw new Error(res.error)
+                  })
+                }
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
-        {view === 'clips' ? (
-          <ClipList
-            clips={clips}
-            loading={clipsPending}
-            view={view}
-            onViewChange={setView}
-            onDelete={(path) => {
-              const clip = clips.find((c) => c.path === path)
-              setDeleteTarget({ path, name: clip?.filename ?? 'this clip' })
-            }}
-            onRename={renameClip}
-            onOpenFolder={openFolder}
-          />
-        ) : (
-          <ScreenshotList
-            screenshots={shots}
-            loading={shotsPending}
-            view={view}
-            onViewChange={setView}
-            onDelete={(path) => {
-              const shot = shots.find((s) => s.path === path)
-              setDeleteTarget({ path, name: shot?.name ?? 'this screenshot' })
-            }}
-            onOpenFolder={openFolder}
-          />
-        )}
+        {/* The rail: fixed width, and the only scrolling column in the panel. */}
+        <aside
+          data-testid="rail-pane"
+          className="flex w-[340px] shrink-0 flex-col overflow-hidden border-l border-line"
+        >
+          <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3">
+            {view === 'clips' ? (
+              <ClipList
+                clips={clips}
+                loading={clipsPending}
+                view={view}
+                onViewChange={setView}
+                onDelete={(path) => {
+                  const clip = clips.find((c) => c.path === path)
+                  setDeleteTarget({ path, name: clip?.filename ?? 'this clip' })
+                }}
+                onRename={renameClip}
+                onOpenFolder={openFolder}
+              />
+            ) : (
+              <ScreenshotList
+                screenshots={shots}
+                loading={shotsPending}
+                view={view}
+                onViewChange={setView}
+                onDelete={(path) => {
+                  const shot = shots.find((s) => s.path === path)
+                  setDeleteTarget({ path, name: shot?.name ?? 'this screenshot' })
+                }}
+                onOpenFolder={openFolder}
+              />
+            )}
+          </div>
+        </aside>
       </div>
 
       <StatusStrip
@@ -232,6 +248,9 @@ export function HomePage() {
           })
         }}
       />
+
+      {/* Fixed wash over everything; never inside a scrolling column. */}
+      <div className="grain" aria-hidden="true" />
     </div>
   )
 }
@@ -286,12 +305,7 @@ function StatusStrip({
             className="flex items-center gap-1.5"
             title={`${held} of ${bufferSeconds} seconds of footage recoverable`}
           >
-            <span
-              className={cn(
-                'h-2 w-2 rounded-full',
-                full ? 'bg-danger' : 'bg-ink-muted',
-              )}
-            />
+            <span className={cn('h-2 w-2 rounded-full', full ? 'bg-danger' : 'bg-ink-muted')} />
             <span className="tabular font-medium text-ink">
               {held}s of {bufferSeconds}s buffered
             </span>
