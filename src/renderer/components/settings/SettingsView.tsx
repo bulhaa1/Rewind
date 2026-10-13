@@ -58,6 +58,9 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return
+      // An open dropdown or dialog owns the arrows and Escape while it is up;
+      // otherwise the spine would move under the menu and unmount it mid-choice.
+      if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"]')) return
       if (e.key === 'Escape') {
         onBack()
         return

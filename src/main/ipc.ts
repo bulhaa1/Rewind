@@ -3,7 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { IPC } from '@shared/ipc.js'
-import { ALLOWED_FPS, DEFAULT_SETTINGS, MIC_GAIN, SCREENSHOT_SUBDIR } from '@shared/constants.js'
+import {
+  ALLOWED_FPS,
+  BUFFER_DURATION_MAX,
+  BUFFER_DURATION_MIN,
+  DEFAULT_SETTINGS,
+  MIC_GAIN,
+  SCREENSHOT_SUBDIR,
+} from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
 import { getClipMeta, getScreenshotMeta, setScreenshotMeta, deleteScreenshotMeta } from './clip-meta.js'
 import { captureScreenshot } from './ffmpeg.js'
@@ -1575,9 +1582,8 @@ const isDeleteScope = (v: unknown): v is DeleteScope => v === 'both' || v === 'l
  * bound is the only thing standing between a user and an unbounded RAM
  * allocation -- it is a deliberate limit, not an arbitrary one.
  */
-const BUFFER_DURATION_MIN = 5
-const BUFFER_DURATION_MAX = 600
-
+// Bounds come from @shared/constants so the panel's custom-limit field and this
+// validator use exactly the same range.
 const isBufferDuration = (v: unknown): v is number =>
   typeof v === 'number' && v >= BUFFER_DURATION_MIN && v <= BUFFER_DURATION_MAX
 

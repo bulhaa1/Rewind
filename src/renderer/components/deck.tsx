@@ -3,10 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, CircleDot, Save } from 'lucide-react'
 import { motion } from 'motion/react'
 import { api } from '../lib/api'
-import { QK, hotkeysQuery } from '../lib/queries'
+import { QK, SETTINGS, hotkeysQuery } from '../lib/queries'
 import { HotkeyChip } from './audio-controls'
+import { SettingSelect } from './controls'
 import { HotkeyDialog } from './record'
 import { InlineSpinner, cn } from './ui'
+import { BUFFER_DURATION_MAX, BUFFER_DURATION_MIN, QUICK_CLIP_DEFAULT, QUICK_CLIP_OPTIONS } from '@shared/constants.js'
 import type { HotkeyAction } from '@shared/types.js'
 
 const DIAL_RADIUS = 64
@@ -260,6 +262,25 @@ export function Deck({
   const known = LIMIT_OPTIONS.some((o) => o.seconds === duration)
   const options = known ? LIMIT_OPTIONS : [...LIMIT_OPTIONS, { seconds: duration, label: `${duration}s` }]
 
+  // Custom limit: the presets cover the common windows, this covers the rest of
+  // the 5-600s range the engine accepts. It applies on Enter or blur, so typing
+  // "120" does not restart the buffer three times on the way there.
+  const [customLimit, setCustomLimit] = useState(() => String(duration))
+  useEffect(() => {
+    setCustomLimit(String(duration))
+  }, [duration])
+
+  const applyCustomLimit = () => {
+    const typed = Math.round(Number(customLimit))
+    if (!Number.isFinite(typed) || customLimit.trim() === '') {
+      setCustomLimit(String(duration))
+      return
+    }
+    const clamped = Math.min(Math.max(typed, BUFFER_DURATION_MIN), BUFFER_DURATION_MAX)
+    setCustomLimit(String(clamped))
+    if (clamped !== duration) onSetBufferSeconds(clamped)
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-clean p-6">
       <div className="flex items-center gap-8">
@@ -316,10 +337,11 @@ export function Deck({
         />
       </div>
 
-      {/* The limit anchors to the bottom of the pane so the dial keeps the top. */}
-      <div className="mt-auto flex items-center gap-3 border-t border-line pt-4">
-        <span className="label shrink-0">Buffer limit</span>
-        <div className="flex items-center gap-1" data-testid="buffer-limit">
+      {/* The controls anchor to the bottom of the pane so the dial keeps the top. */}
+      <div className="mt-auto flex flex-col gap-3 border-t border-line pt-4">
+        <div className="flex items-center gap-3">
+          <span className="label shrink-0">Buffer limit</span>
+          <div className="flex items-center gap-1" data-testid="buffer-limit">
           {options.map((option) => {
             const current = option.seconds === duration
             return (
@@ -340,6 +362,44 @@ export function Deck({
               </button>
             )
           })}
+          </div>
+
+          {/* Any window the presets do not cover, inside the engine's 5-600s range. */}
+          <label className="ml-auto flex items-center gap-1.5">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={BUFFER_DURATION_MIN}
+              max={BUFFER_DURATION_MAX}
+              value={customLimit}
+              onChange={(e) => setCustomLimit(e.target.value)}
+              onBlur={applyCustomLimit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+              aria-label="Custom buffer limit in seconds"
+              title={`Custom limit, ${BUFFER_DURATION_MIN}-${BUFFER_DURATION_MAX} seconds`}
+              data-testid="buffer-limit-custom"
+              className="tabular h-7 w-[72px] rounded-md border border-line bg-raised/50 px-2 text-right text-[12px] outline-none focus:border-accent"
+            />
+            <span className="text-[11px] text-ink-faint">s</span>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="label shrink-0">Quick clip</span>
+          <SettingSelect
+            binding={SETTINGS.quickClipSeconds}
+            initial={QUICK_CLIP_DEFAULT}
+            options={QUICK_CLIP_OPTIONS}
+            label="Quick clip length"
+          />
+          <span className="min-w-0 truncate text-[11px] text-ink-faint">kept by the quick-clip hotkey</span>
+          {hotkeys?.['save-quick-clip'] ? (
+            <span className="ml-auto">
+              <HotkeyChip hotkey={hotkeys['save-quick-clip']} onClick={() => setEditAction('save-quick-clip')} />
+            </span>
+          ) : null}
         </div>
       </div>
 

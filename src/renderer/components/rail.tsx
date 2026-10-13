@@ -152,9 +152,18 @@ function clipUrl(filePath: string): string {
 function ScrubLayer({ filePath, duration }: { filePath: string; duration: number }) {
   const [failed, setFailed] = useState(false)
   const [ready, setReady] = useState(false)
+  const [hidden, setHidden] = useState(() => document.hidden)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  if (failed) return null
+  // A hidden window must not keep a decoder alive: closing to the tray happens
+  // with the pointer still resting on a card.
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
+  if (failed || hidden) return null
 
   const seek = (event: React.PointerEvent<HTMLDivElement>) => {
     const video = videoRef.current
@@ -172,7 +181,7 @@ function ScrubLayer({ filePath, duration }: { filePath: string; duration: number
         src={clipUrl(filePath)}
         muted
         playsInline
-        preload="auto"
+        preload="metadata"
         onLoadedData={() => setReady(true)}
         onError={() => setFailed(true)}
         className={cn('h-full w-full object-cover transition-opacity', ready ? 'opacity-100' : 'opacity-0')}
@@ -385,14 +394,19 @@ export function Rail({
 
   // The newest clip wears a ring for a few seconds after a save, so the card
   // that just arrived is the confirmation rather than a toast over the top of it.
-  const newestPath = view === 'clips' ? sortedClips[0]?.path : undefined
   const [newFor, setNewFor] = useState<string | undefined>(undefined)
   useEffect(() => {
-    if (!lastSavedAt || !newestPath) return
-    setNewFor(newestPath)
+    // Reacts to the save event alone. Keying on the newest path as well re-tagged
+    // the same clip every time the user switched between clips and screenshots.
+    if (!lastSavedAt) return
+    const path = sortedClips[0]?.path
+    if (!path) return
+    setNewFor(path)
     const id = setTimeout(() => setNewFor(undefined), 4000)
     return () => clearTimeout(id)
-  }, [lastSavedAt, newestPath])
+    // Only a save should re-tag; the newest path is read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSavedAt])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({

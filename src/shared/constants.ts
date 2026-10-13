@@ -148,6 +148,17 @@ export const VBR_KBPS_BY_QUALITY: Record<VisualQuality, number> = {
 /** Keyframe interval, in seconds. */
 export const KEYINT_SEC = 2
 
+/**
+ * The rolling-window range the engine accepts, in seconds.
+ *
+ * OBS has no byte ceiling on this output (see replay-buffer.ts), so the upper
+ * bound is the only thing standing between a user and an unbounded RAM
+ * allocation -- it is a deliberate limit, not an arbitrary one. Shared so the
+ * main-process validator and the panel's custom-limit field cannot disagree.
+ */
+export const BUFFER_DURATION_MIN = 5
+export const BUFFER_DURATION_MAX = 600
+
 /** AMF target usage for ICQ-style QSV. */
 export const QSV_TARGET_USAGE = 4
 

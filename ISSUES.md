@@ -3,9 +3,10 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-13, after making pause stop capture, fixing the NVENC
-preset mapping and the frame-rate profile write, and measuring the capture and
-idle cost (`docs/perf-testing.md`).
+Last updated: 2026-10-13, after the UI redesign landed on branch `feat/ui-redesign`
+(landscape deck + media rail, signal-path settings, Base UI primitives, motion), on
+top of making pause stop capture, fixing the NVENC preset mapping and the frame-rate
+profile write, and measuring the capture and idle cost (`docs/perf-testing.md`).
 
 Status values:
 
