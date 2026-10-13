@@ -236,6 +236,18 @@ export const TIMING = {
 
   /** Overall shutdown budget (ms). */
   SHUTDOWN: 8000,
+  /**
+   * Shutdown budget while a continuous recording is running (ms).
+   *
+   * The recording is stitched on the way out -- one ffmpeg remux plus one probe
+   * per segment -- and a long recording is many segments, so the plain budget
+   * fired mid-stitch and left the file unregistered.
+   *
+   * shortcut: 3 minutes covers roughly 2.5 hours of recording at the default 60s
+   * buffer (~54s segments, ~1s each); a longer recording can still time out.
+   * Upgrade to a segment-count-based budget if anyone records longer.
+   */
+  SHUTDOWN_RECORDING: 180_000,
   OBS_RESPAWN_SETTLE: 1500,
   CLIP_SAVED_BROADCAST: 500,
   SCREENSHOT: 15000,
@@ -254,6 +266,15 @@ export const GAME_DETECTOR = {
   /** content/monitor ratio >= this on both axes counts as fullscreen. */
   FULLSCREEN_RATIO: 0.9,
 } as const
+
+/**
+ * How long an engine teardown may take, in ms.
+ *
+ * A recording in flight is stitched on the way out, so it gets the long budget;
+ * everything else keeps the plain one.
+ */
+export const shutdownBudgetMs = (recording: boolean): number =>
+  recording ? TIMING.SHUTDOWN_RECORDING : TIMING.SHUTDOWN
 /** OBS monitor order reconciliation: silence a log line no more often than this. */
 export const MONITOR_LOG_INTERVAL_MS = 60_000
 

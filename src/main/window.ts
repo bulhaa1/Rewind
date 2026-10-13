@@ -292,6 +292,8 @@ export function bootstrap(hooks: {
   onInitPipeline: () => Promise<void>
   onPipelineWedge: () => Promise<void>
   onResume: () => Promise<void>
+  /** Milliseconds the engine teardown may take before Quit gives up on it. */
+  shutdownBudget: () => number
 }): void {
   startCrashReporter()
 
@@ -341,12 +343,17 @@ export function bootstrap(hooks: {
     // Hold the quit until the engine has finished. `onPipelineWedge` is what stitches
     // a running recording and writes a pending save, and `will-quit` force-kills the
     // child - so quitting without waiting destroys the very file the user asked to
-    // keep. Ten seconds is the ceiling: a wedged engine must not make Quit do nothing.
+    // keep. The budget comes from main: a recording in flight is stitched on the way
+    // out and needs far longer than a plain shutdown, and the wait sits two seconds
+    // past the engine's own budget so a wedged engine still lets Quit finish.
     e.preventDefault()
     destroyTray()
     void (async () => {
       try {
-        await Promise.race([hooks.onPipelineWedge(), new Promise((resolve) => setTimeout(resolve, 10_000))])
+        await Promise.race([
+          hooks.onPipelineWedge(),
+          new Promise((resolve) => setTimeout(resolve, hooks.shutdownBudget() + 2_000)),
+        ])
       } catch (err) {
         log.error('Cleanup failed:', err)
       }

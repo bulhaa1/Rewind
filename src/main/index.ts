@@ -26,7 +26,7 @@ import { getSetting, setSetting } from './store.js'
 import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
-import { TIMING, clampQuickClip } from '@shared/constants.js'
+import { TIMING, clampQuickClip, shutdownBudgetMs } from '@shared/constants.js'
 import type { BufferStatus, HotkeyAction, ObsStatus } from '@shared/types.js'
 
 const log = scope('App')
@@ -194,6 +194,15 @@ let wedgeRecoveryInFlight = false
 
 const pipelineActive = (): boolean => !!(obsCore?.isInitialized() && replay?.isReplayBufferActive())
 
+/**
+ * How long a teardown may take, in ms.
+ *
+ * A continuous recording is stitched on the way out -- one remux per segment --
+ * so it gets the long budget; everything else keeps the plain one. `window.ts`
+ * adds its own slack on top so a wedged engine still lets Quit finish.
+ */
+const shutdownBudget = (): number => shutdownBudgetMs(replay?.isRecordingContinuously?.() ?? false)
+
 function buildPipeline(): void {
   const config = {
     bufferDuration: getSetting('bufferDuration'),
@@ -284,7 +293,7 @@ async function startPipeline(): Promise<void> {
 async function shutdownPipeline(): Promise<void> {
   try {
     if (!obsCore) return
-    await withTimeout(obsCore.shutdown(), TIMING.SHUTDOWN, 'Shutdown timed out')
+    await withTimeout(obsCore.shutdown(), shutdownBudget(), 'Shutdown timed out')
   } catch (e) {
     log.warn('OBS shutdown timed out during reinit, force-killing:', e)
     obsCore?.markAbandoned()
@@ -747,6 +756,7 @@ function main(): void {
   bootstrap({
     onSaveClip: saveFromHotkey,
     onInitPipeline: initPipeline,
+    shutdownBudget,
     onPipelineWedge: async () => {
       detector?.stop()
       shutdownHotkeys()
