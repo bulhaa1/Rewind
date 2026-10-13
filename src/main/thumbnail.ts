@@ -20,7 +20,7 @@ function hashName(file: string): string {
   return crypto.createHash('sha1').update(file).digest('hex')
 }
 
-export function thumbnailPath(file: string, width: number): string {
+export function thumbnailPath(file: string, width: number = THUMBNAIL.GRID): string {
   return path.join(dir(), `${hashName(file)}-${width}.jpg`)
 }
 

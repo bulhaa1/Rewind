@@ -62,8 +62,10 @@ class JsonStore<T extends object> {
 
   private write(next: T): void {
     if (this.unreadable) {
-      log.error(`Refusing to overwrite ${path.basename(this.filePath)}: it could not be read`)
-      return
+      // Throw rather than return: a refused write must not look like a saved setting.
+      // IPC handlers turn this into a failed invoke, so the panel shows an error
+      // instead of confirming a change that will be gone at the next launch.
+      throw new Error(`${path.basename(this.filePath)} could not be read; refusing to overwrite it`)
     }
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
