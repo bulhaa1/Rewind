@@ -62,58 +62,44 @@ export default async function ({ evaluate }) {
   console.log(`${afterClick === target ? 'PASS' : 'FAIL'}  chip click: active ${beforeClick} -> ${afterClick} (expected ${target})`)
   if (afterClick !== target) problems.push(`chip click moved ${beforeClick} -> ${afterClick}, expected ${target}`)
 
-  // CRUD with shift-aware activeProfile expectations:
-  // duplicating at index 0 inserts at 1, shifting the active index up when it was >= 1;
-  // removing at index 1 shifts it back down when it was > 1. Appending never shifts.
+  // CRUD with the four-profile cap and shift-aware activeProfile expectations:
+  // the list starts at four, so adding and duplicating are refused until a slot is
+  // freed; duplicating at index 0 inserts at 1 and shifts the active index up when
+  // it was >= 1; removing at index 1 shifts it back down when it was > 1.
   let a = (await profiles()).data.activeProfile
+  const refusedAdd = await evaluate('window.electronAPI.addProfile()')
+  const capOk = refusedAdd && refusedAdd.success === false && (await profiles()).data.profiles.length === count
+  console.log(`${capOk ? 'PASS' : 'FAIL'}  add at the cap is refused (${count} profiles)`)
+  if (!capOk) problems.push('addProfile did not refuse at the cap')
+
+  const refusedDup = await evaluate('window.electronAPI.duplicateProfile(0)')
+  const capDupOk = refusedDup && refusedDup.success === false && (await profiles()).data.profiles.length === count
+  console.log(`${capDupOk ? 'PASS' : 'FAIL'}  duplicate at the cap is refused`)
+  if (!capDupOk) problems.push('duplicateProfile did not refuse at the cap')
+
+  // Free a slot by removing a profile that is not active, then add into it.
+  const freeIndex = a === 0 ? 1 : 0
+  const freed = await evaluate(`window.electronAPI.removeProfile(${freeIndex})`)
+  if (!freed?.success) problems.push(`removeProfile(${freeIndex}) failed: ${JSON.stringify(freed)}`)
+  const afterFree = await waitForCount(evaluate, count - 1)
+  const expectedAfterFree = freeIndex < a ? a - 1 : a
+  const freeOk = afterFree && afterFree.activeProfile === expectedAfterFree
+  console.log(`${freeOk ? 'PASS' : 'FAIL'}  removing below the active profile shifts it: ${afterFree?.activeProfile} (expected ${expectedAfterFree})`)
+  if (!freeOk) problems.push('removeProfile did not shift the active index down')
+
+  a = expectedAfterFree
   const added = await evaluate('window.electronAPI.addProfile()')
   if (!added?.success) problems.push(`addProfile failed: ${JSON.stringify(added)}`)
-  const afterAdd = await waitForCount(evaluate, count + 1)
-  const addedOk = afterAdd && afterAdd.profiles.length === count + 1 && afterAdd.activeProfile === a
-  console.log(`${addedOk ? 'PASS' : 'FAIL'}  add profile: ${count} -> ${afterAdd?.profiles.length}, active ${a}`)
-  if (!addedOk) problems.push('addProfile did not append one inactive profile')
+  const afterAdd = await waitForCount(evaluate, count)
+  const addedOk = afterAdd && afterAdd.profiles.length === count && afterAdd.activeProfile === a
+  console.log(`${addedOk ? 'PASS' : 'FAIL'}  add into the free slot: ${afterAdd?.profiles.length}, active ${a}`)
+  if (!addedOk) problems.push('addProfile did not append into the free slot')
 
-  const source = afterAdd.profiles[0]
-  const dup = await evaluate('window.electronAPI.duplicateProfile(0)')
-  if (!dup?.success) problems.push(`duplicateProfile failed: ${JSON.stringify(dup)}`)
-  const expectedActiveAfterDup = a >= 1 ? a + 1 : a
-  const afterDup = await waitForCount(evaluate, count + 2)
-  const copy = afterDup?.profiles[1]
-  const dupOk =
-    copy &&
-    copy.name === `${source.name} copy` &&
-    copy.fps === source.fps &&
-    copy.bufferDuration === source.bufferDuration &&
-    afterDup.activeProfile === expectedActiveAfterDup
-  console.log(
-    `${dupOk ? 'PASS' : 'FAIL'}  duplicate profile 0: ${copy ? copy.name : 'none'}, active ${afterDup?.activeProfile} (expected ${expectedActiveAfterDup})`,
-  )
-  if (!dupOk) problems.push('duplicateProfile did not insert a values copy with the active index shifted')
-
-  // Remove the active profile is refused; the store is untouched.
-  const activeIndex = (await profiles()).data.activeProfile
-  const refused = await evaluate(`window.electronAPI.removeProfile(${activeIndex})`)
-  const refusedOk = refused && refused.success === false && (await profiles()).data.profiles.length === count + 2
-  console.log(`${refusedOk ? 'PASS' : 'FAIL'}  removing the active profile is refused`)
-  if (!refusedOk) problems.push('removeProfile did not refuse the active profile')
-
-  // Remove the copy, then the added profile, back to where it started.
-  const removedCopy = await evaluate('window.electronAPI.removeProfile(1)')
-  if (!removedCopy?.success) problems.push(`removeProfile(1) failed: ${JSON.stringify(removedCopy)}`)
-  const expectedActiveAfterRemove = expectedActiveAfterDup > 1 ? expectedActiveAfterDup - 1 : expectedActiveAfterDup
-  const backOne = await waitForCount(evaluate, count + 1)
-  const shiftOk = backOne && backOne.activeProfile === expectedActiveAfterRemove
-  console.log(
-    `${shiftOk ? 'PASS' : 'FAIL'}  removing above the active profile shifts it: ${backOne?.activeProfile} (expected ${expectedActiveAfterRemove})`,
-  )
-  if (!shiftOk) problems.push('removeProfile did not shift the active index down')
-
-  const removedAdded = await evaluate(`window.electronAPI.removeProfile(${count})`)
-  if (!removedAdded?.success) problems.push(`removeProfile(${count}) failed: ${JSON.stringify(removedAdded)}`)
-  const restored = await waitForCount(evaluate, count)
-  const restoredOk = restored && restored.profiles.length === count && restored.activeProfile === expectedActiveAfterRemove
-  console.log(`${restoredOk ? 'PASS' : 'FAIL'}  removals restore the original list`)
-  if (!restoredOk) problems.push('removals did not restore the original list')
+  // Duplicate at the cap is refused again.
+  const dup = await evaluate(`window.electronAPI.duplicateProfile(${freeIndex})`)
+  const dupRefused = dup && dup.success === false
+  console.log(`${dupRefused ? 'PASS' : 'FAIL'}  duplicate is refused again at the cap`)
+  if (!dupRefused) problems.push('duplicateProfile was allowed past the cap')
 
   // Save current settings: the active profile then carries the live values.
   const liveFps = await evaluate('window.electronAPI.getFps()')

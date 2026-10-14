@@ -856,13 +856,25 @@ function ProfilesSection() {
     }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
   }
 
+  const atCap = profiles.length >= 4
+
   return (
     <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">
-      <div className="space-y-3">
+      <div className="space-y-2">
         <p className="text-[11px] text-ink-faint">
-          Switch with the numbered buttons on the main page. Edits to the active profile apply immediately; &ldquo;Save
-          current settings&rdquo; copies the live settings into the active profile.
+          Up to four profiles. Switch with the numbered buttons on the main page; edits to the active profile apply
+          immediately, and &ldquo;Save current&rdquo; copies the live settings into it.
         </p>
+
+        {/* What each column is, so a row reads as labelled values rather than numbers. */}
+        <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide text-ink-faint">
+          <span className="w-4 shrink-0" />
+          <span className="w-28 shrink-0">Name</span>
+          <span className="w-16 shrink-0">Buffer limit</span>
+          <span className="w-[4.5rem] shrink-0">Frames</span>
+          <span className="w-24 shrink-0">Quality</span>
+        </div>
+
         {profiles.map((profile, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
             <span
@@ -924,14 +936,15 @@ function ProfilesSection() {
                   title="Copy the live capture settings into this profile"
                   onClick={() => run(() => api.saveActiveProfile())}
                 >
-                  Save current settings
+                  Save current
                 </Button>
               ) : null}
               <Button
                 variant="ghost"
                 size="iconSm"
                 data-testid={`profile-duplicate-${i}`}
-                title="Duplicate"
+                title={atCap ? 'Up to 4 profiles' : 'Duplicate'}
+                disabled={atCap}
                 onClick={() => run(() => api.duplicateProfile(i))}
               >
                 <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -959,6 +972,8 @@ function ProfilesSection() {
           variant="ghost"
           size="sm"
           data-testid="profile-add"
+          disabled={atCap}
+          title={atCap ? 'Up to 4 profiles' : 'Add a profile'}
           onClick={() => run(() => api.addProfile())}
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />

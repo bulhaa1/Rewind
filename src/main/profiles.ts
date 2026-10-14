@@ -5,6 +5,9 @@ import type { Profile } from '@shared/types.js'
 
 const log = scope('Profiles')
 
+/** How many profiles the list holds. Four, like the numbered slots this is modelled on. */
+export const PROFILE_COUNT_MAX = 4
+
 /**
  * How much of the pipeline a switch has to rebuild.
  *
@@ -89,9 +92,10 @@ export function writeProfileValues(index: number, patch: Partial<Profile>): Prof
   return merged
 }
 
-/** Appends a profile with the default values and a free name. */
-export function addProfile(): { profiles: Profile[]; activeProfile: number } {
+/** Appends a profile with the default values and a free name. Refused at the cap. */
+export function addProfile(): { profiles: Profile[]; activeProfile: number } | string {
   const { profiles } = getProfiles()
+  if (profiles.length >= PROFILE_COUNT_MAX) return `Up to ${PROFILE_COUNT_MAX} profiles`
   const base = 'Profile'
   const taken = new Set(profiles.map((p) => p.name))
   let name = base
@@ -102,9 +106,11 @@ export function addProfile(): { profiles: Profile[]; activeProfile: number } {
 }
 
 /** Inserts a copy of a profile right after it. The copy is never the active one. */
-export function duplicateProfile(index: number): { profiles: Profile[]; activeProfile: number } {
+export function duplicateProfile(index: number): { profiles: Profile[]; activeProfile: number } | string {
   const { profiles, activeProfile } = getProfiles()
+  if (profiles.length >= PROFILE_COUNT_MAX) return `Up to ${PROFILE_COUNT_MAX} profiles`
   const source = profiles[index]
+  if (!source) return 'Invalid profile'
   const base = `${source.name} copy`
   // Inserting above the active entry shifts it up; the stored index must follow.
   const nextActive = index + 1 <= activeProfile ? activeProfile + 1 : activeProfile

@@ -1069,14 +1069,18 @@ export function registerIpc(s: Services): void {
     return ok(s.getProfiles())
   })
 
-  handle(IPC.addProfile, () => ok(require('./profiles.js').addProfile()))
+  handle(IPC.addProfile, () => {
+    const result = require('./profiles.js').addProfile()
+    return typeof result === 'string' ? fail(result) : ok(result)
+  })
 
   handle(IPC.duplicateProfile, (index: unknown) => {
     const { getProfiles, duplicateProfile } = require('./profiles.js')
     if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= getProfiles().profiles.length) {
       return fail('Invalid profile')
     }
-    return ok(duplicateProfile(index))
+    const result = duplicateProfile(index)
+    return typeof result === 'string' ? fail(result) : ok(result)
   })
 
   handle(IPC.removeProfile, (index: unknown) => {
