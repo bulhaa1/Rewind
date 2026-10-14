@@ -19,7 +19,7 @@ const SECTIONS: { id: SettingsSectionId; index: string; label: string }[] = [
   { id: 'audio', index: '02', label: 'Audio' },
   { id: 'encoder', index: '03', label: 'Encoder' },
   { id: 'profiles', index: '04', label: 'Profiles' },
-  { id: 'replay', index: '05', label: 'Replay' },
+  { id: 'storage', index: '05', label: 'Storage' },
   { id: 'hotkeys', index: '06', label: 'Hotkeys' },
   { id: 'system', index: '07', label: 'System' },
 ]

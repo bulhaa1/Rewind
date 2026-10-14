@@ -1066,9 +1066,10 @@ export const SETTINGS_SECTIONS = {
   audio: [AudioSection],
   encoder: [QualitySection],
   profiles: [ProfilesSection],
-  replay: [ReplaysSection, ScreenshotsSection],
+  // Storage owns every path and every door to the app's own files.
+  storage: [ReplaysSection, ScreenshotsSection, DataSection],
   hotkeys: [HotkeysSection],
-  system: [NotificationsSection, StartupSection, DataSection, VersionFooter],
+  system: [NotificationsSection, StartupSection, VersionFooter],
 } as const
 
 export type SettingsSectionId = keyof typeof SETTINGS_SECTIONS

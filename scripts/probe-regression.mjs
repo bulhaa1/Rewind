@@ -102,7 +102,7 @@ export default async function ({ evaluate, drainErrors }) {
   const spine = await call(
     `[...document.querySelectorAll('[data-section]')].map((el) => el.getAttribute('data-section')).join(',')`,
   )
-  check('settings spine reachable', spine === 'capture,audio,encoder,profiles,replay,hotkeys,system', spine)
+  check('settings spine reachable', spine === 'capture,audio,encoder,profiles,storage,hotkeys,system', spine)
   await call(`window.location.hash = '/'`)
   await new Promise((r) => setTimeout(r, 1500))
 

@@ -19,12 +19,12 @@ export default async function ({ evaluate, send }) {
   const navIds = await call('[...document.querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section"))')
   console.log('spine:', spine, JSON.stringify(navIds))
   if (!spine) problems.push('no settings spine')
-  const expected = ['capture', 'audio', 'encoder', 'replay', 'hotkeys', 'system']
+  const expected = ['capture', 'audio', 'encoder', 'storage', 'hotkeys', 'system']
   for (const id of expected) {
     if (!navIds.includes(id)) problems.push('spine is missing ' + id)
   }
 
-  const titles = { capture: 'Display', audio: 'Audio', encoder: 'Quality', replay: 'Replays', hotkeys: 'Hotkeys', system: 'Notifications' }
+  const titles = { capture: 'Display', audio: 'Audio', encoder: 'Quality', storage: 'Replays', hotkeys: 'Hotkeys', system: 'Notifications' }
   for (const id of expected) {
     await call('document.querySelector("[data-section=\\"' + id + '\\"]").click()')
     await wait(900)
