@@ -789,10 +789,11 @@ function Timeline({
       wheelRafRef.current = null
       const target = pendingRef.current
       pendingRef.current = null
-      if (target !== null) {
-        lastRef.current = target
-        onSeek(target)
-      }
+      // The chain dies with its frame: once the playhead has moved, the next
+      // scroll continues from wherever the video actually is, not from a stale
+      // scrub target.
+      lastRef.current = null
+      if (target !== null) onSeek(target)
     }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
@@ -804,6 +805,7 @@ function Timeline({
         pendingRef.current = next
         return
       }
+      // Leading edge: same-frame events chain from this value.
       lastRef.current = next
       onSeek(next)
       wheelRafRef.current = requestAnimationFrame(flush)

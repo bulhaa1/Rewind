@@ -38,7 +38,7 @@ export default async function ({ evaluate }) {
 
   // Backwards range is refused, cleanly.
   const bad = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 2, endSec: 1, maxHeight: 720, targetMb: 1 })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 2, endSec: 1, targetMb: 1 })`,
   )
   const badOk = bad && bad.success === false
   console.log(`${badOk ? 'PASS' : 'FAIL'}  backwards range refused`)
@@ -46,7 +46,7 @@ export default async function ({ evaluate }) {
 
   // A size under the floor is refused rather than encoded into garbage.
   const tooSmall = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, maxHeight: 720, targetMb: 0.1 })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 0.1 })`,
   )
   const smallOk = tooSmall && tooSmall.success === false
   console.log(`${smallOk ? 'PASS' : 'FAIL'}  a sub-floor size is refused`)
@@ -54,7 +54,7 @@ export default async function ({ evaluate }) {
 
   // Small preset: the file lands close to the ask and keeps its audio.
   const mp4 = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, maxHeight: 720, targetMb: 1 })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 1 })`,
   )
   const mp4Mb = mp4?.data ? mp4.data.bytes / 1024 / 1024 : 0
   const mp4Ok = mp4?.success && mp4Mb <= 1.2 && mp4Mb >= 0.5 && mp4.data.audioStreams === 1
@@ -65,7 +65,7 @@ export default async function ({ evaluate }) {
 
   // A larger ask on the same range: sizes must follow the ask.
   const target = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, maxHeight: 720, targetMb: 2, suffix: 'target' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2, suffix: 'target' })`,
   )
   const targetMb = target?.data ? target.data.bytes / 1024 / 1024 : 0
   const targetOk = target?.success && targetMb <= 2.4 && targetMb >= 1.0
@@ -76,7 +76,7 @@ export default async function ({ evaluate }) {
 
   // The compress suffix names the copy, and the original is untouched.
   const compress = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, maxHeight: 720, targetMb: 2, suffix: 'compressed' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2, suffix: 'compressed' })`,
   )
   const compressOk = compress?.success && /compressed/i.test(compress.data.path)
   console.log(`${compressOk ? 'PASS' : 'FAIL'}  compress copy: ${compress?.data?.path ?? JSON.stringify(compress)}`)
@@ -94,7 +94,7 @@ export default async function ({ evaluate }) {
   const midStart = Math.min(10, Math.max(0, long.duration - 3))
   const midEnd = Math.min(midStart + 3, long.duration)
   const mid = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(long.path)}, startSec: ${midStart}, endSec: ${midEnd}, maxHeight: 480, targetMb: 1 })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(long.path)}, startSec: ${midStart}, endSec: ${midEnd}, targetMb: 1 })`,
   )
   const midProgress = await evaluate('window.__exportProgress')
   const midMax = Math.max(0, ...(midProgress ?? [0]))
@@ -108,3 +108,6 @@ export default async function ({ evaluate }) {
   }
   console.log('PASS probe-export')
 }
+
+
+

@@ -78,11 +78,14 @@ export default async function ({ evaluate, drainErrors, url, send }) {
   console.log('clip volume waveform:', JSON.stringify(master))
   if (!master.present) problems.push('clip volume lane missing')
 
-  // Wheel scrub: scrolling the trim bar must move the playhead.
+  // Wheel scrub: scrolling the trim bar must move the playhead. The video is
+  // paused first, or its own timeupdate loop races the synthetic seek.
   const scrub = await evaluate(`(async () => {
     const v = document.querySelector('video')
     const lane = document.querySelector('[role="slider"][aria-label="Playhead"]')
     if (!v || !lane) return 'missing'
+    v.pause()
+    await new Promise((r) => setTimeout(r, 200))
     const before = v.currentTime
     const dispatch = (dy) => lane.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, bubbles: true, cancelable: true }))
     for (let i = 0; i < 5; i++) { dispatch(100); await new Promise((r) => setTimeout(r, 60)) }
@@ -109,16 +112,22 @@ export default async function ({ evaluate, drainErrors, url, send }) {
 
   console.log('renderer errors:', drainErrors().length ? drainErrors() : 'none')
 
-  // Copy clip: the footer button writes the file to the clipboard and confirms.
-  const copyResult = await evaluate(`(async () => {
-    const b = document.querySelector('[data-testid="copy-clip"]')
-    if (!b) return 'missing'
-    b.click()
-    await new Promise((r) => setTimeout(r, 800))
-    return b.textContent.trim()
-  })()`)
-  console.log('copy clip button:', copyResult)
-  if (copyResult !== 'Copied') problems.push('copy clip button did not confirm the write')
+  // Copy clip lives in the rail now; here only the IPC path is pinned.
+  const clipPath = (() => {
+    try {
+      return decodeURIComponent(new URL(url).searchParams.get('clipPath') ?? '')
+    } catch {
+      return ''
+    }
+  })()
+  if (clipPath) {
+    const copyResult = await evaluate(
+      `window.electronAPI.copyClip(${JSON.stringify(clipPath)}).then((r) => JSON.stringify({ success: r.success, mode: r.data?.mode }))`,
+    )
+    console.log('copy clip ipc:', copyResult)
+    const parsed = JSON.parse(copyResult ?? '{}')
+    if (!parsed.success || parsed.mode !== 'file') problems.push('copyClip did not write the file to the clipboard')
+  }
 
   if (problems.length) {
     console.log('FAIL probe-editor-ui: ' + problems.join('; '))
