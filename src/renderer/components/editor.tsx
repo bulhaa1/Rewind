@@ -439,10 +439,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             height={info.height}
             fps={info.fps}
             busy={!!saving}
-            onUseWholeClip={() => {
-              setStartSec(0)
-              setEndSec(duration)
-            }}
           />
 
           {saveError ? <p className="text-[11px] text-danger">{saveError}</p> : null}
@@ -493,7 +489,6 @@ function ExportSection({
   height,
   fps,
   busy,
-  onUseWholeClip,
 }: {
   clipPath: string
   startSec: number
@@ -504,7 +499,6 @@ function ExportSection({
   height: number
   fps: number
   busy: boolean
-  onUseWholeClip: () => void
 }) {
   // 0 = smallest file, 100 = best quality. 55 sits where a share clip reads well.
   const [sizeLevel, setSizeLevel] = useState(55)
@@ -540,16 +534,17 @@ function ExportSection({
   // floor at 200, and one kbps of headroom keeps the roundtrip above the floor.
   const estMb = Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024)
 
-  // The baseline is the source's share of the exported range, so the percent reads
-  // against the part being encoded, not the whole file.
-  const baselineMb = fileSize > 0 && duration > 0 ? (fileSize * (exportLength / duration)) / 1024 / 1024 : 0
-  const savedPct = baselineMb > 0 ? Math.round(((baselineMb - estMb) / baselineMb) * 100) : 0
+  // The exact reduction against the original clip's size.
+  const baselineMb = fileSize / 1024 / 1024
+  const savedPct = baselineMb > 0 ? ((baselineMb - estMb) / baselineMb) * 100 : 0
   const savingsLine =
     baselineMb <= 0
       ? null
-      : savedPct <= 0
-        ? '≈ same size as the source'
-        : `${Math.min(99, savedPct)}% smaller`
+      : savedPct > 0
+        ? `${Math.round(savedPct)}% smaller`
+        : savedPct < 0
+          ? `${Math.abs(Math.round(savedPct))}% larger`
+          : 'same size'
 
   const run = async () => {
     setRunning(true)
@@ -583,17 +578,17 @@ function ExportSection({
     exportLength < 1 ? 'Select at least 1 second to export' : running ? 'An export is already running' : null
 
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface px-3 py-2.5" data-testid="export-section">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface px-3 py-2" data-testid="export-section">
       {/* Both rows are nowrap on purpose: at the window's minimum width they fit,
           and a resize reflows nothing — the flexible text shrinks instead. */}
       <div className="flex flex-nowrap items-center gap-x-3">
-        <span className="text-[12px] font-medium">Export</span>
-        <span className="text-[11px] text-ink-muted">Size</span>
+        <span className="text-[12px] font-medium">Compress</span>
+        <span className="text-[11px] text-ink-muted">Quality</span>
         {(
           [
-            ['Small', 25],
-            ['Balanced', 55],
-            ['Best', 85],
+            ['Low', 25],
+            ['Medium', 55],
+            ['High', 85],
           ] as const
         ).map(([label, level]) => (
           <button
@@ -632,19 +627,9 @@ function ExportSection({
         </span>
       </div>
 
-      <div className="mt-1.5 flex flex-nowrap items-center gap-x-3 overflow-hidden">
-        <span className="tabular shrink-0 text-[11px] text-ink-faint">
-          Range {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(exportLength)})
-        </span>
-        <button
-          type="button"
-          disabled={running}
-          onClick={onUseWholeClip}
-          className="shrink-0 text-[11px] text-ink-muted underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink disabled:opacity-45"
-        >
-          Use whole clip
-        </button>
-        {running ? (
+      {(running || result) && (
+        <div className="mt-1 flex flex-nowrap items-center gap-x-3 overflow-hidden">
+          {running ? (
           <>
             <span className="tabular shrink-0 text-[11px] text-ink-muted">{percent}%</span>
             <div className="h-1 w-32 shrink-0 overflow-hidden rounded bg-line">
@@ -665,7 +650,8 @@ function ExportSection({
             </Button>
           </span>
         ) : null}
-      </div>
+        </div>
+      )}
       {error ? <p className="mt-1 text-[11px] text-danger">{error}</p> : null}
     </div>
   )
