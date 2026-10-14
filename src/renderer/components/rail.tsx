@@ -500,7 +500,7 @@ export function Rail({
           </p>
         </div>
       ) : (
-        <div ref={scrollRef} className="scroll-clean min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pr-0.5">
           <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((v) => {
               const item = items[v.index]
