@@ -16,6 +16,10 @@ Rewind takes a different approach: keep it lightweight, stay out of the way, and
 
 ✂️ Local Clip Management — Browse, organize, and edit your clips without relying on a cloud service.
 
+🗜️ Compress and Share — Trim a clip, mix its audio tracks, and write a smaller copy next to it — at the source's own resolution, encoded on your GPU.
+
+🎛️ Capture Profiles — Four presets you define yourself: how much footage is kept, how smooth it is, how good it looks.
+
 🔒 Privacy First — Your recordings stay on your drive. No account required, no cloud uploads, and no telemetry. Your gameplay is yours.
 
 ⚡ Designed to Stay Out of the Way — A compact, unobtrusive experience focused on doing the job without unnecessary overlays or background clutter.
@@ -25,6 +29,27 @@ Rewind is built around a simple idea: your capture software should work for you,
 No unnecessary distractions. No cloud dependency. Just your gameplay, captured locally.
 
 Rewind — Play. Capture. Keep.
+
+## What's new in 1.3.0
+
+The clip editor grew up, and compression moved to your GPU. The full list is in
+[`docs/release-notes-1.3.0.md`](docs/release-notes-1.3.0.md).
+
+- **A real editor.** Trim with draggable in/out handles or the mouse wheel over the
+  trim bar, watch a waveform for every audio lane, drag each track's volume and hear
+  it as you move it. Save a trimmed copy, or replace the original.
+- **Compress, on the GPU.** One **Compress** box with **Low / Medium / High** — each
+  is a fraction of the clip's own bitrate, so the copy can never come out bigger than
+  the original. It encodes with NVENC, AMF or QSV when your GPU offers one and falls
+  back to a threaded CPU encode when it does not. Copies land in `Rewind/Compressed/`.
+- **Profiles you own.** Add, duplicate, remove and re-save up to four capture presets,
+  switched from the panel or from Settings.
+- **Smaller, quieter, better behaved.** The audio service moved into the main process,
+  the panel stops working while it is hidden, and the packaged engine no longer ships
+  a browser engine or plugins Rewind never loads — the installer is **107 MB**, down
+  from 189 MB in 1.1.0. Plus a screen-resolution change that no longer needs a
+  restart, a silent updater that clears its own cache, and a pile of correctness fixes
+  from a full-repository audit.
 
 ## Preview
 
@@ -58,17 +83,41 @@ work whether the panel is open or closed:
 | `Ctrl+Alt+1` | Save only the last N seconds, at a length you pick on the panel |
 | `Alt+2` | Take a screenshot of the captured display |
 | `Alt+3` | Start / stop a continuous recording |
-| `Alt+4` | Switch to the next capture profile (see Settings → Profiles) |
 
-All five are rebindable in Settings. The buffer keeps rolling while the panel is
+All four are rebindable in Settings. The buffer keeps rolling while the panel is
 closed, so closing the window never costs you a clip. The strip along the bottom of
 the panel shows how much is buffered at that moment.
 
 A profile is a preset for how much footage is kept, how smooth it is and how good it
 looks — a long low-impact buffer for background use, a short high-quality one for a
-moment worth keeping. The panel's numbered buttons and the hotkey do the same thing.
+moment worth keeping. Profiles are yours to define in Settings → Profiles (four at
+most), and the panel's numbered buttons switch between them.
 
 Clips, screenshots and the editor are all reachable from the tray menu.
+
+## Editing and compressing
+
+Double-click a clip (or use the rail's menu) to open the editor in its own window:
+
+- **Trim** by dragging the in/out handles, or scroll the wheel over the trim bar to
+  scrub. The selection is what gets saved.
+- **Mix the audio** — every track in the clip gets its own lane, its own waveform and
+  its own volume. Dragging a fader is heard live, and a fader at zero is the mute.
+- **Replace original** writes the trimmed range over the clip you opened;
+  **Save a copy** writes it beside the clip as `name-edit.mp4`. The editor header
+  shows the file name and its size on disk.
+
+**Compress** in the same window makes a smaller copy without touching the original.
+Pick **Low**, **Medium** or **High** — each is a fraction of the clip's own bitrate
+(40% / 65% / 90%), so the result is always smaller than the source and the readout
+tells you by how much before you commit. The copy keeps the source resolution and
+lands in `Rewind/Compressed/`, which the library shows as its own source. Encoding
+runs on the GPU when one is available (NVENC, AMF or QSV); if it has to fall back to
+the CPU, **Settings → Encoder → Compression Threads** decides how many threads it may
+use.
+
+The **Copy clip** item in the rail's card menu puts the clip file on the clipboard,
+so it can be pasted straight into a chat.
 
 ## Updating
 
@@ -144,7 +193,7 @@ npm run test:display       # the capture canvas follows the display, buffer live
 npm run test:resolution    # a real display mode change, both directions (blanks the screen briefly)
 npm run test:profiles      # the four presets: tiers, write-through, pause preservation
 npm run test:update-cache  # the updater cache is emptied on start
-npm run test:update        # 1.1.0 -> 1.2.0 end to end against a local feed
+npm run test:update        # an installed 1.1.0 -> this build, against a local feed
 npm run selftest           # save, screenshot and library paths end to end
 ```
 

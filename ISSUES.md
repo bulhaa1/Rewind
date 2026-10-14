@@ -3,11 +3,12 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-13, at the 1.1.0 release: the UI redesign (landscape deck +
-media rail, signal-path settings), the correctness fixes underneath it, the size
-pass (ffprobe removed, one locale, maximum compression: 190 MB download / 635 MB
-installed), hotkey popups that name the action and key, and the 1.0.1 → 1.1.0
-update verified end to end.
+Last updated: 2026-10-14, at the 1.3.0 release: the clip editor (trim, per-track
+audio with waveforms and live monitoring, replace-or-copy), compression on the GPU
+with a source-relative quality ladder into `Rewind/Compressed/`, user-defined capture
+profiles, and the twenty findings of the 1.3.0 repository audit — two of which could
+leave a button stuck, one of which could hang the library on an unreachable drive, and
+one of which could silently cost every clip its desktop audio.
 
 Status values:
 
@@ -262,6 +263,42 @@ recording with the relevant devices configured.
 ---
 
 ## Fixed, unverified
+
+### The 1.3.0 audit (twenty findings, commit `8149895`)
+
+Found by reading the whole repository rather than by a reproduction, so each one is a
+reasoned case rather than a measured one — which is exactly why they are here and not
+under Verified. What each fix was:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Two saves at once replaced the pending flush, so the first caller timed out after 10 s, reported a clip as unsaved and triggered wedge recovery (a full OBS reinit) | `saveReplayBuffer` shares one in-flight save |
+| 2 | Save / Screenshot stayed busy forever when `runAction` dropped the call, because the caller's cleanup lived inside the dropped callback | callers clear their flag when the action is refused |
+| 3 | `ffmpeg -i` had no timeout: an unreachable library drive hung the scan for the session | 15 s probe timeout |
+| 4 | A one-segment recording was joined with `fs.copyFileSync`, freezing the app for the copy | `fs.promises.copyFile` |
+| 5 | Clip metadata was matched case-sensitively: a rename after the root was re-spelled dropped source and tracks; a delete left an orphan record | `findMetaKey` |
+| 6 | Every stale clip was probed one at a time — minutes on a large library | four probes at a time |
+| 7 | A packaged build honoured `REWIND_DEV_SERVER`, loading remote content with the IPC bridge | `devServerUrl()` is dev-only |
+| 8 | One per-app level put the mixer in custom mode permanently; with no app session running, every clip recorded no desktop audio | loopback fallback when no app source is live |
+| 9 | A wedge recovery whose reinit threw skipped its own relaunch | the reinit failure is caught |
+| 10 | ffmpeg's whole stderr was kept in memory and shipped to the renderer inside the error | last 8 KB kept |
+| 11 | The per-app cap counted 16 apps against 13 OBS slots, dropping apps 14–16 silently | cap is `APP_MAX - APP_BASE` |
+| 12 | A second quit skipped the shutdown wait and force-killed obs64 mid-stitch | `cleanupDone` gates the second quit |
+| 13 | Panel and popup were placed from the work area's size but not its origin | both use the origin |
+| 14 | At zero volume the mic button said "Raise microphone volume" and muted instead | it raises the level |
+| 15 | The rail re-sorted both full lists on every render | memoized |
+| 16 | "Default microphone" counted as available on a machine with no input endpoint | needs an enumerated input |
+| 17 | The mic gain dB conversion had no assertion anywhere | asserted in the profile selftest |
+| 18 | A failed audio-source setup left the source bound to its slot, unreachable | released through `destroyAudioSource` |
+| 19 | ~60 lines of dead code | deleted |
+| 20 | Two duplicated doc comments, one giving the opposite of the correct ffmpeg argument order | deleted |
+
+Still owed on each: a run against the real app. The ones worth exercising first are
+1 (press the save hotkey and the quick-clip hotkey within a second), 2 (click
+Screenshot while a save is running), 5 (rename a clip after changing the output
+folder's spelling), 8 (set a per-app volume, close that app, record, check desktop
+audio), 11 (open more than thirteen audio sessions) and 14 (drag the mic fader to
+zero and click the icon).
 
 ### Microphone input gain shipped with no handler
 
