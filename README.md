@@ -30,6 +30,22 @@ No unnecessary distractions. No cloud dependency. Just your gameplay, captured l
 
 Rewind — Play. Capture. Keep.
 
+## What's new in 1.4.0
+
+Your library has a folder structure, and per-app audio works. Full note:
+[`docs/release-notes-1.4.0.md`](docs/release-notes-1.4.0.md).
+
+- **Recordings have their own folder.** `<location>\Rewind\Recordings` for continuous
+  recordings, one folder per game for replay clips, `Screenshots\` for screenshots and
+  `Compressed\` for editor exports — no loose video in the root. Your existing files are
+  moved into place once, on first launch.
+- **Per-app audio faders work.** Every app playing sound gets its own level in
+  Settings → Audio; they were all greyed out before.
+- **Add your own profiles** in Settings → Profiles, up to four.
+- **Storage usage** in Settings → Storage: what each folder takes, and the free space on
+  the drive.
+- **A portable zip** on the releases page: unzip it anywhere and run `Rewind.exe`.
+
 ## What's new in 1.3.1
 
 Hotfix for 1.3.0: **every clip and recording came out black** in that build. Monitor
