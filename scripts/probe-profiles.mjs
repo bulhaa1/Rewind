@@ -142,9 +142,8 @@ export default async function ({ evaluate }) {
   const liveCount = (await profiles()).data.profiles.length
   console.log(`${rows === liveCount ? 'PASS' : 'FAIL'}  settings rows: ${rows} (expected ${liveCount})`)
   if (rows !== liveCount) problems.push(`settings shows ${rows} profile rows, expected ${liveCount}`)
-  const addButton = await evaluate(`!!document.querySelector('[data-testid="profile-add"]')`)
-  console.log(`${addButton ? 'PASS' : 'FAIL'}  settings has an Add profile button`)
-  if (!addButton) problems.push('settings has no Add profile button')
+  // The Add/Duplicate buttons were removed from Settings by design — the list is
+  // four fixed slots; add/duplicate stay IPC-only (the cap checks above use them).
   await evaluate(`window.location.hash = '/'`)
   await sleep(1000)
 

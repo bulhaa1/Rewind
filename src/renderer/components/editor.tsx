@@ -314,6 +314,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
         <h1 className="text-sm font-medium">Edit Clip</h1>
         <span className="ml-2 truncate text-xs text-ink-muted" title={clipPath}>
           {clipPath.split(/[\\/]/).pop()}
+          {info && info.fileSize > 0 ? ` · ${formatBytes(info.fileSize)}` : ''}
         </span>
       </header>
 
@@ -497,6 +498,9 @@ function ExportSection({
   const [percent, setPercent] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ path: string; bytes: number } | null>(null)
+  // The box collapses to its title when the compressor is off, so it stays out of
+  // the way of the trim work it sits under.
+  const [compressOn, setCompressOn] = useState(true)
 
   useEffect(() => {
     return api.on('export-progress', (p) => setPercent(p.percent))
@@ -567,42 +571,61 @@ function ExportSection({
           and a resize reflows nothing — the flexible text shrinks instead. */}
       <div className="flex flex-nowrap items-center gap-x-3">
         <span className="text-[12px] font-medium">Compress</span>
-        <span className="text-[11px] text-ink-muted">Quality</span>
-        {(Object.keys(QUALITY_FRACTIONS) as Quality[]).map((label) => (
-          <button
-            key={label}
-            type="button"
-            disabled={running}
-            data-testid={`quality-${label}`}
-            onClick={() => setQuality(label)}
-            className={cn(
-              'rounded border px-2 py-0.5 text-[11px] capitalize transition-colors',
-              quality === label
-                ? 'border-accent/60 bg-accent/10 text-ink'
-                : 'border-line text-ink-muted hover:text-ink',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-        <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
-          ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
-        </span>
-        {savingsLine ? <span className="tabular text-[11px] text-accent">{savingsLine}</span> : null}
+        <button
+          type="button"
+          aria-pressed={compressOn}
+          data-testid="compress-toggle"
+          title={compressOn ? 'Hide the compressor' : 'Show the compressor'}
+          onClick={() => setCompressOn(!compressOn)}
+          className={cn(
+            'rounded border px-2 py-0.5 text-[11px] transition-colors',
+            compressOn
+              ? 'border-accent/60 bg-accent/10 text-ink'
+              : 'border-line text-ink-muted hover:text-ink',
+          )}
+        >
+          {compressOn ? 'On' : 'Off'}
+        </button>
+        {compressOn ? (
+          <>
+            <span className="text-[11px] text-ink-muted">Quality</span>
+            {(Object.keys(QUALITY_FRACTIONS) as Quality[]).map((label) => (
+              <button
+                key={label}
+                type="button"
+                disabled={running}
+                data-testid={`quality-${label}`}
+                onClick={() => setQuality(label)}
+                className={cn(
+                  'rounded border px-2 py-0.5 text-[11px] capitalize transition-colors',
+                  quality === label
+                    ? 'border-accent/60 bg-accent/10 text-ink'
+                    : 'border-line text-ink-muted hover:text-ink',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
+              ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
+            </span>
+            {savingsLine ? <span className="tabular text-[11px] text-accent">{savingsLine}</span> : null}
 
-        {/* The action rides the same line as the settings it uses, so the panel fills
-            its width instead of stacking half-empty rows. */}
-        <span className="ml-auto" title={exportDisabledReason ?? undefined}>
-          <Button
-            variant="primary"
-            size="sm"
-            data-testid="export-button"
-            disabled={busy || running || exportLength < 1}
-            onClick={() => void run()}
-          >
-            Compress to new file
-          </Button>
-        </span>
+            {/* The action rides the same line as the settings it uses, so the panel fills
+                its width instead of stacking half-empty rows. */}
+            <span className="ml-auto" title={exportDisabledReason ?? undefined}>
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="export-button"
+                disabled={busy || running || exportLength < 1}
+                onClick={() => void run()}
+              >
+                Compress to new file
+              </Button>
+            </span>
+          </>
+        ) : null}
       </div>
 
       {(running || result) && (

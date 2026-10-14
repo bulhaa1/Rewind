@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Camera,
-  Copy,
   Crosshair,
   Database,
   FileText,
@@ -15,7 +14,6 @@ import {
   ListFilter,
   Mic,
   Monitor,
-  Plus,
   Power,
   RefreshCw,
   Sliders,
@@ -41,7 +39,6 @@ import {
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
   OUTPUT_RESOLUTION_OPTIONS,
-  PROFILE_COUNT_MAX,
   VISUAL_QUALITIES,
   VISUAL_QUALITY_OPTIONS,
 } from '@shared/constants.js'
@@ -870,13 +867,11 @@ function ProfilesSection() {
     }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
   }
 
-  const atCap = profiles.length >= PROFILE_COUNT_MAX
-
   return (
     <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">
       <div className="space-y-2">
         <p className="text-[11px] text-ink-faint">
-          Up to four profiles. Switch with the numbered buttons on the main page; edits to the active profile apply
+          Four profiles. Switch with the numbered buttons on the main page; edits to the active profile apply
           immediately, and &ldquo;Save current&rdquo; copies the live settings into it.
         </p>
 
@@ -956,16 +951,6 @@ function ProfilesSection() {
               <Button
                 variant="ghost"
                 size="iconSm"
-                data-testid={`profile-duplicate-${i}`}
-                title={atCap ? 'Up to 4 profiles' : 'Duplicate'}
-                disabled={atCap}
-                onClick={() => run(() => api.duplicateProfile(i))}
-              >
-                <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="iconSm"
                 data-testid={`profile-remove-${i}`}
                 title={
                   profiles.length <= 1
@@ -982,17 +967,6 @@ function ProfilesSection() {
             </span>
           </div>
         ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          data-testid="profile-add"
-          disabled={atCap}
-          title={atCap ? 'Up to 4 profiles' : 'Add a profile'}
-          onClick={() => run(() => api.addProfile())}
-        >
-          <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
-          Add profile
-        </Button>
       </div>
     </Section>
   )
