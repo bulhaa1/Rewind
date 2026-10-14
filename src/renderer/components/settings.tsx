@@ -35,6 +35,7 @@ import {
   BUFFER_DURATION_MAX,
   BUFFER_DURATION_MIN,
   CODEC_OPTIONS,
+  EXPORT_THREADS_OPTIONS,
   FPS_OPTIONS,
   MIC_GAIN,
   MULTIPASS_OPTIONS,
@@ -764,6 +765,18 @@ function QualitySection() {
             </Row>
           </>
         ) : null}
+
+        <Row
+          label="Compression Threads"
+          description="CPU threads for the editor's compress, when no GPU encoder is available"
+        >
+          <SettingSelect
+            binding={SETTINGS.exportThreads}
+            initial={0}
+            options={EXPORT_THREADS_OPTIONS}
+            label="Compression Threads"
+          />
+        </Row>
 
         {vendorOptions.length > 2 ? (
           <Row

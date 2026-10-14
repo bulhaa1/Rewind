@@ -60,6 +60,7 @@ export const SETTINGS = defineSettings({
   nvencPreset: { queryKey: QK.setting('nvencPreset'), get: api.getNvencPreset, set: api.setNvencPreset },
   videoCodec: { queryKey: QK.setting('videoCodec'), get: api.getVideoCodec, set: api.setVideoCodec },
   videoEncoder: { queryKey: QK.setting('videoEncoder'), get: api.getVideoEncoder, set: api.setVideoEncoder },
+  exportThreads: { queryKey: QK.setting('exportThreads'), get: api.getExportThreads, set: api.setExportThreads },
   notificationsEnabled: {
     queryKey: QK.setting('notificationsEnabled'),
     get: api.getNotificationsEnabled,

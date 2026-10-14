@@ -1,8 +1,10 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { probeClip, runFfmpeg, uniquePath } from './ffmpeg.js'
+import { probeClip, resolveFfmpeg, runFfmpeg, uniquePath } from './ffmpeg.js'
 import { scope } from './logger.js'
+import { getSetting } from './store.js'
 import type { ExportRequest, ExportResult } from '@shared/types.js'
 
 const log = scope('Export')
@@ -11,7 +13,7 @@ const log = scope('Export')
  * One export at a time.
  *
  * An export re-encodes while OBS may be capturing; two at once would compete for
- * the CPU and neither finishes promptly. A second request is refused, not queued.
+ * the encoder and neither finishes promptly. A second request is refused, not queued.
  */
 let running: { abort: () => void } | null = null
 
@@ -21,21 +23,72 @@ export function cancelExport(): void {
 }
 
 const AUDIO_KBPS = 128
-/** Below this the two-pass video bitrate cannot express anything watchable. */
+/** Below this the video bitrate cannot express anything watchable. */
 const MIN_VIDEO_KBPS = 200
 
 /**
- * Exports a clip range as a small shareable MP4.
+ * The GPU H.264 encoders the bundled ffmpeg ships, in preference order, and the
+ * one that worked on this machine (probed once, cached for the app's lifetime).
+ * The probe is a 0.1 second null encode: a missing driver or a busy GPU session
+ * shows up as a non-zero exit, which is exactly the test we want.
+ */
+const GPU_ENCODERS = ['h264_nvenc', 'h264_amf', 'h264_qsv'] as const
+let gpuEncoder: string | null | undefined
+
+function detectGpuEncoder(): string | null {
+  if (gpuEncoder !== undefined) return gpuEncoder
+  gpuEncoder = null
+  for (const encoder of GPU_ENCODERS) {
+    try {
+      const probe = spawnSync(
+        resolveFfmpeg(),
+        ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.1', '-c:v', encoder, '-frames:v', '1', '-f', 'null', 'NUL'],
+        { windowsHide: true, timeout: 5000 },
+      )
+      if (probe.status === 0) {
+        gpuEncoder = encoder
+        break
+      }
+      log.info(`${encoder} not usable (exit ${probe.status})`)
+    } catch (e) {
+      log.warn(`${encoder} probe failed:`, e)
+    }
+  }
+  log.info(`Export encoder: ${gpuEncoder ?? 'libx264 (CPU fallback)'}`)
+  return gpuEncoder
+}
+
+/**
+ * Video bitrate arguments per encoder: the GPU path is a single VBR pass, the CPU
+ * fallback is a two-pass ABR. Each vendor takes its own rate-control vocabulary —
+ * `-preset pN` is NVENC-only, QSV speaks x264-style preset names, AMF uses
+ * `-quality` — and every one of these is an OUTPUT option, so it must stay after
+ * the input side of the seek.
+ */
+function videoArgs(encoder: string | null, kbps: number): string[] {
+  if (!encoder) {
+    return ['-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${kbps}k`, '-threads', String(getSetting('exportThreads') || 0)]
+  }
+  const rate = ['-b:v', `${kbps}k`, '-maxrate', `${Math.round(kbps * 1.25)}k`, '-bufsize', `${kbps * 2}k`]
+  if (encoder === 'h264_nvenc') return ['-c:v', encoder, '-preset', 'p4', '-rc', 'vbr', ...rate]
+  if (encoder === 'h264_amf') return ['-c:v', encoder, '-quality', 'balanced', '-rc', 'vbr_peak', ...rate]
+  return ['-c:v', encoder, '-preset', 'veryfast', ...rate]
+}
+
+/**
+ * Compresses a clip range into a smaller MP4, written to `Compressed/` under the
+ * output root.
  *
  * The range is cut with input-side `-ss`/`-t`: with a re-encode ffmpeg decodes from
  * the keyframe and discards the excess, so the cut is frame-accurate and still fast.
- * A target size is honoured by a two-pass ABR encode, which lands within a few
- * percent of the ask. The output keeps the source's resolution: a share clip is
- * encoded at the pixels it was recorded with, never downscaled.
+ * The target bitrate is what the readout promised; the GPU encoders land within
+ * about ten percent of it in a single pass, the CPU fallback two-passes to it.
+ * The output keeps the source's resolution: a share clip is encoded at the pixels
+ * it was recorded with, never downscaled.
  */
 export async function exportClip(
   req: ExportRequest,
-  deps: { onProgress?: (percent: number) => void } = {},
+  deps: { onProgress?: (percent: number) => void; outputRoot: string } = { outputRoot: '' },
 ): Promise<ExportResult> {
   // Claimed before the first await: two rapid requests must not both pass the guard.
   if (running) throw new Error('An export is already running')
@@ -51,7 +104,7 @@ export async function exportClip(
 
 async function runExport(
   req: ExportRequest,
-  deps: { onProgress?: (percent: number) => void },
+  deps: { onProgress?: (percent: number) => void; outputRoot: string },
   signal: AbortSignal,
 ): Promise<ExportResult> {
   const info = await probeClip(req.clipPath)
@@ -65,14 +118,14 @@ async function runExport(
   // any file is created so nothing partial is left behind.
   const videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration) - AUDIO_KBPS
   if (videoKbps < MIN_VIDEO_KBPS) {
-    throw new Error('This range is too long for the chosen size — raise the size or trim less')
+    throw new Error('This range is too long for the chosen size — raise the quality or trim less')
   }
 
-  const dir = path.dirname(req.clipPath)
+  if (!deps.outputRoot) throw new Error('No output folder configured')
+  const dir = path.join(deps.outputRoot, 'Compressed')
+  fs.mkdirSync(dir, { recursive: true })
   const stem = path.basename(req.clipPath, path.extname(req.clipPath))
-  // Filename characters only: this string reaches openSync via uniquePath.
-  const suffix = req.suffix?.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 24)
-  const out = uniquePath(dir, suffix ? `${stem} (${suffix})` : stem, '.mp4')
+  const out = uniquePath(dir, stem, '.mp4')
 
   const seek = ['-ss', start.toFixed(3), '-t', duration.toFixed(3), '-i', req.clipPath]
   const progress = ['-progress', 'pipe:1', '-nostats']
@@ -85,38 +138,52 @@ async function runExport(
     }
   }
 
+  const encoder = detectGpuEncoder()
+  const vArgs = videoArgs(encoder, videoKbps)
+
   try {
-    // Always a two-pass ABR encode at the bitrate the size readout promised, so the
-    // file lands on the number the user was shown.
-    const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
-    const passlog = path.join(passDir, 'pass')
-    try {
-      const videoArgs = [...seek, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
-      await runFfmpeg(
-        [...videoArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
-        signal,
-        report((p) => p * 0.4),
-      ).promise
+    if (encoder) {
+      // GPU: one pass. VBR at the promised bitrate lands within ~10% of it.
       await runFfmpeg(
         [
-          ...videoArgs,
+          ...seek, ...vArgs, ...progress,
           '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
-          ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
+          '-movflags', '+faststart', '-y', out,
         ],
         signal,
-        report((p) => 40 + p * 0.6),
+        report((p) => p),
       ).promise
-    } finally {
+    } else {
+      // CPU: two passes at the promised bitrate, so the file lands on the number.
+      const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
+      const passlog = path.join(passDir, 'pass')
       try {
-        fs.rmSync(passDir, { recursive: true, force: true })
-      } catch {
-        /* best effort */
+        await runFfmpeg(
+          [...seek, ...vArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
+          signal,
+          report((p) => p * 0.4),
+        ).promise
+        await runFfmpeg(
+          [
+            ...seek, ...vArgs,
+            '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
+            ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
+          ],
+          signal,
+          report((p) => 40 + p * 0.6),
+        ).promise
+      } finally {
+        try {
+          fs.rmSync(passDir, { recursive: true, force: true })
+        } catch {
+          /* best effort */
+        }
       }
     }
 
     const bytes = fs.statSync(out).size
     const result = await probeClip(out)
-    log.info(`Exported ${path.basename(out)}: ${(bytes / 1024 / 1024).toFixed(2)} MB`)
+    log.info(`Exported ${path.basename(out)}: ${(bytes / 1024 / 1024).toFixed(2)} MB (${encoder ?? 'libx264 two-pass'})`)
     return {
       path: out,
       bytes,
@@ -136,4 +203,3 @@ async function runExport(
     throw e
   }
 }
-

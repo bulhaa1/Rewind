@@ -102,6 +102,7 @@ export const DEFAULT_SETTINGS = {
   videoEncoder: 'auto' as EncoderVendor,
   profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
   activeProfile: 0,
+  exportThreads: 0,
 } satisfies Omit<import('./types.js').PersistedSettings, never> as import('./types.js').PersistedSettings
 
 /** Screenshots default to `<outputPath>/Screenshots`. */
@@ -332,6 +333,16 @@ export const SCREENSHOT_FILENAME_ATTEMPTS = 100
 
 // ---------------------------------------------------------------------------
 // UI option tables (verbatim from settings-page)
+
+/** Threads the CPU export fallback may use; 0 = all cores (ffmpeg's auto). */
+export const EXPORT_THREADS_OPTIONS = [
+  { value: 0, label: 'Auto (all cores)' },
+  { value: 2, label: '2 threads' },
+  { value: 4, label: '4 threads' },
+  { value: 6, label: '6 threads' },
+  { value: 8, label: '8 threads' },
+  { value: 12, label: '12 threads' },
+]
 // ---------------------------------------------------------------------------
 
 export const OUTPUT_RESOLUTION_OPTIONS = [

@@ -83,6 +83,11 @@ export interface PersistedSettings {
   profiles: Profile[]
   /** Index into `profiles` of the preset the live settings belong to. */
   activeProfile: number
+  /**
+   * Threads for the CPU export fallback; 0 = all cores. Only read when no GPU
+   * encoder is available, so on most machines this knob does nothing.
+   */
+  exportThreads: number
 }
 
 /**
@@ -226,8 +231,6 @@ export interface ExportRequest {
   endSec: number
   /** Two-pass target in MB (audio always kept at 128 kbps inside it). */
   targetMb: number
-  /** Filename suffix in the output name, e.g. `(compressed)`. */
-  suffix?: string
 }
 
 export interface ExportResult {

@@ -435,9 +435,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             endSec={endSec}
             duration={duration}
             fileSize={info.fileSize}
-            width={info.width}
-            height={info.height}
-            fps={info.fps}
             busy={!!saving}
           />
 
@@ -472,12 +469,12 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 }
 
 /**
- * Export: a small MP4 of the trim range, or the whole clip compressed.
+ * Compress: a smaller MP4 copy of the selected range, at the source's resolution.
  *
- * Both buttons run the same sized two-pass encode; they differ only in the range
- * they send. The Size chips map to a bitrate, and the readout shows the size that
- * bitrate produces — which is the size the encode lands on, because they are the
- * same number. The savings line uses the same baseline as the trim estimate above.
+ * Each Quality chip is a fraction of the original clip's own bitrate — the point
+ * of compressing is to reduce, so the ask is always below what the source spent
+ * and the file can never come out larger. The readout shows the size that
+ * bitrate produces and the exact reduction against the original clip.
  */
 function ExportSection({
   clipPath,
@@ -485,9 +482,6 @@ function ExportSection({
   endSec,
   duration,
   fileSize,
-  width,
-  height,
-  fps,
   busy,
 }: {
   clipPath: string
@@ -495,13 +489,12 @@ function ExportSection({
   endSec: number
   duration: number
   fileSize: number
-  width: number
-  height: number
-  fps: number
   busy: boolean
 }) {
-  // 0 = smallest file, 100 = best quality. 55 sits where a share clip reads well.
-  const [sizeLevel, setSizeLevel] = useState(55)
+  /** Fraction of the source's own bitrate each chip encodes at. */
+  const QUALITY_FRACTIONS = { low: 0.4, medium: 0.65, high: 0.9 } as const
+  type Quality = keyof typeof QUALITY_FRACTIONS
+  const [quality, setQuality] = useState<Quality>('medium')
   const [running, setRunning] = useState(false)
   const [percent, setPercent] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -514,22 +507,16 @@ function ExportSection({
   const exportLength = Math.max(0, endSec - startSec)
 
   /*
-   * The size model, in one place: the size level picks a bits-per-pixel figure and
-   * 128 kbps of audio rides on top. The output keeps the source's resolution, so
-   * there is no scaling math — the pixels are the clip's own. The readout and the
-   * two-pass target are the same arithmetic, so the file lands on the number shown.
+   * The size model: each chip encodes at a fraction of the source's own bitrate
+   * (video = fraction − 128 kbps of audio, floored at 200). The readout and the
+   * target the encoder receives are the same arithmetic, so the file lands on the
+   * number shown, and the ask can never exceed what the source spent.
    */
-  const srcFps = fps > 0 ? fps : 30
-  const bpp = 0.015 + (sizeLevel / 100) * 0.105
-  // Cap: a re-encode should not cost more than roughly 1.5x the source's bitrate —
-  // an efficient AV1 source is easy to overshoot. Below the cap the level governs.
-  const srcPixels = width > 0 && height > 0 ? width * height : 0
   const srcKbps = fileSize > 0 && duration > 0 ? (fileSize * 8) / duration / 1000 : 0
-  const capKbps = srcKbps > 0 && srcPixels > 0 ? Math.max(200, srcKbps * 1.5) : Infinity
-  // The validator caps an export at 500 MB; keep the level inside it instead of
+  // The validator caps an export at 500 MB; keep the ask inside it instead of
   // letting a long range produce a number the button then refuses.
   const cap500Kbps = exportLength > 0 ? Math.max(200, (500 * 8 * 1024) / exportLength - 129) : Infinity
-  const videoKbps = Math.min(Math.max(200, (srcPixels * srcFps * bpp) / 1000), capKbps, cap500Kbps)
+  const videoKbps = Math.min(Math.max(200, Math.floor(srcKbps * QUALITY_FRACTIONS[quality]) - 128), cap500Kbps)
   // +129, not +128: main recomputes the video bitrate from this target with a
   // floor at 200, and one kbps of headroom keeps the roundtrip above the floor.
   const estMb = Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024)
@@ -584,22 +571,16 @@ function ExportSection({
       <div className="flex flex-nowrap items-center gap-x-3">
         <span className="text-[12px] font-medium">Compress</span>
         <span className="text-[11px] text-ink-muted">Quality</span>
-        {(
-          [
-            ['Low', 25],
-            ['Medium', 55],
-            ['High', 85],
-          ] as const
-        ).map(([label, level]) => (
+        {(Object.keys(QUALITY_FRACTIONS) as Quality[]).map((label) => (
           <button
             key={label}
             type="button"
             disabled={running}
-            data-testid={`size-${label.toLowerCase()}`}
-            onClick={() => setSizeLevel(level)}
+            data-testid={`quality-${label}`}
+            onClick={() => setQuality(label)}
             className={cn(
-              'rounded border px-2 py-0.5 text-[11px] transition-colors',
-              Math.abs(sizeLevel - level) < 1
+              'rounded border px-2 py-0.5 text-[11px] capitalize transition-colors',
+              quality === label
                 ? 'border-accent/60 bg-accent/10 text-ink'
                 : 'border-line text-ink-muted hover:text-ink',
             )}
@@ -622,13 +603,16 @@ function ExportSection({
             disabled={busy || running || exportLength < 1}
             onClick={() => void run()}
           >
-            Export
+            Compress to new file
           </Button>
         </span>
       </div>
 
       {(running || result) && (
         <div className="mt-1 flex flex-nowrap items-center gap-x-3 overflow-hidden">
+          <span className="truncate text-[11px] text-ink-faint">
+            Writes a smaller copy to the Compressed folder — the original is untouched.
+          </span>
           {running ? (
           <>
             <span className="tabular shrink-0 text-[11px] text-ink-muted">{percent}%</span>

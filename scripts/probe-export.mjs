@@ -65,7 +65,7 @@ export default async function ({ evaluate }) {
 
   // A larger ask on the same range: sizes must follow the ask.
   const target = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2, suffix: 'target' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2 })`,
   )
   const targetMb = target?.data ? target.data.bytes / 1024 / 1024 : 0
   const targetOk = target?.success && targetMb <= 2.4 && targetMb >= 1.0
@@ -76,9 +76,9 @@ export default async function ({ evaluate }) {
 
   // The compress suffix names the copy, and the original is untouched.
   const compress = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2, suffix: 'compressed' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, targetMb: 2 })`,
   )
-  const compressOk = compress?.success && /compressed/i.test(compress.data.path)
+  const compressOk = compress?.success && compress.data.path.includes('Compressed')
   console.log(`${compressOk ? 'PASS' : 'FAIL'}  compress copy: ${compress?.data?.path ?? JSON.stringify(compress)}`)
   if (!compressOk) problems.push('the compressed copy was not named with its suffix')
 
@@ -108,3 +108,4 @@ export default async function ({ evaluate }) {
   }
   console.log('PASS probe-export')
 }
+

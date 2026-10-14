@@ -1383,7 +1383,7 @@ export function registerIpc(s: Services): void {
   })
 
   /**
-   * Export (small MP4 / compress).
+   * Export (compressed copy).
    *
    * Raw `ipcMain.handle` rather than `handle()`: progress is pushed to the sender
    * while the job runs, and the wrapper does not hand the event through.
@@ -1399,7 +1399,7 @@ export function registerIpc(s: Services): void {
     try {
       const result = await require('./export.js').exportClip(
         { ...req, clipPath: resolved.path },
-        { onProgress },
+        { onProgress, outputRoot: outputRoot() },
       )
       log.info(`Export finished: ${result.path}`)
       return ok(result)
@@ -1408,6 +1408,17 @@ export function registerIpc(s: Services): void {
       replayLog.error('Export failed:', e)
       return fail(messageOf(e))
     }
+  })
+
+  handle(IPC.getExportThreads, () => ok(getSetting('exportThreads')))
+
+  handle(IPC.setExportThreads, (value: unknown) => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || (value !== 0 && (value < 2 || value > 16))) {
+      return fail('Threads must be auto (0) or between 2 and 16')
+    }
+    setSetting('exportThreads', value)
+    log.info(`Export threads (CPU fallback): ${value === 0 ? 'auto' : value}`)
+    return ok(value)
   })
 
   handle(IPC.editorExportCancel, () => {
@@ -1796,7 +1807,6 @@ function isExportRequest(v: unknown): v is {
   startSec: number
   endSec: number
   targetMb: number
-  suffix?: string
 } {
   if (!v || typeof v !== 'object') return false
   const a = v as any
@@ -1806,7 +1816,6 @@ function isExportRequest(v: unknown): v is {
   if (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 0.1 || a.targetMb > 500) {
     return false
   }
-  if (a.suffix !== undefined && (typeof a.suffix !== 'string' || a.suffix.length > 24)) return false
   return true
 }
 

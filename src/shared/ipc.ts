@@ -17,6 +17,10 @@ export const IPC = {
   getConfig: 'get-config',
   getBufferDuration: 'get-buffer-duration',
   setBufferDuration: 'set-buffer-duration',
+  // Compression (the editor's export): encoder settings for the CPU fallback.
+  getExportThreads: 'get-export-threads',
+  setExportThreads: 'set-export-threads',
+
   // Profiles. User-defined capture presets, switched from the deck.
   getProfiles: 'get-profiles',
   setProfile: 'set-profile',

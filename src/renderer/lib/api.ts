@@ -201,6 +201,9 @@ export interface RewindApi {
   editorExportCancel(): Promise<IpcResult>
   /** Puts the clip file on the clipboard so it can be pasted into a chat. */
   copyClip(file: string): Promise<IpcResult<{ mode: 'file' | 'path' }>>
+  /** Threads for the CPU export fallback; 0 = auto. */
+  getExportThreads(): Promise<IpcResult<number>>
+  setExportThreads(value: number): Promise<IpcResult<number>>
 
   on(event: 'obs-status', handler: (s: { status: ObsStatus; message?: string }) => void): () => void
   on(event: 'clip-saved', handler: (p?: { clipPath?: string }) => void): () => void
