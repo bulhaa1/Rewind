@@ -151,7 +151,8 @@ Twenty findings from a full-repository audit, all fixed:
 - **NVIDIA is the only vendor actually tested.** AMF and QSV are detected and wired,
   but no AMD or Intel machine has run this build.
 - **Share links do not exist**, by design — that feature means someone else's server.
-- Open items, with evidence, are listed in [`ISSUES.md`](../ISSUES.md).
+- Open items, with evidence, are listed in
+  [ISSUES.md](https://github.com/bulhaa1/Rewind/blob/main/ISSUES.md).
 
 ---
 
