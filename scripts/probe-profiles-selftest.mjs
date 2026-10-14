@@ -18,12 +18,21 @@ const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const OUT = path.join(os.tmpdir(), 'rewind-profiles-test')
-const PROFILE = path.join(OUT, 'profile')
+// A fresh profile per run: a lingering helper process holds files in the old one, and
+// the cleanup failure used to fail the whole test before the app even started.
+const PROFILE = path.join(OUT, `profile-${Date.now()}`)
+// The clips the selftest records go somewhere else: it clears that directory at the
+// start, and pointing it at the profile's parent deleted the running app's own profile.
+const CLIPS = path.join(OUT, `clips-${Date.now()}`)
 const RESULT = path.join(os.tmpdir(), 'rewind-profiles-test.txt')
 
 const line = (msg) => process.stdout.write(`${msg}\n`)
 
-fs.rmSync(OUT, { recursive: true, force: true })
+try {
+  fs.rmSync(OUT, { recursive: true, force: true })
+} catch {
+  /* a previous run's profile is still locked; the new one is separate anyway */
+}
 fs.rmSync(RESULT, { force: true })
 fs.mkdirSync(PROFILE, { recursive: true })
 
@@ -31,7 +40,7 @@ const electron = require('electron')
 const child = spawn(electron, ['.', `--user-data-dir=${PROFILE}`], {
   stdio: ['ignore', 'inherit', 'inherit'],
   cwd: projectRoot,
-  env: { ...process.env, REWIND_SELFTEST_PROFILES: '1' },
+  env: { ...process.env, REWIND_SELFTEST_PROFILES: '1', REWIND_SELFTEST_OUT: CLIPS },
 })
 
 let exitCode = 0

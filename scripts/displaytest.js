@@ -24,7 +24,8 @@ const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const OUT = path.join(os.tmpdir(), 'rewind-display-test')
-const PROFILE = path.join(OUT, 'profile')
+// A fresh profile per run: a lingering helper process holds files in the old one.
+const PROFILE = path.join(OUT, `profile-${Date.now()}`)
 const LOG = path.join(PROFILE, 'logs', 'main.log')
 const FFPROBE = path.join(projectRoot, 'node_modules', 'ffprobe-static', 'bin', 'win32', 'x64', 'ffprobe.exe')
 
@@ -43,7 +44,11 @@ function dimensions(file) {
   return stream?.width && stream?.height ? { width: stream.width, height: stream.height } : null
 }
 
-fs.rmSync(OUT, { recursive: true, force: true })
+try {
+  fs.rmSync(OUT, { recursive: true, force: true })
+} catch {
+  /* a previous run's profile is still locked; the new one is separate anyway */
+}
 fs.mkdirSync(PROFILE, { recursive: true })
 
 const electron = require('electron')

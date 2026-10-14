@@ -118,6 +118,28 @@ for the idle cost. Not started; not obviously right for a replay tool.
 
 ## Verified
 
+### Capture profiles
+
+Four presets, each a buffer length, a frame rate and a quality tier. Switched from the
+panel's numbered chips, from the Settings section, or with the Next Profile hotkey
+(Alt+4 by default). `npm run test:profiles` — 13/13, and `probe-profiles` — 7/7:
+
+- A switch writes the profile's values into the live settings **and into the engine**:
+  the chain takes its length from obsCore's config, and a switch that only wrote the
+  settings file rebuilt the chain at the old length (measured: "Long buffer applied:
+  120s" followed by "Replay buffer configured: 60s").
+- The cost is the cheapest tier that can apply it: a length change restarts the chain, a
+  quality change rebuilds it, an fps change takes the engine down and back up. Rapid
+  presses are coalesced — only the newest request survives, so four presses cost at most
+  two switches instead of four.
+- A paused buffer stays paused, including when the caller announces a busy status first,
+  which is what the panel's handlers do.
+- A recording in flight is finished and registered when a switch tears the chain down,
+  and the popup says so.
+- Editing the active profile applies it; editing an inactive one only stores it; a
+  failed apply puts the stored profile back.
+- The panel follows a switch it did not start (the hotkey runs in main).
+
 ### 1.1.0 → 1.2.0 updates end to end, silently
 
 Run 2026-10-14 on this machine, `npm run test:update`: the published 1.1.0 installer into a
@@ -144,6 +166,13 @@ called, and the next saved clip still came out `2560x1440` — the section and t
 canvas disagreed, and the app's own canvas numbers moved to the new size anyway.
 That disagreement is the black half-screen and the zoomed-in crop. `4075a73` called
 the reset with the buffer running, so it never took effect while capturing.
+
+OBS says so itself, in its own log (`<profile>\obs-data\node-obs\logs\`), once per
+refused reset — three of these in one display-test run:
+
+```
+[Error] [VIDEO_CANVAS] video is active, video reset is not possible
+```
 
 `OBS_service_resetVideoContext()` returns nothing, so a clip's dimensions are the
 proof, not a return code.
@@ -325,6 +354,15 @@ Product calls, not engineering ones.
 
 Not bugs, but they accumulate and are easy to forget.
 
+- **obs-studio-node's IPC pipe can break under heavy chain churn.**
+  `IPC write to pipe failed with code 109` (ERROR_BROKEN_PIPE) in obs64's own log, after
+  roughly a dozen stop/start cycles in a minute — measured by the display test's phases
+  (and it is intermittent: the same test passes on most runs and fails the save that
+  follows on others, and it reproduces on the build from before this branch). When it
+  happens the buffer stops answering and a save times out. The app recovers by design:
+  a timed-out save force-kills and reinitialises OBS (`scheduleWedgeRecovery`), and a
+  profile switch that reports `Failed to make IPC call` does the same. Nothing here
+  makes the pipe more robust; it makes the failure visible and recoverable.
 - **The updater cache is pruned on start** (1.2.0). It used to hold two copies of the
   same installer after one update — `installer.exe` (the renamed copy electron-updater
   executes) plus the original — measured at 379 MB after the 1.0.1 → 1.1.0 update. The app

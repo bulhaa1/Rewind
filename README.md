@@ -58,10 +58,15 @@ work whether the panel is open or closed:
 | `Ctrl+Alt+1` | Save only the last N seconds, at a length you pick on the panel |
 | `Alt+2` | Take a screenshot of the captured display |
 | `Alt+3` | Start / stop a continuous recording |
+| `Alt+4` | Switch to the next capture profile (see Settings → Profiles) |
 
-All four are rebindable in Settings. The buffer keeps rolling while the panel is
+All five are rebindable in Settings. The buffer keeps rolling while the panel is
 closed, so closing the window never costs you a clip. The strip along the bottom of
 the panel shows how much is buffered at that moment.
+
+A profile is a preset for how much footage is kept, how smooth it is and how good it
+looks — a long low-impact buffer for background use, a short high-quality one for a
+moment worth keeping. The panel's numbered buttons and the hotkey do the same thing.
 
 Clips, screenshots and the editor are all reachable from the tray menu.
 

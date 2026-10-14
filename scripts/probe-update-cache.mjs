@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const PROFILE = path.join(os.tmpdir(), 'rewind-update-cache', 'profile')
+const PROFILE = path.join(os.tmpdir(), 'rewind-update-cache', `profile-${Date.now()}`)
 const CACHE = path.join(process.env.LOCALAPPDATA ?? '', 'rewind-desktop-updater')
 const PENDING = path.join(CACHE, 'pending')
 
@@ -67,7 +67,6 @@ for (const [file, size] of [
   fs.writeFileSync(file, Buffer.alloc(size, 7))
 }
 
-fs.rmSync(PROFILE, { recursive: true, force: true })
 fs.mkdirSync(PROFILE, { recursive: true })
 
 const electron = require('electron')
