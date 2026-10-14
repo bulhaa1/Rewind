@@ -176,27 +176,27 @@ export async function getClipInfo(file: string, recordedLabels: string[]): Promi
   const analysis = analyzeAudio({ streamCount, split: streamCount > 1, labels: recordedLabels })
   const stamp = String(Date.now())
 
+  // Every exposed lane gets its own m4a, split or not: the renderer plays these
+  // files live through its own gain nodes (so volume changes are heard as they
+  // are made), which needs a per-track file even when there is only one track.
   const audioTracks: AudioTrackInfo[] = analysis.streams.map((s, i) => ({
     stream: s,
     label: analysis.labels[i],
-    previewPath: analysis.split
-      ? path.join(PREVIEW_DIR, `${path.basename(file, path.extname(file))}.${stamp}.track${s}.m4a`)
-      : null,
+    previewPath: path.join(PREVIEW_DIR, `${path.basename(file, path.extname(file))}.${stamp}.track${s}.m4a`),
   }))
 
-  if (analysis.split) {
-    for (const t of audioTracks) {
-      if (!t.previewPath) continue
-      try {
-        const produced = await extractTrackPreview(file, t.stream, t.label, stamp)
-        if (produced !== t.previewPath) {
-          temps.push(produced)
-          t.previewPath = produced
-        }
-      } catch (e) {
-        if (isCancelled(e)) throw e
-        log.warn(`Failed to extract audio track ${t.stream}:`, e)
+  for (const t of audioTracks) {
+    if (!t.previewPath) continue
+    try {
+      const produced = await extractTrackPreview(file, t.stream, t.label, stamp)
+      if (produced !== t.previewPath) {
+        temps.push(produced)
+        t.previewPath = produced
       }
+    } catch (e) {
+      if (isCancelled(e)) throw e
+      log.warn(`Failed to extract audio track ${t.stream}:`, e)
+      t.previewPath = null
     }
   }
 

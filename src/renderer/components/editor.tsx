@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, clipUrl, formatBytes, formatDuration, messageOf } from '../lib/api'
+import { usePreviewAudio } from '../lib/editor-audio'
 import { Button, CenteredSpinner, cn } from './ui'
 import { VolumeControl } from './audio-controls'
 import type { ClipAudioTrack } from '@shared/types.js'
@@ -255,6 +256,9 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   )
 
   const volumesChanged = masterMuted || masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
+
+  // Live monitoring: the sliders are heard as they are dragged, no re-encode.
+  usePreviewAudio({ ready: !loading, videoRef, tracks, volumes, masterVolume, masterMuted })
 
   const save = async (mode: 'overwrite' | 'copy') => {
     setSaving({ mode })

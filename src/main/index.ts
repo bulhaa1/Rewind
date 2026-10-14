@@ -86,7 +86,8 @@ function registerClipProtocol(): void {
       if (!fs.existsSync(target)) return new Response('Not Found', { status: 404 })
 
       const ext = path.extname(target).toLowerCase()
-      const contentType = ext === '.mkv' ? 'video/x-matroska' : ext === '.webm' ? 'video/webm' : 'video/mp4'
+      const contentType =
+        ext === '.mkv' ? 'video/x-matroska' : ext === '.webm' ? 'video/webm' : ext === '.m4a' ? 'audio/mp4' : 'video/mp4'
       const size = fs.statSync(target).size
 
       const range = request.headers.get('range') ?? request.headers.get('Range')
