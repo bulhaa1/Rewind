@@ -367,7 +367,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
         </span>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-3">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-black/40">
           <div className="relative">
             {previewError ? (
@@ -422,7 +422,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col gap-2 pb-3">
+        <div className="flex shrink-0 flex-col gap-1.5">
           <Timeline
             duration={duration}
             startSec={startSec}
@@ -505,7 +505,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center gap-2 border-t border-line/60 px-5 py-3">
+      <footer className="flex shrink-0 items-center gap-2 border-t border-line/60 px-4 py-2.5">
         <p className="flex-1 text-[11px] text-ink-faint">
           {volumesChanged ? 'Audio volumes changed — the clip will be re-encoded.' : 'No audio changes — trim is a stream copy.'}
         </p>
@@ -658,8 +658,8 @@ function ExportSection({
     duration < 1 ? 'This clip is too short to compress' : running ? 'An export is already running' : null
 
   return (
-    <div className="rounded-lg border border-line bg-surface p-3" data-testid="export-section">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="rounded-lg border border-line bg-surface px-3 py-2.5" data-testid="export-section">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-[12px] font-medium">Export</span>
         <select
           value={capHeight}
@@ -699,43 +699,50 @@ function ExportSection({
         ))}
         <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
           ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
-          {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
+        </span>
+        {savingsLine ? <span className="tabular text-[11px] text-accent">{savingsLine}</span> : null}
+
+        {/* Actions ride the same line as the settings they use, so the panel fills
+            its width instead of stacking three half-empty rows. */}
+        <span className="ml-auto flex items-center gap-2">
+          <span title={exportDisabledReason ?? undefined}>
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid="export-button"
+              disabled={busy || running || exportLength < 1}
+              onClick={() => void run('export')}
+            >
+              Export MP4
+            </Button>
+          </span>
+          <span title={compressDisabledReason ?? undefined}>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="compress-button"
+              disabled={busy || running || duration < 1}
+              title="Re-encode the whole clip at the same size setting"
+              onClick={() => void run('compress')}
+            >
+              Compress clip
+            </Button>
+          </span>
         </span>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="tabular text-[11px] text-ink-faint">
-          Range: trim {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(exportLength)})
+          Range {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(exportLength)})
         </span>
-        <Button variant="ghost" size="sm" disabled={running} onClick={onUseWholeClip}>
+        <button
+          type="button"
+          disabled={running}
+          onClick={onUseWholeClip}
+          className="text-[11px] text-ink-muted underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink disabled:opacity-45"
+        >
           Use whole clip
-        </Button>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span title={exportDisabledReason ?? undefined}>
-          <Button
-            variant="primary"
-            size="sm"
-            data-testid="export-button"
-            disabled={busy || running || exportLength < 1}
-            onClick={() => void run('export')}
-          >
-            Export MP4
-          </Button>
-        </span>
-        <span title={compressDisabledReason ?? undefined}>
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="compress-button"
-            disabled={busy || running || duration < 1}
-            title="Re-encode the whole clip to a smaller MP4"
-            onClick={() => void run('compress')}
-          >
-            Compress clip
-          </Button>
-        </span>
+        </button>
         {running ? (
           <>
             <span className="tabular text-[11px] text-ink-muted">{percent}%</span>
@@ -1041,7 +1048,7 @@ function MasterVolumeRow({
           onMuteChange(false)
           onChange(Number(e.target.value) / 100)
         }}
-        className="w-20 shrink-0 accent-accent"
+        className="h-1 w-20 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
       />
       <span className="tabular w-9 shrink-0 text-right text-[11px] text-ink-faint">{Math.round(shown * 100)}%</span>
     </div>
@@ -1189,7 +1196,7 @@ function AudioTrackLane({
         value={Math.round(volume * 100)}
         aria-label={`${label} volume`}
         onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
-        className="w-20 shrink-0 accent-accent"
+        className="h-1 w-20 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
       />
       <span className="tabular w-9 shrink-0 text-right text-[11px] text-ink-faint">
         {Math.round(volume * 100)}%
