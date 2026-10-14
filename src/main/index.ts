@@ -1020,6 +1020,20 @@ function main(): void {
         syncPending = true
         return
       }
+      /*
+       * A reinit owns the engine: obsCore stays "initialized" through its shutdown, so
+       * a display event arriving mid-rebuild would stop and restart a chain that is
+       * already coming down. Wait for it and try again -- the sync is cheap and the
+       * canvas is still wrong when it returns.
+       */
+      if (currentStatus.status === 'initializing') {
+        if (canvasSyncTimer) clearTimeout(canvasSyncTimer)
+        canvasSyncTimer = setTimeout(() => {
+          canvasSyncTimer = null
+          void runDisplaySync()
+        }, 1_000)
+        return
+      }
       syncRunning = true
       try {
         do {

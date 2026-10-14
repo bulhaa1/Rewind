@@ -42,8 +42,9 @@ Known failure classes:
 - **Hybrid graphics.** If the app runs on one GPU and the monitor is driven by another,
   duplication can fail or produce black frames on some laptops. **needs a machine.**
 - **Exclusive fullscreen** switches can drop duplication briefly; the buffer restarts
-  and continues (measured: resolution changes do exactly this, see ISSUES.md).
-- **Locked session / disconnected RDP.** No frames. The buffer keeps running on the
+  and continues (measured: resolution changes do exactly this, see ISSUES.md) — but
+  exclusive-fullscreen mode switches themselves are **needs a machine**.
+  **Locked session / disconnected RDP.** No frames. The buffer keeps running on the
   last frames it had.
 
 ### Windows Graphics Capture — `window_capture`, method `WGC` (2)
@@ -137,7 +138,7 @@ result.
 | NVIDIA Optimus laptop | NVENC if the app runs on the dGPU, otherwise the iGPU's QSV — which one Windows picks depends on the graphics preference for `Rewind.exe`. **needs a machine** | needs a machine |
 | Desktop dGPU | NVENC or AMF, whichever is present | measured on this machine (NVENC) |
 | Intel Arc | AV1 via QSV; needs a recent driver | needs a machine |
-| Virtual machine / virtual display | duplication works on virtual adapters that support it; game hook never applies. The app sizes its canvas to the primary display, so a virtual display works like any other | measured on this machine (a virtual display is present) |
+| Virtual machine / virtual display | duplication works on virtual adapters that support it; game hook never applies. The app sizes its canvas to the primary display, so a virtual display works like any other | the app runs alongside a virtual display here (measured); whether duplication works on any given virtual adapter is vendor docs |
 | 4K120 | encodable, but 120 fps costs CPU in proportion to the frame rate even when idle (measured: ~17.6% of one core at 120 fps with no source) — 60 fps is the sane default for 4K | measured |
 | 8K | not supported by the encoders at usable frame rates | vendor docs |
 | HDR display | see the DXGI HDR note above; the safest setting is WGC window capture or HDR off | needs a machine |

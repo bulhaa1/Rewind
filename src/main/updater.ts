@@ -214,6 +214,12 @@ export function pruneUpdateCache(): { path: string; files: number; bytes: number
   let counted = { files: 0, bytes: 0 }
   let kept = 0
   try {
+    // A download started in the first seconds of a session -- possible only if someone
+    // clicked the update button before this ran -- is not a leftover.
+    if (state.status === 'downloading') {
+      log.info('Update cache: a download is in progress; leaving it alone')
+      return { path: dir, ...counted }
+    }
     if (!fs.existsSync(dir)) {
       log.info(`Update cache: nothing to prune at ${dir}`)
       return { path: dir, ...counted }
