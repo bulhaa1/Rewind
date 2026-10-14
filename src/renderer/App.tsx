@@ -64,7 +64,7 @@ function RoutedPanel() {
 
   // Escape leaves settings from anywhere in the page, not just the chevron.
   useEffect(() => {
-    if (route !== '/settings') return
+    if (!route.startsWith('/settings')) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !isTypingTarget(e.target)) goHome()
     }
@@ -74,7 +74,11 @@ function RoutedPanel() {
 
   return (
     <div className="h-full">
-      {route === '/settings' ? <SettingsView onBack={goHome} /> : <MainView />}
+      {route.startsWith('/settings') ? (
+        <SettingsView onBack={goHome} initialSection={route.split('/')[2]} />
+      ) : (
+        <MainView />
+      )}
       {/*
         Mounted outside the routed surface so it survives navigation and covers
         whichever page is showing — a restart triggered from Settings must not

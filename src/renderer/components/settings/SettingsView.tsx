@@ -38,8 +38,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * scrolling a wall of controls — and the strip along the bottom always answers
  * "what is this machine set to do", whatever section is open.
  */
-export function SettingsView({ onBack }: { onBack: () => void }) {
-  const [active, setActive] = useState<SettingsSectionId>('capture')
+export function SettingsView({ onBack, initialSection }: { onBack: () => void; initialSection?: string }) {
+  // A deep link (`#/settings/profiles`) opens straight onto that section; anything
+  // unknown falls back to the top of the spine.
+  const [active, setActive] = useState<SettingsSectionId>(
+    initialSection && initialSection in SETTINGS_SECTIONS ? (initialSection as SettingsSectionId) : 'capture',
+  )
   const { status } = useObsStatus()
   const { data: config } = useQuery(configQuery)
   const { data: codec } = useQuery({ queryKey: ['vitals', 'codec'], queryFn: () => read(api.getVideoCodec(), '') })

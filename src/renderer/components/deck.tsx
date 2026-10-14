@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, ChevronDown, ChevronUp, CircleDot, Save } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, CircleDot, Save, Sliders } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { api } from '../lib/api'
 import { useBackgroundAction } from '../lib/context'
@@ -9,7 +9,7 @@ import { useHeldSeconds } from '../lib/hooks'
 import { HotkeyChip } from './audio-controls'
 import { SettingSelect } from './controls'
 import { HotkeyDialog } from './record'
-import { InlineSpinner, cn } from './ui'
+import { Button, InlineSpinner, cn } from './ui'
 import { MicStrip } from './mic-strip'
 import { BUFFER_DURATION_MAX, BUFFER_DURATION_MIN, QUICK_CLIP_DEFAULT, QUICK_CLIP_OPTIONS } from '@shared/constants.js'
 import type { HotkeyAction } from '@shared/types.js'
@@ -507,6 +507,17 @@ export function Deck({
               ? `${profiles[activeProfile].name} · ${profiles[activeProfile].bufferDuration}s · ${profiles[activeProfile].fps}fps`
               : ''}
           </span>
+          <Button
+            variant="ghost"
+            size="iconSm"
+            data-testid="profile-customize"
+            title="Profiles are customizable — add, rename and save your own in Settings"
+            onClick={() => {
+              window.location.hash = '/settings/profiles'
+            }}
+          >
+            <Sliders className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </Button>
         </div>
 
         <div className="flex items-center gap-3">
