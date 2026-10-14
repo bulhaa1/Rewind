@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Mic, VolumeX } from 'lucide-react'
+import { Mic, MicOff } from 'lucide-react'
 import { api, read } from '../lib/api'
 import { useBackgroundAction } from '../lib/context'
 import { cn } from './ui'
@@ -52,7 +52,7 @@ export function MicStrip() {
   const muted = levels?.microphone.muted ?? false
   const volume = levels?.microphone.volume ?? 1
   const shown = drag ?? (muted ? 0 : volume)
-  const MuteIcon = muted ? VolumeX : Mic
+  const MuteIcon = muted ? MicOff : Mic
 
   /**
    * Commits a drag and only then releases the local value.
