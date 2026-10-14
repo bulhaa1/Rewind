@@ -176,6 +176,11 @@ export interface ClipEditorInfo {
   duration: number
   previewPath: string
   audioTracks: ClipAudioTrack[]
+  /** Source video dimensions and frame rate; the export size readout scales from them. */
+  width: number
+  height: number
+  fps: number
+  fileSize: number
 }
 
 export interface SaveClipArgs {
@@ -224,10 +229,8 @@ export interface ExportRequest {
   maxHeight: 480 | 720 | 1080 | null
   /** GIF only: frames per second of the animation. */
   gifFps?: 10 | 15 | 20
-  /** MP4 only: two-pass target in MB; null encodes at a fixed quality instead. */
+  /** MP4 only: two-pass target in MB (audio always kept at 128 kbps inside it). */
   targetMb: number | null
-  /** MP4 only: keep the first audio stream. GIFs never carry audio. */
-  audio: boolean
   /** Filename suffix in the output name, e.g. `(share)`. */
   suffix?: string
 }
@@ -238,6 +241,8 @@ export interface ExportResult {
   width: number
   height: number
   durationSec: number
+  /** Audio streams the export kept; MP4 always 1, GIF always 0. */
+  audioStreams: number
 }
 
 /** Push events emitted from main -> renderer. */

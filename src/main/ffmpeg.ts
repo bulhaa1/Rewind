@@ -386,6 +386,7 @@ export interface ClipProbe {
   width: number
   height: number
   fps: number
+  audioStreams: number
 }
 
 /** Full clip metadata used for the "Clip saved: ..." diagnostics line and editor UI. */
@@ -408,6 +409,7 @@ export async function probeClip(file: string): Promise<ClipProbe | null> {
     width: v?.width ?? 0,
     height: v?.height ?? 0,
     fps,
+    audioStreams: info.streams.filter((s) => s.codec_type === 'audio').length,
   }
 }
 

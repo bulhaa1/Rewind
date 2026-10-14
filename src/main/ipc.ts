@@ -1772,7 +1772,6 @@ function isExportRequest(v: unknown): v is {
   maxHeight: 480 | 720 | 1080 | null
   gifFps?: 10 | 15 | 20
   targetMb: number | null
-  audio: boolean
   suffix?: string
 } {
   if (!v || typeof v !== 'object') return false
@@ -1783,10 +1782,14 @@ function isExportRequest(v: unknown): v is {
   if (a.format !== 'mp4' && a.format !== 'gif') return false
   if (a.maxHeight !== null && ![480, 720, 1080].includes(a.maxHeight)) return false
   if (a.gifFps !== undefined && ![10, 15, 20].includes(a.gifFps)) return false
-  if (a.targetMb !== null && (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 1 || a.targetMb > 500)) {
+  // MP4 is always a sized two-pass encode now; GIF carries no target.
+  if (a.format === 'mp4') {
+    if (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 0.1 || a.targetMb > 500) {
+      return false
+    }
+  } else if (a.targetMb !== null && a.targetMb !== undefined) {
     return false
   }
-  if (typeof a.audio !== 'boolean') return false
   if (a.suffix !== undefined && (typeof a.suffix !== 'string' || a.suffix.length > 24)) return false
   return true
 }

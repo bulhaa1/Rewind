@@ -1,6 +1,7 @@
 /**
- * Editor export probe: small MP4 (quality and two-pass size target), GIF, and the
- * compressed-copy suffix, plus the refusal of a backwards range.
+ * Editor export probe: small MP4s (the size readout and its two-pass landing),
+ * GIF, the compressed-copy suffix, audio always present on MP4s, and the refusal
+ * of a backwards range.
  *
  * Needs at least one saved clip. If the library is empty it saves one from the
  * replay buffer first, the same way the regression sweep does.
@@ -37,38 +38,39 @@ export default async function ({ evaluate }) {
 
   // Backwards range is refused, cleanly.
   const bad = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 2, endSec: 1, format: 'mp4', maxHeight: 720, targetMb: null, audio: false })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 2, endSec: 1, format: 'mp4', maxHeight: 720, targetMb: 1 })`,
   )
   const badOk = bad && bad.success === false
   console.log(`${badOk ? 'PASS' : 'FAIL'}  backwards range refused`)
   if (!badOk) problems.push('a backwards range was not refused')
 
-  // Quality MP4 of the first 3 seconds.
+  // MP4 at a slider-style target: the file must land close to it, audio included.
   const mp4 = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: null, audio: false })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: 1 })`,
   )
-  const mp4Ok = mp4?.success && mp4.data.bytes > 0
+  const mp4Mb = mp4?.data ? mp4.data.bytes / 1024 / 1024 : 0
+  const mp4Ok = mp4?.success && mp4Mb <= 1.2 && mp4Mb >= 0.5 && mp4.data.audioStreams === 1
   console.log(
-    `${mp4Ok ? 'PASS' : 'FAIL'}  mp4 export: ${mp4?.data ? (mp4.data.bytes / 1024).toFixed(0) + ' KB, ' + mp4.data.width + 'x' + mp4.data.height : JSON.stringify(mp4)}`,
+    `${mp4Ok ? 'PASS' : 'FAIL'}  mp4 export: ${mp4?.data ? (mp4Mb * 1024).toFixed(0) + ' KB, ' + mp4.data.width + 'x' + mp4.data.height + ', ' + mp4.data.audioStreams + ' audio' : JSON.stringify(mp4)}`,
   )
-  if (!mp4Ok) problems.push('quality mp4 export failed')
+  if (!mp4Ok) problems.push('mp4 export missed its size or its audio')
 
-  // Two-pass target: 1 MB must land close to it.
+  // A different target on the same range: sizes must follow the ask.
   const target = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: 1, audio: false, suffix: 'target' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: 2, suffix: 'target' })`,
   )
   const targetMb = target?.data ? target.data.bytes / 1024 / 1024 : 0
-  const targetOk = target?.success && targetMb <= 1.2 && targetMb >= 0.5
+  const targetOk = target?.success && targetMb <= 2.4 && targetMb >= 1.0
   console.log(
-    `${targetOk ? 'PASS' : 'FAIL'}  two-pass 1 MB target: ${target?.data ? (targetMb * 1024).toFixed(0) + ' KB' : JSON.stringify(target)}`,
+    `${targetOk ? 'PASS' : 'FAIL'}  two-pass 2 MB target: ${target?.data ? (targetMb * 1024).toFixed(0) + ' KB' : JSON.stringify(target)}`,
   )
-  if (!targetOk) problems.push(`1 MB target landed at ${targetMb.toFixed(2)} MB`)
+  if (!targetOk) problems.push(`2 MB target landed at ${targetMb.toFixed(2)} MB`)
 
-  // GIF: animated, real, and small enough to have come from the 480p cap.
+  // GIF: animated, real, capped at the height.
   const gif = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'gif', maxHeight: 480, gifFps: 15, targetMb: null, audio: false })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'gif', maxHeight: 480, gifFps: 15, targetMb: null })`,
   )
-  const gifOk = gif?.success && gif.data.bytes > 0 && gif.data.height <= 480
+  const gifOk = gif?.success && gif.data.bytes > 0 && gif.data.height <= 480 && gif.data.audioStreams === 0
   console.log(
     `${gifOk ? 'PASS' : 'FAIL'}  gif export: ${gif?.data ? (gif.data.bytes / 1024).toFixed(0) + ' KB, ' + gif.data.width + 'x' + gif.data.height : JSON.stringify(gif)}`,
   )
@@ -76,7 +78,7 @@ export default async function ({ evaluate }) {
 
   // The compress suffix names the copy, and the original is untouched.
   const compress = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: 2, audio: false, suffix: 'compressed' })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(clip.path)}, startSec: 0, endSec: ${end}, format: 'mp4', maxHeight: 720, targetMb: 2, suffix: 'compressed' })`,
   )
   const compressOk = compress?.success && /compressed/i.test(compress.data.path)
   console.log(`${compressOk ? 'PASS' : 'FAIL'}  compress copy: ${compress?.data?.path ?? JSON.stringify(compress)}`)
@@ -94,7 +96,7 @@ export default async function ({ evaluate }) {
   const midStart = Math.min(10, Math.max(0, long.duration - 3))
   const midEnd = Math.min(midStart + 3, long.duration)
   const mid = await evaluate(
-    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(long.path)}, startSec: ${midStart}, endSec: ${midEnd}, format: 'mp4', maxHeight: 480, targetMb: null, audio: false })`,
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(long.path)}, startSec: ${midStart}, endSec: ${midEnd}, format: 'mp4', maxHeight: 480, targetMb: 1 })`,
   )
   const midProgress = await evaluate('window.__exportProgress')
   const midMax = Math.max(0, ...(midProgress ?? [0]))

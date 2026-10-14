@@ -68,11 +68,10 @@ async function runExport(
 
   // A size target below the floor cannot produce anything watchable; refuse before
   // any file is created so nothing partial is left behind.
-  if (req.format === 'mp4' && req.targetMb && req.targetMb > 0) {
-    let videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration)
-    if (req.audio) videoKbps -= AUDIO_KBPS
+  if (req.format === 'mp4' && req.targetMb) {
+    const videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration) - AUDIO_KBPS
     if (videoKbps < MIN_VIDEO_KBPS) {
-      throw new Error('Target size is too small for this duration — raise it or drop the audio')
+      throw new Error('Target size is too small for this duration — trim less or raise the size')
     }
   }
 
@@ -108,11 +107,13 @@ async function runExport(
         signal,
         report((p) => p),
       ).promise
-    } else if (req.targetMb && req.targetMb > 0) {
-      // Two-pass ABR: the bitrate is derived from the target, so the file lands
-      // where the user asked rather than wherever the quality knob happens to fall.
-      let videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration)
-      if (req.audio) videoKbps -= AUDIO_KBPS
+    } else {
+      // MP4 is always a two-pass ABR encode at the bitrate the size readout
+      // promised, so the file lands on the number the user was shown.
+      let videoKbps = Math.floor((req.targetMb! * 8 * 1024) / duration) - AUDIO_KBPS
+      if (videoKbps < MIN_VIDEO_KBPS) {
+        throw new Error('This range is too long for the chosen size — raise it or trim less')
+      }
       const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
       const passlog = path.join(passDir, 'pass')
       try {
@@ -122,9 +123,12 @@ async function runExport(
           signal,
           report((p) => p * 0.4),
         ).promise
-        const audioArgs = req.audio ? ['-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`] : ['-an']
         await runFfmpeg(
-          [...videoArgs, ...audioArgs, ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out],
+          [
+            ...videoArgs,
+            '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
+            ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
+          ],
           signal,
           report((p) => 40 + p * 0.6),
         ).promise
@@ -135,22 +139,6 @@ async function runExport(
           /* best effort */
         }
       }
-    } else {
-      // No size target: one pass at a quality that reads well in a player.
-      const audioArgs = req.audio ? ['-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`] : ['-an']
-      await runFfmpeg(
-        [
-          ...seek,
-          ...scale,
-          ...progress,
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-          ...audioArgs,
-          '-movflags', '+faststart',
-          '-y', out,
-        ],
-        signal,
-        report((p) => p),
-      ).promise
     }
 
     const bytes = fs.statSync(out).size
@@ -162,6 +150,7 @@ async function runExport(
       width: result?.width ?? info.width,
       height: result?.height ?? info.height,
       durationSec: result?.durationSec ?? duration,
+      audioStreams: result?.audioStreams ?? 0,
     }
   } catch (e) {
     // uniquePath pre-creates the file and a killed encode leaves it partial, so a

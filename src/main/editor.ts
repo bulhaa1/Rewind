@@ -82,6 +82,10 @@ export interface ClipInfoResult {
    * reason.
    */
   fileSize: number
+  /** Source video dimensions and frame rate; the size readout scales from them. */
+  width: number
+  height: number
+  fps: number
 }
 
 interface ProbeAudioInfo {
@@ -202,7 +206,14 @@ export async function getClipInfo(file: string, recordedLabels: string[]): Promi
 
   trackPreviewFiles(temps.filter(Boolean))
 
-  return { duration, previewPath, audioTracks, fileSize }
+  const vStream = info?.streams.find((s) => s.codec_type === 'video')
+  let fps = 0
+  const rf = vStream?.r_frame_rate
+  if (rf?.includes('/')) {
+    const [n, d] = rf.split('/').map(Number)
+    fps = d ? Math.round(((n ?? 0) / d) * 100) / 100 : 0
+  }
+  return { duration, previewPath, audioTracks, fileSize, width: vStream?.width ?? 0, height: vStream?.height ?? 0, fps }
 }
 
 /**
