@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Volume2, VolumeX } from 'lucide-react'
 import { api, clipUrl, formatBytes, formatDuration, messageOf } from '../lib/api'
 import { usePreviewAudio } from '../lib/editor-audio'
 import { Button, CenteredSpinner, cn } from './ui'
-import { VolumeControl } from './audio-controls'
 import type { ClipAudioTrack } from '@shared/types.js'
 
 interface ClipInfo {
@@ -255,6 +255,22 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     [tracks, volumes, masterVolume, masterMuted],
   )
 
+  // The clip row's waveform: the loudest of the tracks at each point, so the
+  // master line reads as the shape of the whole mix without decoding it again.
+  // Computed here because every hook must sit above the early returns below.
+  const masterPeaks = useMemo(() => {
+    const arrays = tracks.map((t) => peaks[t.stream]).filter((p): p is number[] => !!p && p.length > 0)
+    if (arrays.length === 0) return null
+    const len = Math.min(...arrays.map((a) => a.length))
+    const out = new Array<number>(len)
+    for (let i = 0; i < len; i++) {
+      let loudest = 0
+      for (const a of arrays) if (a[i] > loudest) loudest = a[i]
+      out[i] = loudest
+    }
+    return out
+  }, [tracks, peaks])
+
   const volumesChanged = masterMuted || masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   // Live monitoring: the sliders are heard as they are dragged, no re-encode.
@@ -407,6 +423,12 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
                 muted={masterMuted}
                 onChange={setMasterVolume}
                 onMuteChange={setMasterMuted}
+                peaks={masterPeaks ?? undefined}
+                startSec={startSec}
+                endSec={endSec}
+                currentSec={currentSec}
+                duration={duration}
+                onSeek={seek}
               />
               <div className="flex flex-col gap-1">
                 {tracks.map((track) => (
@@ -776,6 +798,43 @@ function Timeline({
     setDragging('move')
   }
 
+  /*
+   * Wheel scrub: scroll up rewinds, scroll down advances. The wheel fires far
+   * faster than a seek can land, so events accumulate into a target that is
+   * applied one seek per animation frame -- the same unthrottled-seek lesson
+   * that ended the rail's hover scrub.
+   */
+  const wheelTargetRef = useRef<number | null>(null)
+  const wheelRafRef = useRef<number | null>(null)
+  const currentRef = useRef(currentSec)
+  currentRef.current = currentSec
+
+  useEffect(() => {
+    const lane = laneRef.current
+    if (!lane) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const step = (e.deltaY || e.deltaX) / 100 // one notch ≈ 1 second
+      const base = wheelTargetRef.current ?? currentRef.current
+      wheelTargetRef.current = Math.max(0, Math.min(duration, base + step))
+      if (wheelRafRef.current === null) {
+        wheelRafRef.current = requestAnimationFrame(() => {
+          wheelRafRef.current = null
+          const target = wheelTargetRef.current
+          wheelTargetRef.current = null
+          if (target !== null) onSeek(target)
+        })
+      }
+    }
+    lane.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      lane.removeEventListener('wheel', onWheel)
+      if (wheelRafRef.current !== null) cancelAnimationFrame(wheelRafRef.current)
+      wheelRafRef.current = null
+      wheelTargetRef.current = null
+    }
+  }, [duration, onSeek])
+
   const startPct = pct(startSec, duration)
   const endPct = pct(endSec, duration)
   const playheadPct = pct(currentSec, duration)
@@ -786,6 +845,7 @@ function Timeline({
         ref={laneRef}
         role="slider"
         tabIndex={0}
+        title="Scroll to scrub · click to seek · drag the handles to trim"
         aria-label="Playhead"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration)}
@@ -841,47 +901,175 @@ function Timeline({
 }
 
 /**
- * Overall clip loudness, above the per-track sliders.
+ * Overall clip loudness, on the same lane shape as the per-track rows.
  *
- * Reuses the shared VolumeControl rather than a plain range input, so it gets
- * the same drag-to-scrub and mute behaviour as every other volume in the app --
- * a control that behaves differently because it lives in a different window is
- * worse than no control.
- *
- * The mute button here is deliberately not a mute: it resets to 100%. Muting the
- * whole clip and saving that would be a destructive surprise with no obvious way
- * back, whereas reset is exactly what someone reaching for "undo that" wants.
+ * The master volume is kept separate from the per-track values rather than folded
+ * into them, so moving the master does not overwrite what the user set per track:
+ * the two multiply at save time. Its waveform is the loudest of the tracks at each
+ * point, so the row reads as the shape of the whole mix without decoding it again.
  */
 function MasterVolumeRow({
   value,
   muted,
   onChange,
   onMuteChange,
+  peaks,
+  startSec,
+  endSec,
+  currentSec,
+  duration,
+  onSeek,
 }: {
   value: number
   muted: boolean
   onChange: (v: number) => void
   onMuteChange: (v: boolean) => void
+  /** Loudest of the tracks at each point — the shape of the whole mix. */
+  peaks?: number[]
+  startSec: number
+  endSec: number
+  currentSec: number
+  duration: number
+  onSeek: (t: number) => void
 }) {
   const shown = muted ? 0 : value
 
   return (
     <div className="flex items-center gap-2 rounded bg-raised/30 px-2 py-1.5">
-      {/* VolumeControl renders its own label inline; a second one here read as a
-          duplicate on screen. */}
-      <div className="min-w-0 flex-1">
-        <VolumeControl
-          label="Clip volume"
-          title="Applies to every audio track, on top of each track's own volume."
-          level={{ volume: shown, muted }}
-          onVolumeChange={(v) => {
-            // Dragging the slider is an instruction to hear something again.
-            onMuteChange(false)
-            onChange(v)
-          }}
-          onMuteToggle={() => onMuteChange(!muted)}
+      <button
+        type="button"
+        onClick={() => onMuteChange(!muted)}
+        aria-label={muted ? 'Unmute clip' : 'Mute clip'}
+        aria-pressed={muted}
+        title={muted ? 'Unmute clip' : 'Mute clip'}
+        className="shrink-0 text-ink-faint transition-colors hover:text-ink"
+      >
+        {muted ? <VolumeX className="h-3.5 w-3.5 text-danger" /> : <Volume2 className="h-3.5 w-3.5" />}
+      </button>
+      <span className="w-16 shrink-0 truncate text-xs text-ink-muted">Clip</span>
+      <LaneGraph
+        label="Clip volume"
+        peaks={peaks}
+        startSec={startSec}
+        endSec={endSec}
+        currentSec={currentSec}
+        duration={duration}
+        onSeek={onSeek}
+      />
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={shown}
+        aria-label="Clip volume"
+        title="Applies to every audio track, on top of each track's own volume."
+        onChange={(e) => {
+          // Dragging the slider is an instruction to hear something again.
+          onMuteChange(false)
+          onChange(Number(e.target.value))
+        }}
+        className="h-1 w-24 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
+      />
+    </div>
+  )
+}
+
+/**
+ * The waveform lane shared by every audio row: the peak envelope, the trim window
+ * (kept range bright, cutaways dimmed) and the playhead, clickable to seek.
+ *
+ * The waveform spans the whole clip, because that is what the engine decoded.
+ * What the user is trimming is a window inside it, so the lane shows that window
+ * the way the video timeline does. Without this the lane looked identical whether
+ * trimmed or not, and read as though the trim had not been applied at all.
+ */
+function LaneGraph({
+  label,
+  peaks,
+  startSec,
+  endSec,
+  currentSec,
+  duration,
+  onSeek,
+}: {
+  label: string
+  peaks?: number[]
+  startSec: number
+  endSec: number
+  currentSec: number
+  duration: number
+  onSeek: (t: number) => void
+}) {
+  const laneRef = useRef<HTMLDivElement>(null)
+
+  const toSeconds = useCallback(
+    (clientX: number) => {
+      const el = laneRef.current
+      if (!el) return 0
+      const r = el.getBoundingClientRect()
+      if (r.width <= 0) return 0
+      return Math.max(0, Math.min(duration, ((clientX - r.left) / r.width) * duration))
+    },
+    [duration],
+  )
+
+  const startPct = pct(startSec, duration)
+  const endPct = pct(endSec, duration)
+  const playheadPct = pct(currentSec, duration)
+
+  return (
+    <div
+      ref={laneRef}
+      role="slider"
+      tabIndex={0}
+      aria-label={`${label} playhead`}
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(currentSec)}
+      aria-valuetext={`${formatDuration(currentSec)} of ${formatDuration(duration)}`}
+      onClick={(e) => onSeek(toSeconds(e.clientX))}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 5 : 1
+        if (e.key === 'ArrowRight') onSeek(Math.min(endSec, currentSec + step))
+        else if (e.key === 'ArrowLeft') onSeek(Math.max(startSec, currentSec - step))
+        else return
+        e.preventDefault()
+      }}
+      className="relative h-8 flex-1 cursor-pointer overflow-hidden rounded bg-raised/40"
+    >
+      {peaks && peaks.length > 0 ? (
+        <Waveform peaks={peaks} />
+      ) : (
+        <div className="flex h-full items-center justify-center text-[11px] text-ink-muted">
+          No waveform data
+        </div>
+      )}
+
+      {/* Cut away: dimmed, and not clickable-looking. */}
+      {startPct > 0 ? (
+        <div
+          className="absolute inset-y-0 left-0 bg-canvas/60"
+          style={{ width: `${startPct}%` }}
+          title={`Trimmed — ${formatDuration(startSec)}`}
         />
-      </div>
+      ) : null}
+      {endPct < 100 ? (
+        <div
+          className="absolute inset-y-0 right-0 bg-canvas/60"
+          style={{ width: `${Math.max(0, 100 - endPct)}%` }}
+          title={`Trimmed — ${formatDuration(endSec)}`}
+        />
+      ) : null}
+
+      {/* Kept range, matching the accent of the video timeline's selection. */}
+      <div
+        className="pointer-events-none absolute inset-y-0 border-x border-accent/60 bg-accent/10"
+        style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
+      />
+
+      {/* Same playhead as the video lane, so the two read as one timeline. */}
+      <div className="absolute inset-y-0 w-px bg-ink" style={{ left: `${playheadPct}%` }} />
     </div>
   )
 }
@@ -908,88 +1096,18 @@ function AudioTrackLane({
   onSeek: (t: number) => void
   onVolumeChange: (v: number) => void
 }) {
-  const laneRef = useRef<HTMLDivElement>(null)
-
-  const toSeconds = useCallback(
-    (clientX: number) => {
-      const el = laneRef.current
-      if (!el) return 0
-      const r = el.getBoundingClientRect()
-      if (r.width <= 0) return 0
-      return Math.max(0, Math.min(duration, ((clientX - r.left) / r.width) * duration))
-    },
-    [duration],
-  )
-
-  const startPct = pct(startSec, duration)
-  const endPct = pct(endSec, duration)
-  const playheadPct = pct(currentSec, duration)
-
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 truncate text-xs text-ink-muted">{label}</span>
-
-      {/*
-        The waveform spans the whole clip, because that is what the engine
-        decoded. What the user is trimming is a window inside it, so the lane
-        shows that window the way the video timeline does: the kept range stays
-        bright and everything cut away is dimmed. Without this the lane looked
-        identical whether trimmed or not, and read as though the trim had not
-        been applied at all.
-      */}
-      <div
-        ref={laneRef}
-        role="slider"
-        tabIndex={0}
-        aria-label={`${label} playhead`}
-        aria-valuemin={0}
-        aria-valuemax={Math.round(duration)}
-        aria-valuenow={Math.round(currentSec)}
-        aria-valuetext={`${formatDuration(currentSec)} of ${formatDuration(duration)}`}
-        onClick={(e) => onSeek(toSeconds(e.clientX))}
-        onKeyDown={(e) => {
-          const step = e.shiftKey ? 5 : 1
-          if (e.key === 'ArrowRight') onSeek(Math.min(endSec, currentSec + step))
-          else if (e.key === 'ArrowLeft') onSeek(Math.max(startSec, currentSec - step))
-          else return
-          e.preventDefault()
-        }}
-        className="relative h-8 flex-1 cursor-pointer overflow-hidden rounded bg-raised/40"
-      >
-        {peaks && peaks.length > 0 ? (
-          <Waveform peaks={peaks} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-[11px] text-ink-muted">
-            No waveform data
-          </div>
-        )}
-
-        {/* Cut away: dimmed, and not clickable-looking. */}
-        {startPct > 0 ? (
-          <div
-            className="absolute inset-y-0 left-0 bg-canvas/60"
-            style={{ width: `${startPct}%` }}
-            title={`Trimmed — ${formatDuration(startSec)}`}
-          />
-        ) : null}
-        {endPct < 100 ? (
-          <div
-            className="absolute inset-y-0 right-0 bg-canvas/60"
-            style={{ width: `${Math.max(0, 100 - endPct)}%` }}
-            title={`Trimmed — ${formatDuration(endSec)}`}
-          />
-        ) : null}
-
-        {/* Kept range, matching the accent of the video timeline's selection. */}
-        <div
-          className="pointer-events-none absolute inset-y-0 border-x border-accent/60 bg-accent/10"
-          style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
-        />
-
-        {/* Same playhead as the video lane, so the two read as one timeline. */}
-        <div className="absolute inset-y-0 w-px bg-ink" style={{ left: `${playheadPct}%` }} />
-      </div>
-
+      <LaneGraph
+        label={label}
+        peaks={peaks}
+        startSec={startSec}
+        endSec={endSec}
+        currentSec={currentSec}
+        duration={duration}
+        onSeek={onSeek}
+      />
       <input
         type="range"
         min={0}
