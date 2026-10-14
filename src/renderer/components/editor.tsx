@@ -442,6 +442,15 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             ) : null}
           </div>
 
+          <ExportSection
+            clipPath={clipPath}
+            startSec={startSec}
+            endSec={endSec}
+            duration={duration}
+            fileSize={info.fileSize}
+            busy={!!saving}
+          />
+
           {saveError ? <p className="text-[11px] text-danger">{saveError}</p> : null}
         </div>
       </div>
@@ -468,6 +477,201 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
           {saving?.mode === 'overwrite' ? 'Saving…' : 'Overwrite'}
         </Button>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Export: a shareable GIF, a small MP4 of the trim range, or a compressed copy.
+ *
+ * One pipeline in the main process; the two buttons differ only in the range they
+ * send — Export cuts the trim selection, Compress re-encodes the whole clip. A
+ * target size is honoured exactly for MP4 (two-pass); a GIF gets the real size
+ * shown after, because GIF bytes cannot be targeted without trial encodes.
+ */
+function ExportSection({
+  clipPath,
+  startSec,
+  endSec,
+  duration,
+  fileSize,
+  busy,
+}: {
+  clipPath: string
+  startSec: number
+  endSec: number
+  duration: number
+  fileSize: number
+  busy: boolean
+}) {
+  const [format, setFormat] = useState<'mp4' | 'gif'>('mp4')
+  const [height, setHeight] = useState<0 | 480 | 720 | 1080>(720)
+  const [gifFps, setGifFps] = useState<10 | 15 | 20>(15)
+  const [audio, setAudio] = useState(true)
+  const [targetMb, setTargetMb] = useState('')
+  const [running, setRunning] = useState(false)
+  const [percent, setPercent] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ path: string; bytes: number } | null>(null)
+
+  useEffect(() => {
+    return api.on('export-progress', (p) => setPercent(p.percent))
+  }, [])
+
+  const run = async (kind: 'export' | 'compress') => {
+    setRunning(true)
+    setError(null)
+    setResult(null)
+    setPercent(0)
+    try {
+      const parsed = targetMb.trim() ? Number(targetMb) : null
+      const req = {
+        clipPath,
+        startSec: kind === 'compress' ? 0 : startSec,
+        endSec: kind === 'compress' ? duration : endSec,
+        format: kind === 'compress' ? ('mp4' as const) : format,
+        maxHeight: height === 0 ? null : (height as 480 | 720 | 1080),
+        gifFps,
+        targetMb: parsed && Number.isFinite(parsed) ? parsed : null,
+        audio,
+        suffix: kind === 'compress' ? 'compressed' : undefined,
+      }
+      const res = await api.editorExport(req)
+      if (!res.success || !res.data) {
+        setError(res.success ? 'Export failed' : res.error)
+      } else {
+        setResult({ path: res.data.path, bytes: res.data.bytes })
+      }
+    } catch (e) {
+      setError(messageOf(e, 'Export failed'))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const currentMb = fileSize > 0 ? Math.round(fileSize / 1024 / 1024) : 0
+
+  return (
+    <div className="rounded-lg border border-line bg-surface p-3" data-testid="export-section">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] font-medium">Export</span>
+        <div className="flex overflow-hidden rounded border border-line">
+          {(['mp4', 'gif'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={format === f}
+              disabled={running}
+              onClick={() => setFormat(f)}
+              className={cn(
+                'px-2 py-1 text-[11px] transition-colors',
+                format === f ? 'bg-raised text-ink' : 'text-ink-muted hover:text-ink',
+              )}
+            >
+              {f.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <select
+          value={height}
+          aria-label="Export height"
+          disabled={running}
+          onChange={(e) => setHeight(Number(e.target.value) as 0 | 480 | 720 | 1080)}
+          className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
+        >
+          <option value={0}>Native</option>
+          <option value={1080}>1080p</option>
+          <option value={720}>720p</option>
+          <option value={480}>480p</option>
+        </select>
+        {format === 'gif' ? (
+          <select
+            value={gifFps}
+            aria-label="Export GIF fps"
+            disabled={running}
+            onChange={(e) => setGifFps(Number(e.target.value) as 10 | 15 | 20)}
+            className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
+          >
+            <option value={10}>10 fps</option>
+            <option value={15}>15 fps</option>
+            <option value={20}>20 fps</option>
+          </select>
+        ) : (
+          <>
+            <label className="flex items-center gap-1 text-[11px] text-ink-muted">
+              <input
+                type="checkbox"
+                checked={audio}
+                disabled={running}
+                onChange={(e) => setAudio(e.target.checked)}
+              />
+              Audio
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-ink-muted">
+              Target size
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={targetMb}
+                disabled={running}
+                placeholder={currentMb ? `≈${currentMb} MB now` : 'MB'}
+                aria-label="Export target size in megabytes"
+                onChange={(e) => setTargetMb(e.target.value)}
+                className="h-7 w-24 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
+              />
+              MB
+            </label>
+          </>
+        )}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          data-testid="export-button"
+          disabled={busy || running || endSec - startSec < 1}
+          onClick={() => void run('export')}
+        >
+          {format === 'gif' ? 'Export GIF' : 'Export MP4'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          data-testid="compress-button"
+          disabled={busy || running || duration < 1}
+          title="Re-encode the whole clip to a smaller MP4"
+          onClick={() => void run('compress')}
+        >
+          Compress clip
+        </Button>
+        {running ? (
+          <>
+            <span className="tabular text-[11px] text-ink-muted">{percent}%</span>
+            <div className="h-1 w-32 overflow-hidden rounded bg-line">
+              <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => void api.editorExportCancel()}>
+              Cancel
+            </Button>
+          </>
+        ) : null}
+        {result ? (
+          <span className="flex items-center gap-2 text-[11px] text-ink-muted">
+            Saved <span className="truncate">{result.path.split(/[\\/]/).pop()}</span> ({formatBytes(result.bytes)})
+            <Button variant="ghost" size="sm" onClick={() => void api.showClipInFolder(result.path)}>
+              Show in folder
+            </Button>
+          </span>
+        ) : null}
+        {format === 'gif' && !running && !result ? (
+          <span className="text-[11px] text-ink-faint">
+            GIF size depends on the content — the real size is shown when it finishes.
+          </span>
+        ) : null}
+      </div>
+      {error ? <p className="mt-1 text-[11px] text-danger">{error}</p> : null}
     </div>
   )
 }

@@ -156,6 +156,8 @@ api.editorGetClipInfo = invoke(IPC.editorGetClipInfo)
 api.editorGetTrackPeaks = invoke(IPC.editorGetTrackPeaks)
 api.editorSaveClip = invoke(IPC.editorSaveClip)
 api.editorCancel = invoke(IPC.editorCancel)
+api.editorExport = invoke(IPC.editorExport)
+api.editorExportCancel = invoke(IPC.editorExportCancel)
 
 /**
  * Subscribes to a main-process push event. Returns an unsubscribe function.

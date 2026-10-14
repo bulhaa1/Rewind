@@ -44,8 +44,9 @@ export interface RunHandle {
 /**
  * Runs ffmpeg with raw argv. Resolves on exit code 0, rejects otherwise.
  * `signal` aborts by SIGKILL, which is the only reliable kill for ffmpeg on Windows.
+ * `onProgress` reports decoded seconds when the caller passes `-progress pipe:1`.
  */
-export function runFfmpeg(args: string[], signal?: AbortSignal): RunHandle {
+export function runFfmpeg(args: string[], signal?: AbortSignal, onProgress?: (seconds: number) => void): RunHandle {
   let child: ReturnType<typeof spawn> | null = null
   let done = false
 
@@ -56,6 +57,7 @@ export function runFfmpeg(args: string[], signal?: AbortSignal): RunHandle {
     }
 
     let stderr = ''
+    let stdout = ''
     child = spawn(resolveFfmpeg(), args, { windowsHide: true })
 
     const onAbort = () => {
@@ -73,6 +75,16 @@ export function runFfmpeg(args: string[], signal?: AbortSignal): RunHandle {
 
     child.stderr?.on('data', (d) => {
       stderr += String(d)
+    })
+    child.stdout?.on('data', (d) => {
+      stdout += String(d)
+      if (!onProgress) return
+      // `-progress pipe:1` prints key=value blocks; out_time_ms is microseconds
+      // despite the name. The last complete line wins.
+      const matches = stdout.matchAll(/out_time_ms=(\d+)/g)
+      let last: RegExpExecArray | null = null
+      for (const m of matches) last = m as RegExpExecArray
+      if (last) onProgress(Number(last[1]) / 1e6)
     })
     child.on('error', (e) => {
       signal?.removeEventListener('abort', onAbort)

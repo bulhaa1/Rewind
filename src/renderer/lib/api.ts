@@ -9,6 +9,8 @@ import type {
   ClipInfo,
   DeleteScope,
   EncoderVendorInfo,
+  ExportRequest,
+  ExportResult,
   FolderKind,
   HotkeyAction,
   IpcResult,
@@ -195,6 +197,8 @@ export interface RewindApi {
   editorGetTrackPeaks(file: string, stream: number): Promise<IpcResult<number[]>>
   editorSaveClip(args: SaveClipArgs): Promise<IpcResult<{ outputPath: string }>>
   editorCancel(): Promise<IpcResult>
+  editorExport(req: ExportRequest): Promise<IpcResult<ExportResult>>
+  editorExportCancel(): Promise<IpcResult>
 
   on(event: 'obs-status', handler: (s: { status: ObsStatus; message?: string }) => void): () => void
   on(event: 'clip-saved', handler: (p?: { clipPath?: string }) => void): () => void
@@ -202,6 +206,7 @@ export interface RewindApi {
   on(event: 'auto-detect-switched', handler: () => void): () => void
   on(event: 'update-state', handler: (s: UpdateState) => void): () => void
   on(event: 'hotkey-capture-key', handler: (hotkey: string) => void): () => void
+  on(event: 'export-progress', handler: (p: { percent: number }) => void): () => void
   on(event: 'play-notification-sound', handler: () => void): () => void
   on(event: 'profiles-changed', handler: (p: { activeProfile: number }) => void): () => void
 }

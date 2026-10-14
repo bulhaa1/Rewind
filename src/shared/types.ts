@@ -212,6 +212,34 @@ export interface CaptureSourceState {
   inactive: boolean
 }
 
+/** An editor export job: a range of one clip, re-encoded small. */
+export interface ExportRequest {
+  clipPath: string
+  /** Seconds into the clip where the export starts. */
+  startSec: number
+  /** Seconds into the clip where the export ends. */
+  endSec: number
+  format: 'mp4' | 'gif'
+  /** Cap the output height; null keeps the source dimensions. */
+  maxHeight: 480 | 720 | 1080 | null
+  /** GIF only: frames per second of the animation. */
+  gifFps?: 10 | 15 | 20
+  /** MP4 only: two-pass target in MB; null encodes at a fixed quality instead. */
+  targetMb: number | null
+  /** MP4 only: keep the first audio stream. GIFs never carry audio. */
+  audio: boolean
+  /** Filename suffix in the output name, e.g. `(share)`. */
+  suffix?: string
+}
+
+export interface ExportResult {
+  path: string
+  bytes: number
+  width: number
+  height: number
+  durationSec: number
+}
+
 /** Push events emitted from main -> renderer. */
 export interface RewindEvents {
   'obs-status': { status: ObsStatus; message?: string }
@@ -219,6 +247,7 @@ export interface RewindEvents {
   'screenshot-saved': { path: string }
   'auto-detect-switched': undefined
   'hotkey-capture-key': string
+  'export-progress': { percent: number }
   'play-notification-sound': undefined
   'auth-session-preloaded': unknown
   /** Update checker state, pushed on every transition. See main/updater.ts. */

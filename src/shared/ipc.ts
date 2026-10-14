@@ -140,6 +140,8 @@ export const IPC = {
   editorGetTrackPeaks: 'editor-get-track-peaks',
   editorSaveClip: 'editor-save-clip',
   editorCancel: 'editor-cancel',
+  editorExport: 'editor-export',
+  editorExportCancel: 'editor-export-cancel',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -151,6 +153,7 @@ export const EVENT_CHANNELS = [
   'screenshot-saved',
   'auto-detect-switched',
   'hotkey-capture-key',
+  'export-progress',
   'play-notification-sound',
   'update-state',
   'profiles-changed',

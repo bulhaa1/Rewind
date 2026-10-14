@@ -1378,6 +1378,39 @@ export function registerIpc(s: Services): void {
     return ok()
   })
 
+  /**
+   * Export (share GIF / small MP4 / compress).
+   *
+   * Raw `ipcMain.handle` rather than `handle()`: progress is pushed to the sender
+   * while the job runs, and the wrapper does not hand the event through.
+   */
+  ipcMain.handle(IPC.editorExport, async (event, req: unknown) => {
+    if (!isExportRequest(req)) return fail('Invalid export arguments')
+    const resolved = resolveVideo(req.clipPath, s, 'editor-export')
+    if ('error' in resolved) return resolved
+    const sender = event.sender
+    const onProgress = (percent: number) => {
+      if (!sender.isDestroyed()) sender.send('export-progress', { percent })
+    }
+    try {
+      const result = await require('./export.js').exportClip(
+        { ...req, clipPath: resolved.path },
+        { onProgress },
+      )
+      log.info(`Export finished: ${result.path}`)
+      return ok(result)
+    } catch (e) {
+      if (require('./ffmpeg.js').isCancelled(e)) return fail('Export cancelled')
+      replayLog.error('Export failed:', e)
+      return fail(messageOf(e))
+    }
+  })
+
+  handle(IPC.editorExportCancel, () => {
+    require('./export.js').cancelExport()
+    return ok()
+  })
+
   handle(IPC.notificationClick, () => {
     s.getMainWindow()?.show()
     s.getMainWindow()?.focus()
@@ -1729,6 +1762,33 @@ function isSaveClipArgs(v: unknown): v is {
         isUnitInterval(t.volume),
     )
   )
+}
+
+function isExportRequest(v: unknown): v is {
+  clipPath: string
+  startSec: number
+  endSec: number
+  format: 'mp4' | 'gif'
+  maxHeight: 480 | 720 | 1080 | null
+  gifFps?: 10 | 15 | 20
+  targetMb: number | null
+  audio: boolean
+  suffix?: string
+} {
+  if (!v || typeof v !== 'object') return false
+  const a = v as any
+  if (typeof a.clipPath !== 'string' || a.clipPath.length === 0) return false
+  if (typeof a.startSec !== 'number' || !Number.isFinite(a.startSec) || a.startSec < 0) return false
+  if (typeof a.endSec !== 'number' || !Number.isFinite(a.endSec) || a.endSec <= a.startSec) return false
+  if (a.format !== 'mp4' && a.format !== 'gif') return false
+  if (a.maxHeight !== null && ![480, 720, 1080].includes(a.maxHeight)) return false
+  if (a.gifFps !== undefined && ![10, 15, 20].includes(a.gifFps)) return false
+  if (a.targetMb !== null && (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 1 || a.targetMb > 500)) {
+    return false
+  }
+  if (typeof a.audio !== 'boolean') return false
+  if (a.suffix !== undefined && (typeof a.suffix !== 'string' || a.suffix.length > 24)) return false
+  return true
 }
 
 export { DEFAULT_SETTINGS }
