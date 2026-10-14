@@ -12,8 +12,6 @@ import type { Profile } from '@shared/types.js'
 
 const log = scope('Profiles')
 
-export { PROFILE_COUNT_MAX }
-
 /**
  * How much of the pipeline a switch has to rebuild.
  *

@@ -271,7 +271,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   const volumesChanged = masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   // Live monitoring: the sliders are heard as they are dragged, no re-encode.
-  // Live monitoring: the sliders are heard as they are dragged, no re-encode.
   usePreviewAudio({ ready: !loading, broken: !!previewError, videoRef, tracks, volumes, masterVolume })
 
   const save = async (mode: 'overwrite' | 'copy') => {
@@ -507,8 +506,6 @@ function ExportSection({
   busy: boolean
   onUseWholeClip: () => void
 }) {
-  // Height cap for the export; 0 = native. `height` (the prop) is the source height.
-  const [capHeight, setCapHeight] = useState<0 | 480 | 720 | 1080>(720)
   // 0 = smallest file, 100 = best quality. 55 sits where a share clip reads well.
   const [sizeLevel, setSizeLevel] = useState(55)
   const [running, setRunning] = useState(false)
@@ -566,7 +563,8 @@ function ExportSection({
         startSec,
         endSec,
         targetMb: Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024),
-        suffix: 'compressed',
+        // A trimmed range is a cut, not a compression; name the copy for what it is.
+        suffix: exportLength < duration - 0.05 ? 'trimmed' : 'compressed',
       }
       const res = await api.editorExport(req)
       if (!res.success || !res.data) {

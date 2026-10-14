@@ -56,6 +56,9 @@ export function MicStrip() {
   // zero is a muted microphone to anyone reading it, and muting it also shows 0.
   const silent = muted || shown === 0
   const MuteIcon = silent ? MicOff : Mic
+  // At the floor the action is "give me sound back", not "mute what is already
+  // silent", so the label follows the silence, not the stored flag.
+  const muteActionLabel = silent && !muted ? 'Raise microphone volume' : muted ? 'Unmute microphone' : 'Mute microphone'
 
   /**
    * Commits a drag and only then releases the local value.
@@ -117,9 +120,9 @@ export function MicStrip() {
       <button
         type="button"
         onClick={toggleMute}
-        aria-pressed={muted}
-        aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-        title={muted ? 'Unmute microphone' : 'Mute microphone'}
+        aria-pressed={silent}
+        aria-label={muteActionLabel}
+        title={muteActionLabel}
         className={cn(
           'flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-raised',
           silent && !muted && 'opacity-70',
