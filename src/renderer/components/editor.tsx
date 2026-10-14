@@ -519,15 +519,12 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 }
 
 /**
- * Export: a shareable GIF, a small MP4 of the trim range, or a compressed copy.
+ * Export: a small MP4 of the trim range, or the whole clip compressed.
  *
- * One pipeline in the main process; the two buttons differ only in the range they
- * send — Export cuts the trim selection, Compress re-encodes the whole clip.
- *
- * The size slider maps to a bitrate, and the readout shows the size that bitrate
- * produces — which is the size the encode lands on, because they are the same
- * number. The savings line uses the same baseline as the trim estimate above.
- * GIF bytes cannot be steered, so its estimate is labelled rough.
+ * Both buttons run the same sized two-pass encode; they differ only in the range
+ * they send. The Size chips map to a bitrate, and the readout shows the size that
+ * bitrate produces — which is the size the encode lands on, because they are the
+ * same number. The savings line uses the same baseline as the trim estimate above.
  */
 function ExportSection({
   clipPath,
@@ -552,10 +549,8 @@ function ExportSection({
   busy: boolean
   onUseWholeClip: () => void
 }) {
-  const [format, setFormat] = useState<'mp4' | 'gif'>('mp4')
   // Height cap for the export; 0 = native. `height` (the prop) is the source height.
   const [capHeight, setCapHeight] = useState<0 | 480 | 720 | 1080>(720)
-  const [gifFps, setGifFps] = useState<10 | 15 | 20>(15)
   // 0 = smallest file, 100 = best quality. 55 sits where a share clip reads well.
   const [sizeLevel, setSizeLevel] = useState(55)
   const [running, setRunning] = useState(false)
@@ -596,11 +591,9 @@ function ExportSection({
   // floor at 200, and one kbps of headroom keeps the roundtrip above the floor.
   const estMb = Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024)
 
-  const gifMb = (outWidth * outHeight * gifFps * exportLength * 0.045) / 1024 / 1024
-
   // Same baseline the trim estimate uses: the source's share of the exported range.
   const baselineMb = fileSize > 0 && duration > 0 ? fileSize * (exportLength / duration) / 1024 / 1024 : 0
-  const savedMb = baselineMb - (format === 'gif' ? gifMb : estMb)
+  const savedMb = baselineMb - estMb
   const savedPct = baselineMb > 0 ? Math.round((savedMb / baselineMb) * 100) : 0
   const savingsLine =
     baselineMb <= 0
@@ -621,10 +614,8 @@ function ExportSection({
         clipPath,
         startSec: kind === 'compress' ? 0 : startSec,
         endSec: kind === 'compress' ? duration : endSec,
-        format: kind === 'compress' ? ('mp4' as const) : format,
         maxHeight: capHeight === 0 ? null : (capHeight as 480 | 720 | 1080),
-        gifFps,
-        targetMb: kind === 'compress' || format === 'mp4' ? (Math.max(0.1, ((videoKbps + 129) * rangeLen) / 8 / 1024)) : null,
+        targetMb: Math.max(0.1, ((videoKbps + 129) * rangeLen) / 8 / 1024),
         suffix: kind === 'compress' ? 'compressed' : undefined,
       }
       const res = await api.editorExport(req)
@@ -649,23 +640,6 @@ function ExportSection({
     <div className="rounded-lg border border-line bg-surface p-3" data-testid="export-section">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-medium">Export</span>
-        <div className="flex overflow-hidden rounded border border-line">
-          {(['mp4', 'gif'] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={format === f}
-              disabled={running}
-              onClick={() => setFormat(f)}
-              className={cn(
-                'px-2 py-1 text-[11px] transition-colors',
-                format === f ? 'bg-raised text-ink' : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {f.toUpperCase()}
-            </button>
-          ))}
-        </div>
         <select
           value={capHeight}
           aria-label="Export height"
@@ -678,69 +652,34 @@ function ExportSection({
           <option value={720}>720p</option>
           <option value={480}>480p</option>
         </select>
-        {format === 'gif' ? (
-          <select
-            value={gifFps}
-            aria-label="Export GIF fps"
+        <span className="ml-1 text-[11px] text-ink-muted">Size</span>
+        {(
+          [
+            ['Small', 25],
+            ['Balanced', 55],
+            ['Best', 85],
+          ] as const
+        ).map(([label, level]) => (
+          <button
+            key={label}
+            type="button"
             disabled={running}
-            onChange={(e) => setGifFps(Number(e.target.value) as 10 | 15 | 20)}
-            className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
+            data-testid={`size-${label.toLowerCase()}`}
+            onClick={() => setSizeLevel(level)}
+            className={cn(
+              'rounded border px-2 py-0.5 text-[11px] transition-colors',
+              Math.abs(sizeLevel - level) < 1
+                ? 'border-accent/60 bg-accent/10 text-ink'
+                : 'border-line text-ink-muted hover:text-ink',
+            )}
           >
-            <option value={10}>10 fps</option>
-            <option value={15}>15 fps</option>
-            <option value={20}>20 fps</option>
-          </select>
-        ) : null}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {format === 'gif' ? (
-          <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
-            ≈ {gifMb < 0.1 ? '<0.1' : gifMb.toFixed(1)} MB <span className="text-ink-faint">(rough)</span>
-            {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
-          </span>
-        ) : (
-          <>
-            <span className="text-[11px] text-ink-muted">Size</span>
-            {(
-              [
-                ['Small', 25],
-                ['Balanced', 55],
-                ['Best', 85],
-              ] as const
-            ).map(([label, level]) => (
-              <button
-                key={label}
-                type="button"
-                disabled={running}
-                onClick={() => setSizeLevel(level)}
-                className={cn(
-                  'rounded border px-1.5 py-0.5 text-[11px] transition-colors',
-                  Math.abs(sizeLevel - level) < 1
-                    ? 'border-accent/60 bg-accent/10 text-ink'
-                    : 'border-line text-ink-muted hover:text-ink',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={sizeLevel}
-              disabled={running}
-              aria-label="Export size"
-              onChange={(e) => setSizeLevel(Number(e.target.value))}
-              className="h-1 w-36 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
-            />
-            <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
-              ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
-              {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
-            </span>
-          </>
-        )}
+            {label}
+          </button>
+        ))}
+        <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
+          ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
+          {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
+        </span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -761,7 +700,7 @@ function ExportSection({
             disabled={busy || running || exportLength < 1}
             onClick={() => void run('export')}
           >
-            {format === 'gif' ? 'Export GIF' : 'Export MP4'}
+            Export MP4
           </Button>
         </span>
         <span title={compressDisabledReason ?? undefined}>
@@ -1034,18 +973,23 @@ function MasterVolumeRow({
   const shown = muted ? 0 : value
 
   return (
-    <div className="flex items-center gap-2 rounded bg-raised/30 px-2 py-1.5">
-      <button
-        type="button"
-        onClick={() => onMuteChange(!muted)}
-        aria-label={muted ? 'Unmute clip' : 'Mute clip'}
-        aria-pressed={muted}
-        title={muted ? 'Unmute clip' : 'Mute clip'}
-        className="shrink-0 text-ink-faint transition-colors hover:text-ink"
-      >
-        {muted ? <VolumeX className="h-3.5 w-3.5 text-danger" /> : <Volume2 className="h-3.5 w-3.5" />}
-      </button>
-      <span className="w-16 shrink-0 truncate text-xs text-ink-muted">Clip</span>
+    // Same grid as AudioTrackLane, cell for cell: label 20, waveform, slider 20,
+    // readout 9. The mute button lives inside the label cell so the waveform and
+    // slider start at the same x as the Desktop and Microphone rows.
+    <div className="flex items-center gap-2">
+      <span className="flex w-20 shrink-0 items-center gap-1 truncate text-xs text-ink-muted">
+        <button
+          type="button"
+          onClick={() => onMuteChange(!muted)}
+          aria-label={muted ? 'Unmute clip' : 'Mute clip'}
+          aria-pressed={muted}
+          title={muted ? 'Unmute clip' : 'Mute clip'}
+          className="shrink-0 text-ink-faint transition-colors hover:text-ink"
+        >
+          {muted ? <VolumeX className="h-3 w-3 text-danger" /> : <Volume2 className="h-3 w-3" />}
+        </button>
+        Clip
+      </span>
       <LaneGraph
         label="Clip volume"
         peaks={peaks}
@@ -1058,18 +1002,19 @@ function MasterVolumeRow({
       <input
         type="range"
         min={0}
-        max={1}
-        step={0.01}
-        value={shown}
+        max={100}
+        step={1}
+        value={Math.round(shown * 100)}
         aria-label="Clip volume"
         title="Applies to every audio track, on top of each track's own volume."
         onChange={(e) => {
           // Dragging the slider is an instruction to hear something again.
           onMuteChange(false)
-          onChange(Number(e.target.value))
+          onChange(Number(e.target.value) / 100)
         }}
-        className="h-1 w-24 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
+        className="w-20 shrink-0 accent-accent"
       />
+      <span className="tabular w-9 shrink-0 text-right text-[11px] text-ink-faint">{Math.round(shown * 100)}%</span>
     </div>
   )
 }

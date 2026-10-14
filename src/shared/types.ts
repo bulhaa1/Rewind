@@ -224,14 +224,11 @@ export interface ExportRequest {
   startSec: number
   /** Seconds into the clip where the export ends. */
   endSec: number
-  format: 'mp4' | 'gif'
   /** Cap the output height; null keeps the source dimensions. */
   maxHeight: 480 | 720 | 1080 | null
-  /** GIF only: frames per second of the animation. */
-  gifFps?: 10 | 15 | 20
-  /** MP4 only: two-pass target in MB (audio always kept at 128 kbps inside it). */
-  targetMb: number | null
-  /** Filename suffix in the output name, e.g. `(share)`. */
+  /** Two-pass target in MB (audio always kept at 128 kbps inside it). */
+  targetMb: number
+  /** Filename suffix in the output name, e.g. `(compressed)`. */
   suffix?: string
 }
 
@@ -241,7 +238,7 @@ export interface ExportResult {
   width: number
   height: number
   durationSec: number
-  /** Audio streams the export kept; MP4 always 1, GIF always 0. */
+  /** Audio streams the export kept; always 1. */
   audioStreams: number
 }
 

@@ -31,7 +31,7 @@ function scaleArgs(maxHeight: number | null, sourceHeight: number): string[] {
 }
 
 /**
- * Exports a clip range as a small shareable MP4 or a GIF.
+ * Exports a clip range as a small shareable MP4.
  *
  * The range is cut with input-side `-ss`/`-t`: with a re-encode ffmpeg decodes from
  * the keyframe and discards the excess, so the cut is frame-accurate and still fast.
@@ -68,19 +68,16 @@ async function runExport(
 
   // A size target below the floor cannot produce anything watchable; refuse before
   // any file is created so nothing partial is left behind.
-  if (req.format === 'mp4' && req.targetMb) {
-    const videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration) - AUDIO_KBPS
-    if (videoKbps < MIN_VIDEO_KBPS) {
-      throw new Error('Target size is too small for this duration — trim less or raise the size')
-    }
+  const videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration) - AUDIO_KBPS
+  if (videoKbps < MIN_VIDEO_KBPS) {
+    throw new Error('This range is too long for the chosen size — raise the size or trim less')
   }
 
-  const ext = req.format === 'gif' ? '.gif' : '.mp4'
   const dir = path.dirname(req.clipPath)
   const stem = path.basename(req.clipPath, path.extname(req.clipPath))
   // Filename characters only: this string reaches openSync via uniquePath.
   const suffix = req.suffix?.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 24)
-  const out = uniquePath(dir, suffix ? `${stem} (${suffix})` : stem, ext)
+  const out = uniquePath(dir, suffix ? `${stem} (${suffix})` : stem, '.mp4')
 
   const seek = ['-ss', start.toFixed(3), '-t', duration.toFixed(3), '-i', req.clipPath]
   const scale = scaleArgs(req.maxHeight, info.height)
@@ -95,49 +92,31 @@ async function runExport(
   }
 
   try {
-    if (req.format === 'gif') {
-      // One pass: the palette is generated from this clip's own frames, which is
-      // what keeps screen content from turning to mush. No audio: GIF has none.
-      const fps = Math.min(Math.max(req.gifFps ?? 15, 5), 30)
-      const filter =
-        `fps=${fps},scale=-2:${req.maxHeight ?? info.height}:flags=lanczos,` +
-        `split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3`
+    // Always a two-pass ABR encode at the bitrate the size readout promised, so the
+    // file lands on the number the user was shown.
+    const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
+    const passlog = path.join(passDir, 'pass')
+    try {
+      const videoArgs = [...seek, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
       await runFfmpeg(
-        [...seek, ...progress, '-filter_complex', filter, '-an', '-loop', '0', '-y', out],
+        [...videoArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
         signal,
-        report((p) => p),
+        report((p) => p * 0.4),
       ).promise
-    } else {
-      // MP4 is always a two-pass ABR encode at the bitrate the size readout
-      // promised, so the file lands on the number the user was shown.
-      let videoKbps = Math.floor((req.targetMb! * 8 * 1024) / duration) - AUDIO_KBPS
-      if (videoKbps < MIN_VIDEO_KBPS) {
-        throw new Error('This range is too long for the chosen size — raise it or trim less')
-      }
-      const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
-      const passlog = path.join(passDir, 'pass')
+      await runFfmpeg(
+        [
+          ...videoArgs,
+          '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
+          ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
+        ],
+        signal,
+        report((p) => 40 + p * 0.6),
+      ).promise
+    } finally {
       try {
-        const videoArgs = [...seek, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
-        await runFfmpeg(
-          [...videoArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
-          signal,
-          report((p) => p * 0.4),
-        ).promise
-        await runFfmpeg(
-          [
-            ...videoArgs,
-            '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
-            ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
-          ],
-          signal,
-          report((p) => 40 + p * 0.6),
-        ).promise
-      } finally {
-        try {
-          fs.rmSync(passDir, { recursive: true, force: true })
-        } catch {
-          /* best effort */
-        }
+        fs.rmSync(passDir, { recursive: true, force: true })
+      } catch {
+        /* best effort */
       }
     }
 

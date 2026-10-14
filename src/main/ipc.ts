@@ -1383,7 +1383,7 @@ export function registerIpc(s: Services): void {
   })
 
   /**
-   * Export (share GIF / small MP4 / compress).
+   * Export (small MP4 / compress).
    *
    * Raw `ipcMain.handle` rather than `handle()`: progress is pushed to the sender
    * while the job runs, and the wrapper does not hand the event through.
@@ -1772,10 +1772,8 @@ function isExportRequest(v: unknown): v is {
   clipPath: string
   startSec: number
   endSec: number
-  format: 'mp4' | 'gif'
   maxHeight: 480 | 720 | 1080 | null
-  gifFps?: 10 | 15 | 20
-  targetMb: number | null
+  targetMb: number
   suffix?: string
 } {
   if (!v || typeof v !== 'object') return false
@@ -1783,15 +1781,8 @@ function isExportRequest(v: unknown): v is {
   if (typeof a.clipPath !== 'string' || a.clipPath.length === 0) return false
   if (typeof a.startSec !== 'number' || !Number.isFinite(a.startSec) || a.startSec < 0) return false
   if (typeof a.endSec !== 'number' || !Number.isFinite(a.endSec) || a.endSec <= a.startSec) return false
-  if (a.format !== 'mp4' && a.format !== 'gif') return false
   if (a.maxHeight !== null && ![480, 720, 1080].includes(a.maxHeight)) return false
-  if (a.gifFps !== undefined && ![10, 15, 20].includes(a.gifFps)) return false
-  // MP4 is always a sized two-pass encode now; GIF carries no target.
-  if (a.format === 'mp4') {
-    if (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 0.1 || a.targetMb > 500) {
-      return false
-    }
-  } else if (a.targetMb !== null && a.targetMb !== undefined) {
+  if (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 0.1 || a.targetMb > 500) {
     return false
   }
   if (a.suffix !== undefined && (typeof a.suffix !== 'string' || a.suffix.length > 24)) return false

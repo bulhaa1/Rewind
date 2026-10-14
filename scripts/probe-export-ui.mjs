@@ -23,12 +23,8 @@ export default async function ({ evaluate, drainErrors }) {
   }
   console.log('export section:', JSON.stringify(section, null, 1))
 
-  // Select GIF the way a user does, then click the export button.
+  // Click the export button the way a user does.
   const clicked = await evaluate(`(() => {
-    const buttons = [...document.querySelectorAll('[data-testid="export-section"] button')]
-    const gif = buttons.find((b) => b.innerText.trim() === 'GIF')
-    if (!gif) return 'no GIF toggle'
-    gif.click()
     const ex = document.querySelector('[data-testid="export-button"]')
     if (!ex) return 'no export button'
     const state = { disabled: ex.disabled, title: ex.title }
@@ -36,9 +32,9 @@ export default async function ({ evaluate, drainErrors }) {
     ex.click()
     return JSON.stringify(state)
   })()`)
-  console.log('gif click ->', clicked)
+  console.log('export click ->', clicked)
   if (clicked.startsWith('"') && JSON.parse(clicked).disabled) {
-    problems.push('export button was disabled for the GIF path')
+    problems.push('export button was disabled with a full range selected')
   }
 
   await sleep(10_000)
