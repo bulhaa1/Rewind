@@ -278,7 +278,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   const volumesChanged = masterMuted || masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   // Live monitoring: the sliders are heard as they are dragged, no re-encode.
-  usePreviewAudio({ ready: !loading, videoRef, tracks, volumes, masterVolume, masterMuted })
+  usePreviewAudio({ ready: !loading, broken: !!previewError, videoRef, tracks, volumes, masterVolume, masterMuted })
 
   const save = async (mode: 'overwrite' | 'copy') => {
     setSaving({ mode })
@@ -578,15 +578,23 @@ function ExportSection({
   const outHeight = capHeight === 0 ? Math.max(2, height) : Math.min(capHeight, Math.max(2, height))
   const outWidth = width > 0 ? Math.round(((outHeight * width) / Math.max(2, height)) / 2) * 2 : Math.round(outHeight * (16 / 9))
   const srcFps = fps > 0 ? fps : 30
-  const bpp = 0.015 + (sizeLevel / 100) * 0.105
-  // A re-encode should not cost more than roughly 1.5x the source's bits per
+  const bpp = 0.015 + (sizeLevel / 100) * 0.105  // A re-encode should not cost more than roughly 1.5x the source's bits per
   // OUTPUT pixel: a downscale needs far fewer bits than the source spent, and an
   // efficient AV1 source is easy to overshoot. Below the cap the slider governs.
   const srcPixels = width > 0 && height > 0 ? width * height : 0
   const srcKbps = fileSize > 0 && duration > 0 ? (fileSize * 8) / duration / 1000 : 0
   const capKbps = srcKbps > 0 && srcPixels > 0 ? Math.max(200, ((srcKbps * outWidth * outHeight) / srcPixels) * 1.5) : Infinity
-  const videoKbps = Math.min(Math.max(200, (outWidth * outHeight * srcFps * bpp) / 1000), capKbps)
-  const estMb = Math.max(0.1, ((videoKbps + 128) * exportLength) / 8 / 1024)
+  // The validator caps an export at 500 MB; keep the slider inside it instead of
+  // letting a long range produce a number the button then refuses.
+  const cap500Kbps = exportLength > 0 ? Math.max(200, (500 * 8 * 1024) / exportLength - 129) : Infinity
+  const videoKbps = Math.min(
+    Math.max(200, (outWidth * outHeight * srcFps * bpp) / 1000),
+    capKbps,
+    cap500Kbps,
+  )
+  // +129, not +128: main recomputes the video bitrate from this target with a
+  // floor at 200, and one kbps of headroom keeps the roundtrip above the floor.
+  const estMb = Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024)
 
   const gifMb = (outWidth * outHeight * gifFps * exportLength * 0.045) / 1024 / 1024
 
@@ -616,7 +624,7 @@ function ExportSection({
         format: kind === 'compress' ? ('mp4' as const) : format,
         maxHeight: capHeight === 0 ? null : (capHeight as 480 | 720 | 1080),
         gifFps,
-        targetMb: kind === 'compress' || format === 'mp4' ? (Math.max(0.1, ((videoKbps + 128) * rangeLen) / 8 / 1024)) : null,
+        targetMb: kind === 'compress' || format === 'mp4' ? (Math.max(0.1, ((videoKbps + 129) * rangeLen) / 8 / 1024)) : null,
         suffix: kind === 'compress' ? 'compressed' : undefined,
       }
       const res = await api.editorExport(req)

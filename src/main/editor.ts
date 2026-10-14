@@ -193,10 +193,10 @@ export async function getClipInfo(file: string, recordedLabels: string[]): Promi
     if (!t.previewPath) continue
     try {
       const produced = await extractTrackPreview(file, t.stream, t.label, stamp)
-      if (produced !== t.previewPath) {
-        temps.push(produced)
-        t.previewPath = produced
-      }
+      // Register before the path is handed out: cleanupEditor deletes everything
+      // in this list, and an unregistered m4a leaks in the temp dir forever.
+      temps.push(produced)
+      t.previewPath = produced
     } catch (e) {
       if (isCancelled(e)) throw e
       log.warn(`Failed to extract audio track ${t.stream}:`, e)

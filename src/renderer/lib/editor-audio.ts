@@ -5,6 +5,8 @@ import type { ClipAudioTrack } from '@shared/types.js'
 interface PreviewAudioArgs {
   /** False while the editor is still loading; the video element does not exist yet. */
   ready: boolean
+  /** True when the preview cannot render; the video element is gone, so tear down. */
+  broken: boolean
   videoRef: React.MutableRefObject<HTMLVideoElement | null>
   /** The exposed audio lanes; only lanes with a preview file can be monitored. */
   tracks: ClipAudioTrack[]
@@ -38,13 +40,21 @@ interface AudioGraph {
  * unmuted and behaves exactly like the old preview: sound still works, the
  * sliders just do not monitor. No error surface, by design.
  */
-export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume, masterMuted }: PreviewAudioArgs): void {
+export function usePreviewAudio({
+  ready,
+  broken,
+  videoRef,
+  tracks,
+  volumes,
+  masterVolume,
+  masterMuted,
+}: PreviewAudioArgs): void {
   const graphRef = useRef<AudioGraph | null>(null)
 
   // Build the graph once per clip, when the track previews are known.
   useEffect(() => {
     const video = videoRef.current
-    if (!ready || !video || video.dataset.monitorWired === '1') return
+    if (!ready || broken || !video || video.dataset.monitorWired === '1') return
     const lanes = tracks.filter((t) => t.previewPath)
     // Partial coverage would play a wrong mix (a lane missing is silent), so it
     // is all tracks monitored or the plain video sound.
@@ -66,6 +76,9 @@ export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume
         gain.connect(master)
         graph.lanes.push({ el, gain, stream: t.stream })
       }
+      // A graph rebuilt after a slider change must not start at the defaults.
+      graph.master.gain.value = masterMuted ? 0 : masterVolume
+      for (const lane of graph.lanes) lane.gain.gain.value = volumes[lane.stream] ?? 1
     } catch {
       // No graph: the video keeps its own audio.
       return
@@ -85,7 +98,7 @@ export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume
     const onPlay = () => {
       const g = graphRef.current
       if (!g) return
-      void g.ctx.resume()
+      void g.ctx.resume().catch(() => {})
       syncTo(video.currentTime)
       for (const lane of g.lanes) void lane.el.play().catch(() => {})
     }
@@ -129,11 +142,11 @@ export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume
       graphRef.current = null
       ;(window as unknown as { __previewAudio?: AudioGraph }).__previewAudio = undefined
     }
-    // Rebuild when the editor becomes ready or the set of track previews changes
-    // (a different clip). Slider state is deliberately not a dependency: gains are
-    // written by the effect below.
+    // Rebuild when the editor becomes ready or breaks, or the set of track
+    // previews changes (a different clip). Slider state is deliberately not a
+    // dependency: gains are applied at build time and by the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, tracks.map((t) => `${t.stream}:${t.previewPath}`).join('|')])
+  }, [ready, broken, tracks.map((t) => `${t.stream}:${t.previewPath}`).join('|')])
 
   // Gains follow the sliders. Written directly, so a drag is heard as it moves.
   useEffect(() => {

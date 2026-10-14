@@ -77,13 +77,16 @@ export function runFfmpeg(args: string[], signal?: AbortSignal, onProgress?: (se
       stderr += String(d)
     })
     child.stdout?.on('data', (d) => {
-      // Keep only the tail: `-progress` output is small, but a hours-long encode
-      // would otherwise have every chunk re-scanning the whole accumulation.
-      stdout = (stdout + String(d)).slice(-512)
-      if (!onProgress) return
+      stdout += String(d)
+      // Parse only complete lines; a chunk boundary can split an `out_time_ms`
+      // number in half, and a truncated tail would stall or jump the percent.
+      const nl = stdout.lastIndexOf('\n')
+      const complete = nl >= 0 ? stdout.slice(0, nl) : ''
+      stdout = nl >= 0 ? '' : stdout.slice(-512)
+      if (!onProgress || !complete) return
       // `-progress pipe:1` prints key=value blocks; out_time_ms is microseconds
       // despite the name. The last complete line wins.
-      const matches = stdout.matchAll(/out_time_ms=(\d+)/g)
+      const matches = complete.matchAll(/out_time_ms=(\d+)/g)
       let last: RegExpExecArray | null = null
       for (const m of matches) last = m as RegExpExecArray
       if (last) onProgress(Number(last[1]) / 1e6)
