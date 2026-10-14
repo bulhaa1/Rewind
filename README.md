@@ -30,6 +30,14 @@ No unnecessary distractions. No cloud dependency. Just your gameplay, captured l
 
 Rewind — Play. Capture. Keep.
 
+## What's new in 1.4.1
+
+Hotfix. `Rewind.exe` was never stamped with Rewind's name and icon — Task Manager showed
+the app as **Electron**, and the icon in Explorer, the Start menu and the taskbar was
+Electron's. The packaging step now fetches the missing tool instead of stopping quietly,
+so the app carries its own icon, name and version. Everything from 1.4.0 is in this
+build. Full note: [`docs/release-notes-1.4.1.md`](docs/release-notes-1.4.1.md).
+
 ## What's new in 1.4.0
 
 Your library has a folder structure, and per-app audio works. Full note:

@@ -87,12 +87,47 @@ function findRcedit() {
   return null
 }
 
-const rcedit = findRcedit()
-if (!rcedit) {
+/**
+ * Finds rcedit, fetching it into the cache when it is missing.
+ *
+ * electron-builder populates this cache only when it edits executables itself, which
+ * this repo has turned off (see the note at the top). On a machine where it never ran,
+ * the file is simply absent — and a stamp that aborts is easy to miss, because the
+ * packaging step before it has already produced an installer. That is exactly how
+ * every release so far shipped with Electron's icon and "Electron" in Task Manager.
+ */
+async function ensureRcedit() {
+  const found = findRcedit()
+  if (found) return found
+
+  const url = 'https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe'
+  const target = path.join(
+    process.env.LOCALAPPDATA || '',
+    'electron-builder',
+    'Cache',
+    'winCodeSign',
+    'manual',
+    'rcedit-x64.exe',
+  )
+
+  console.log(`stamp-exe: rcedit is not in the builder cache, fetching ${url}`)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, Buffer.from(await res.arrayBuffer()))
+  return target
+}
+
+let rcedit
+try {
+  rcedit = await ensureRcedit()
+} catch (e) {
   console.error(
-    'stamp-exe: rcedit-x64.exe was not found in the electron-builder cache.\n' +
-      "  Run a packaging attempt once to populate it, or set win.signAndEditExecutable\n" +
-      '  back to true and enable Developer Mode instead of using this script.',
+    `stamp-exe: rcedit-x64.exe is not in the electron-builder cache and could not be fetched (${
+      e instanceof Error ? e.message : e
+    }).\n` +
+      '  Set win.signAndEditExecutable back to true and enable Developer Mode to let\n' +
+      '  electron-builder do this itself instead.',
   )
   process.exit(1)
 }
