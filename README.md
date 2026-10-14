@@ -38,7 +38,7 @@ The clip editor grew up, and compression moved to your GPU. The full list is in
 - **A real editor.** Trim with draggable in/out handles or the mouse wheel over the
   trim bar, watch a waveform for every audio lane, drag each track's volume and hear
   it as you move it. Save a trimmed copy, or replace the original.
-- **Compress, on the GPU.** One **Compress** box with **Low / Medium / High** — each
+- **Compress,** One **Compress** box with **Low / Medium / High** — each
   is a fraction of the clip's own bitrate, so the copy can never come out bigger than
   the original. It encodes with NVENC, AMF or QSV when your GPU offers one and falls
   back to a threaded CPU encode when it does not. Copies land in `Rewind/Compressed/`.
@@ -97,7 +97,7 @@ Clips, screenshots and the editor are all reachable from the tray menu.
 
 ## Editing and compressing
 
-Double-click a clip (or use the rail's menu) to open the editor in its own window:
+click a clip to open the editor in its own window:
 
 - **Trim** by dragging the in/out handles, or scroll the wheel over the trim bar to
   scrub. The selection is what gets saved.
