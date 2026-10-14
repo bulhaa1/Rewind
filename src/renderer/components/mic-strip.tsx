@@ -52,7 +52,10 @@ export function MicStrip() {
   const muted = levels?.microphone.muted ?? false
   const volume = levels?.microphone.volume ?? 1
   const shown = drag ?? (muted ? 0 : volume)
-  const MuteIcon = muted ? MicOff : Mic
+  // The icon reports effective silence, not just the flag: a fader dragged to
+  // zero is a muted microphone to anyone reading it, and muting it also shows 0.
+  const silent = muted || shown === 0
+  const MuteIcon = silent ? MicOff : Mic
 
   /**
    * Commits a drag and only then releases the local value.
@@ -117,7 +120,10 @@ export function MicStrip() {
         aria-pressed={muted}
         aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
         title={muted ? 'Unmute microphone' : 'Mute microphone'}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-raised"
+        className={cn(
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-raised',
+          silent && !muted && 'opacity-70',
+        )}
       >
         <MuteIcon
           className={cn('h-3.5 w-3.5', muted ? 'text-ink-faint' : 'text-accent')}
