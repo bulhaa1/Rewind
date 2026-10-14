@@ -30,6 +30,16 @@ No unnecessary distractions. No cloud dependency. Just your gameplay, captured l
 
 Rewind — Play. Capture. Keep.
 
+## What's new in 1.3.1
+
+Hotfix for 1.3.0: **every clip and recording came out black** in that build. Monitor
+capture now uses Windows Graphics Capture rather than DXGI duplication, which was
+returning no frames. Clips already recorded with 1.3.0 cannot be recovered. Also here:
+the **Record** row fades out while the buffer is off, and the redundant "Auto detect
+launched game" card is gone from Settings → Capture Source (picking **Game Capture**
+already means auto-detect). Full note:
+[`docs/release-notes-1.3.1.md`](docs/release-notes-1.3.1.md).
+
 ## What's new in 1.3.0
 
 The clip editor grew up, and compression moved to your GPU. The full list is in
