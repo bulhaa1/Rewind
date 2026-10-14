@@ -11,6 +11,10 @@ interface ClipInfo {
   audioTracks: ClipAudioTrack[]
   /** Source size in bytes; drives the trim savings estimate. 0 if unreadable. */
   fileSize: number
+  /** Source video dimensions and frame rate; the export size readout scales from them. */
+  width: number
+  height: number
+  fps: number
 }
 
 /**
@@ -474,7 +478,14 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             endSec={endSec}
             duration={duration}
             fileSize={info.fileSize}
+            width={info.width}
+            height={info.height}
+            fps={info.fps}
             busy={!!saving}
+            onUseWholeClip={() => {
+              setStartSec(0)
+              setEndSec(duration)
+            }}
           />
 
           {saveError ? <p className="text-[11px] text-danger">{saveError}</p> : null}
@@ -511,9 +522,12 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
  * Export: a shareable GIF, a small MP4 of the trim range, or a compressed copy.
  *
  * One pipeline in the main process; the two buttons differ only in the range they
- * send — Export cuts the trim selection, Compress re-encodes the whole clip. A
- * target size is honoured exactly for MP4 (two-pass); a GIF gets the real size
- * shown after, because GIF bytes cannot be targeted without trial encodes.
+ * send — Export cuts the trim selection, Compress re-encodes the whole clip.
+ *
+ * The size slider maps to a bitrate, and the readout shows the size that bitrate
+ * produces — which is the size the encode lands on, because they are the same
+ * number. The savings line uses the same baseline as the trim estimate above.
+ * GIF bytes cannot be steered, so its estimate is labelled rough.
  */
 function ExportSection({
   clipPath,
@@ -521,20 +535,29 @@ function ExportSection({
   endSec,
   duration,
   fileSize,
+  width,
+  height,
+  fps,
   busy,
+  onUseWholeClip,
 }: {
   clipPath: string
   startSec: number
   endSec: number
   duration: number
   fileSize: number
+  width: number
+  height: number
+  fps: number
   busy: boolean
+  onUseWholeClip: () => void
 }) {
   const [format, setFormat] = useState<'mp4' | 'gif'>('mp4')
-  const [height, setHeight] = useState<0 | 480 | 720 | 1080>(720)
+  // Height cap for the export; 0 = native. `height` (the prop) is the source height.
+  const [capHeight, setCapHeight] = useState<0 | 480 | 720 | 1080>(720)
   const [gifFps, setGifFps] = useState<10 | 15 | 20>(15)
-  const [audio, setAudio] = useState(true)
-  const [targetMb, setTargetMb] = useState('')
+  // 0 = smallest file, 100 = best quality. 55 sits where a share clip reads well.
+  const [sizeLevel, setSizeLevel] = useState(55)
   const [running, setRunning] = useState(false)
   const [percent, setPercent] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -544,22 +567,56 @@ function ExportSection({
     return api.on('export-progress', (p) => setPercent(p.percent))
   }, [])
 
+  const exportLength = Math.max(0, endSec - startSec)
+
+  /*
+   * The size model, in one place: the slider picks a bits-per-pixel figure, the
+   * output dimensions come from the source aspect scaled to the chosen height,
+   * and 128 kbps of audio rides on top. The readout and the two-pass target are
+   * the same arithmetic, so the file lands on the number shown.
+   */
+  const outHeight = capHeight === 0 ? Math.max(2, height) : Math.min(capHeight, Math.max(2, height))
+  const outWidth = width > 0 ? Math.round(((outHeight * width) / Math.max(2, height)) / 2) * 2 : Math.round(outHeight * (16 / 9))
+  const srcFps = fps > 0 ? fps : 30
+  const bpp = 0.015 + (sizeLevel / 100) * 0.105
+  // A re-encode should not cost more than roughly 1.5x the source's bits per
+  // OUTPUT pixel: a downscale needs far fewer bits than the source spent, and an
+  // efficient AV1 source is easy to overshoot. Below the cap the slider governs.
+  const srcPixels = width > 0 && height > 0 ? width * height : 0
+  const srcKbps = fileSize > 0 && duration > 0 ? (fileSize * 8) / duration / 1000 : 0
+  const capKbps = srcKbps > 0 && srcPixels > 0 ? Math.max(200, ((srcKbps * outWidth * outHeight) / srcPixels) * 1.5) : Infinity
+  const videoKbps = Math.min(Math.max(200, (outWidth * outHeight * srcFps * bpp) / 1000), capKbps)
+  const estMb = Math.max(0.1, ((videoKbps + 128) * exportLength) / 8 / 1024)
+
+  const gifMb = (outWidth * outHeight * gifFps * exportLength * 0.045) / 1024 / 1024
+
+  // Same baseline the trim estimate uses: the source's share of the exported range.
+  const baselineMb = fileSize > 0 && duration > 0 ? fileSize * (exportLength / duration) / 1024 / 1024 : 0
+  const savedMb = baselineMb - (format === 'gif' ? gifMb : estMb)
+  const savedPct = baselineMb > 0 ? Math.round((savedMb / baselineMb) * 100) : 0
+  const savingsLine =
+    baselineMb <= 0
+      ? null
+      : savedMb <= 0
+        ? 'could be larger than the source'
+        : `saves ≈ ${savedMb.toFixed(1)} MB (${Math.min(99, savedPct)}%)`
+
   const run = async (kind: 'export' | 'compress') => {
     setRunning(true)
     setError(null)
     setResult(null)
     setPercent(0)
     try {
-      const parsed = targetMb.trim() ? Number(targetMb) : null
+      const rangeLen = kind === 'compress' ? duration : exportLength
+      // The compress path uses the same size model over the whole clip.
       const req = {
         clipPath,
         startSec: kind === 'compress' ? 0 : startSec,
         endSec: kind === 'compress' ? duration : endSec,
         format: kind === 'compress' ? ('mp4' as const) : format,
-        maxHeight: height === 0 ? null : (height as 480 | 720 | 1080),
+        maxHeight: capHeight === 0 ? null : (capHeight as 480 | 720 | 1080),
         gifFps,
-        targetMb: parsed && Number.isFinite(parsed) ? parsed : null,
-        audio,
+        targetMb: kind === 'compress' || format === 'mp4' ? (Math.max(0.1, ((videoKbps + 128) * rangeLen) / 8 / 1024)) : null,
         suffix: kind === 'compress' ? 'compressed' : undefined,
       }
       const res = await api.editorExport(req)
@@ -575,7 +632,10 @@ function ExportSection({
     }
   }
 
-  const currentMb = fileSize > 0 ? Math.round(fileSize / 1024 / 1024) : 0
+  const exportDisabledReason =
+    exportLength < 1 ? 'Select at least 1 second to export' : running ? 'An export is already running' : null
+  const compressDisabledReason =
+    duration < 1 ? 'This clip is too short to compress' : running ? 'An export is already running' : null
 
   return (
     <div className="rounded-lg border border-line bg-surface p-3" data-testid="export-section">
@@ -599,10 +659,10 @@ function ExportSection({
           ))}
         </div>
         <select
-          value={height}
+          value={capHeight}
           aria-label="Export height"
           disabled={running}
-          onChange={(e) => setHeight(Number(e.target.value) as 0 | 480 | 720 | 1080)}
+          onChange={(e) => setCapHeight(Number(e.target.value) as 0 | 480 | 720 | 1080)}
           className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
         >
           <option value={0}>Native</option>
@@ -622,56 +682,92 @@ function ExportSection({
             <option value={15}>15 fps</option>
             <option value={20}>20 fps</option>
           </select>
+        ) : null}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {format === 'gif' ? (
+          <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
+            ≈ {gifMb < 0.1 ? '<0.1' : gifMb.toFixed(1)} MB <span className="text-ink-faint">(rough)</span>
+            {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
+          </span>
         ) : (
           <>
-            <label className="flex items-center gap-1 text-[11px] text-ink-muted">
-              <input
-                type="checkbox"
-                checked={audio}
+            <span className="text-[11px] text-ink-muted">Size</span>
+            {(
+              [
+                ['Small', 25],
+                ['Balanced', 55],
+                ['Best', 85],
+              ] as const
+            ).map(([label, level]) => (
+              <button
+                key={label}
+                type="button"
                 disabled={running}
-                onChange={(e) => setAudio(e.target.checked)}
-              />
-              Audio
-            </label>
-            <label className="flex items-center gap-1 text-[11px] text-ink-muted">
-              Target size
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={targetMb}
-                disabled={running}
-                placeholder={currentMb ? `≈${currentMb} MB now` : 'MB'}
-                aria-label="Export target size in megabytes"
-                onChange={(e) => setTargetMb(e.target.value)}
-                className="h-7 w-24 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
-              />
-              MB
-            </label>
+                onClick={() => setSizeLevel(level)}
+                className={cn(
+                  'rounded border px-1.5 py-0.5 text-[11px] transition-colors',
+                  Math.abs(sizeLevel - level) < 1
+                    ? 'border-accent/60 bg-accent/10 text-ink'
+                    : 'border-line text-ink-muted hover:text-ink',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={sizeLevel}
+              disabled={running}
+              aria-label="Export size"
+              onChange={(e) => setSizeLevel(Number(e.target.value))}
+              className="h-1 w-36 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
+            />
+            <span className="tabular text-[11px] text-ink-muted" data-testid="size-readout">
+              ≈ {estMb < 10 ? estMb.toFixed(1) : Math.round(estMb)} MB
+              {savingsLine ? <span className="text-ink-faint"> · {savingsLine}</span> : null}
+            </span>
           </>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          data-testid="export-button"
-          disabled={busy || running || endSec - startSec < 1}
-          onClick={() => void run('export')}
-        >
-          {format === 'gif' ? 'Export GIF' : 'Export MP4'}
+        <span className="tabular text-[11px] text-ink-faint">
+          Range: trim {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(exportLength)})
+        </span>
+        <Button variant="ghost" size="sm" disabled={running} onClick={onUseWholeClip}>
+          Use whole clip
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          data-testid="compress-button"
-          disabled={busy || running || duration < 1}
-          title="Re-encode the whole clip to a smaller MP4"
-          onClick={() => void run('compress')}
-        >
-          Compress clip
-        </Button>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span title={exportDisabledReason ?? undefined}>
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="export-button"
+            disabled={busy || running || exportLength < 1}
+            onClick={() => void run('export')}
+          >
+            {format === 'gif' ? 'Export GIF' : 'Export MP4'}
+          </Button>
+        </span>
+        <span title={compressDisabledReason ?? undefined}>
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="compress-button"
+            disabled={busy || running || duration < 1}
+            title="Re-encode the whole clip to a smaller MP4"
+            onClick={() => void run('compress')}
+          >
+            Compress clip
+          </Button>
+        </span>
         {running ? (
           <>
             <span className="tabular text-[11px] text-ink-muted">{percent}%</span>
@@ -689,11 +785,6 @@ function ExportSection({
             <Button variant="ghost" size="sm" onClick={() => void api.showClipInFolder(result.path)}>
               Show in folder
             </Button>
-          </span>
-        ) : null}
-        {format === 'gif' && !running && !result ? (
-          <span className="text-[11px] text-ink-faint">
-            GIF size depends on the content — the real size is shown when it finishes.
           </span>
         ) : null}
       </div>

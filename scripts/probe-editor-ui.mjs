@@ -66,5 +66,40 @@ export default async function ({ evaluate, drainErrors, url }) {
   const clip = await evaluate(`document.body.innerText.match(/Replay[^\\n]*/)?.[0]`)
   console.log('clip shown:', clip)
 
+  // Clip-volume row: same lane shape as the tracks, with the combined waveform.
+  const master = await evaluate(`(() => {
+    const lane = document.querySelector('[role="slider"][aria-label="Clip volume playhead"]')
+    return { present: !!lane, hasBars: lane ? lane.children.length > 0 : false }
+  })()`)
+  console.log('clip volume waveform:', JSON.stringify(master))
+  if (!master.present) console.log('FAIL probe-editor-ui: clip volume lane missing')
+
+  // Wheel scrub: scrolling the trim bar must move the playhead.
+  const scrub = await evaluate(`(async () => {
+    const v = document.querySelector('video')
+    const lane = document.querySelector('[role="slider"][aria-label="Playhead"]')
+    if (!v || !lane) return 'missing'
+    const before = v.currentTime
+    const dispatch = (dy) => lane.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, bubbles: true, cancelable: true }))
+    for (let i = 0; i < 5; i++) { dispatch(100); await new Promise((r) => setTimeout(r, 60)) }
+    await new Promise((r) => setTimeout(r, 300))
+    return JSON.stringify({ before: Math.round(before * 10) / 10, after: Math.round(v.currentTime * 10) / 10 })
+  })()`)
+  console.log('wheel scrub:', scrub)
+  try {
+    const parsed = JSON.parse(scrub)
+    if (!(parsed.after > parsed.before + 1)) console.log('FAIL probe-editor-ui: wheel scrub did not advance the playhead')
+  } catch {
+    /* non-JSON outcome already printed */
+  }
+
+  // The export panel: slider, readout, savings, range row.
+  const exportPanel = await evaluate(`(() => {
+    const s = document.querySelector('[data-testid="export-section"]')
+    return s ? { readout: !!s.querySelector('[data-testid="size-readout"]'), text: s.innerText } : null
+  })()`)
+  console.log('export panel:', JSON.stringify(exportPanel?.text))
+  if (!exportPanel?.readout) console.log('FAIL probe-editor-ui: export size readout missing')
+
   console.log('renderer errors:', drainErrors().length ? drainErrors() : 'none')
 }
