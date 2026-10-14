@@ -462,7 +462,7 @@ let openRequest: { clipPath: string } | null = null
 
 const EDITOR_WIDTH = 900
 const EDITOR_HEIGHT = 840
-const EDITOR_MIN_WIDTH = 720
+const EDITOR_MIN_WIDTH = 760
 const EDITOR_MIN_HEIGHT = 600
 
 /**

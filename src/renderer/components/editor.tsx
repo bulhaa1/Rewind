@@ -312,32 +312,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
 
   const selectionLength = Math.max(0, endSec - startSec)
 
-  /*
-   * What trimming is worth, in bytes.
-   *
-   * Arithmetic on duration, not a measurement: a trim is a stream copy, so what
-   * survives is the portion of the clip in time, and a constant bitrate is the
-   * only case where bytes and seconds scale exactly. Real clips have a variable
-   * bitrate, so this is an estimate and is labelled as one.
-   *
-   * Plain arithmetic, deliberately not a useMemo. This sits below the `if (loading)`
-   * early return above, and a hook added below an early return runs on some
-   * renders and not others -- React rejects that outright ("rendered more hooks
-   * than during the previous render") and the editor renders nothing at all. A
-   * multiplication and a division are not worth that hazard.
-   *
-   * Shown only once something is actually cut, because "0 MB saved" on an
-   * untouched clip is noise rather than information.
-   */
-  const savedBytes = (() => {
-    const size = info?.fileSize ?? 0
-    if (size <= 0 || duration <= 0) return 0
-    const kept = Math.max(0, Math.min(1, selectionLength / duration))
-    return size * (1 - kept)
-  })()
-
-  const savedLabel = formatBytes(savedBytes)
-
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-canvas text-ink">
       <header className="flex shrink-0 items-center gap-2 border-b border-line/60 px-5 py-3">
@@ -454,14 +428,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             <span>
               Trim: {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(selectionLength)})
             </span>
-            {savedBytes > 0 ? (
-              <span
-                className="text-accent"
-                title="Estimated from the clip size and the trim length. A trim is a stream copy, so this assumes a constant bitrate."
-              >
-                ≈ {savedLabel} saved
-              </span>
-            ) : null}
           </div>
 
           <ExportSection
@@ -557,58 +523,50 @@ function ExportSection({
   const exportLength = Math.max(0, endSec - startSec)
 
   /*
-   * The size model, in one place: the slider picks a bits-per-pixel figure, the
-   * output dimensions come from the source aspect scaled to the chosen height,
-   * and 128 kbps of audio rides on top. The readout and the two-pass target are
-   * the same arithmetic, so the file lands on the number shown.
+   * The size model, in one place: the size level picks a bits-per-pixel figure and
+   * 128 kbps of audio rides on top. The output keeps the source's resolution, so
+   * there is no scaling math — the pixels are the clip's own. The readout and the
+   * two-pass target are the same arithmetic, so the file lands on the number shown.
    */
-  const outHeight = capHeight === 0 ? Math.max(2, height) : Math.min(capHeight, Math.max(2, height))
-  const outWidth = width > 0 ? Math.round(((outHeight * width) / Math.max(2, height)) / 2) * 2 : Math.round(outHeight * (16 / 9))
   const srcFps = fps > 0 ? fps : 30
-  const bpp = 0.015 + (sizeLevel / 100) * 0.105  // A re-encode should not cost more than roughly 1.5x the source's bits per
-  // OUTPUT pixel: a downscale needs far fewer bits than the source spent, and an
-  // efficient AV1 source is easy to overshoot. Below the cap the slider governs.
+  const bpp = 0.015 + (sizeLevel / 100) * 0.105
+  // Cap: a re-encode should not cost more than roughly 1.5x the source's bitrate —
+  // an efficient AV1 source is easy to overshoot. Below the cap the level governs.
   const srcPixels = width > 0 && height > 0 ? width * height : 0
   const srcKbps = fileSize > 0 && duration > 0 ? (fileSize * 8) / duration / 1000 : 0
-  const capKbps = srcKbps > 0 && srcPixels > 0 ? Math.max(200, ((srcKbps * outWidth * outHeight) / srcPixels) * 1.5) : Infinity
-  // The validator caps an export at 500 MB; keep the slider inside it instead of
+  const capKbps = srcKbps > 0 && srcPixels > 0 ? Math.max(200, srcKbps * 1.5) : Infinity
+  // The validator caps an export at 500 MB; keep the level inside it instead of
   // letting a long range produce a number the button then refuses.
   const cap500Kbps = exportLength > 0 ? Math.max(200, (500 * 8 * 1024) / exportLength - 129) : Infinity
-  const videoKbps = Math.min(
-    Math.max(200, (outWidth * outHeight * srcFps * bpp) / 1000),
-    capKbps,
-    cap500Kbps,
-  )
+  const videoKbps = Math.min(Math.max(200, (srcPixels * srcFps * bpp) / 1000), capKbps, cap500Kbps)
   // +129, not +128: main recomputes the video bitrate from this target with a
   // floor at 200, and one kbps of headroom keeps the roundtrip above the floor.
   const estMb = Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024)
 
-  // Same baseline the trim estimate uses: the source's share of the exported range.
-  const baselineMb = fileSize > 0 && duration > 0 ? fileSize * (exportLength / duration) / 1024 / 1024 : 0
-  const savedMb = baselineMb - estMb
-  const savedPct = baselineMb > 0 ? Math.round((savedMb / baselineMb) * 100) : 0
+  // The baseline is the source's share of the exported range, so the percent reads
+  // against the part being encoded, not the whole file.
+  const baselineMb = fileSize > 0 && duration > 0 ? (fileSize * (exportLength / duration)) / 1024 / 1024 : 0
+  const savedPct = baselineMb > 0 ? Math.round(((baselineMb - estMb) / baselineMb) * 100) : 0
   const savingsLine =
     baselineMb <= 0
       ? null
-      : savedMb <= 0
-        ? 'could be larger than the source'
-        : `saves ≈ ${savedMb.toFixed(1)} MB (${Math.min(99, savedPct)}%)`
+      : savedPct <= 0
+        ? '≈ same size as the source'
+        : `${Math.min(99, savedPct)}% smaller`
 
-  const run = async (kind: 'export' | 'compress') => {
+  const run = async () => {
     setRunning(true)
     setError(null)
     setResult(null)
     setPercent(0)
     try {
-      const rangeLen = kind === 'compress' ? duration : exportLength
-      // The compress path uses the same size model over the whole clip.
+      // Always a copy beside the clip; the original is never overwritten.
       const req = {
         clipPath,
-        startSec: kind === 'compress' ? 0 : startSec,
-        endSec: kind === 'compress' ? duration : endSec,
-        maxHeight: capHeight === 0 ? null : (capHeight as 480 | 720 | 1080),
-        targetMb: Math.max(0.1, ((videoKbps + 129) * rangeLen) / 8 / 1024),
-        suffix: kind === 'compress' ? 'compressed' : undefined,
+        startSec,
+        endSec,
+        targetMb: Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024),
+        suffix: 'compressed',
       }
       const res = await api.editorExport(req)
       if (!res.success || !res.data) {
@@ -625,26 +583,14 @@ function ExportSection({
 
   const exportDisabledReason =
     exportLength < 1 ? 'Select at least 1 second to export' : running ? 'An export is already running' : null
-  const compressDisabledReason =
-    duration < 1 ? 'This clip is too short to compress' : running ? 'An export is already running' : null
 
   return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2.5" data-testid="export-section">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface px-3 py-2.5" data-testid="export-section">
+      {/* Both rows are nowrap on purpose: at the window's minimum width they fit,
+          and a resize reflows nothing — the flexible text shrinks instead. */}
+      <div className="flex flex-nowrap items-center gap-x-3">
         <span className="text-[12px] font-medium">Export</span>
-        <select
-          value={capHeight}
-          aria-label="Export height"
-          disabled={running}
-          onChange={(e) => setCapHeight(Number(e.target.value) as 0 | 480 | 720 | 1080)}
-          className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
-        >
-          <option value={0}>Native</option>
-          <option value={1080}>1080p</option>
-          <option value={720}>720p</option>
-          <option value={480}>480p</option>
-        </select>
-        <span className="ml-1 text-[11px] text-ink-muted">Size</span>
+        <span className="text-[11px] text-ink-muted">Size</span>
         {(
           [
             ['Small', 25],
@@ -673,51 +619,37 @@ function ExportSection({
         </span>
         {savingsLine ? <span className="tabular text-[11px] text-accent">{savingsLine}</span> : null}
 
-        {/* Actions ride the same line as the settings they use, so the panel fills
-            its width instead of stacking three half-empty rows. */}
-        <span className="ml-auto flex items-center gap-2">
-          <span title={exportDisabledReason ?? undefined}>
-            <Button
-              variant="primary"
-              size="sm"
-              data-testid="export-button"
-              disabled={busy || running || exportLength < 1}
-              onClick={() => void run('export')}
-            >
-              Export MP4
-            </Button>
-          </span>
-          <span title={compressDisabledReason ?? undefined}>
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="compress-button"
-              disabled={busy || running || duration < 1}
-              title="Re-encode the whole clip at the same size setting"
-              onClick={() => void run('compress')}
-            >
-              Compress clip
-            </Button>
-          </span>
+        {/* The action rides the same line as the settings it uses, so the panel fills
+            its width instead of stacking half-empty rows. */}
+        <span className="ml-auto" title={exportDisabledReason ?? undefined}>
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="export-button"
+            disabled={busy || running || exportLength < 1}
+            onClick={() => void run()}
+          >
+            Export
+          </Button>
         </span>
       </div>
 
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="tabular text-[11px] text-ink-faint">
+      <div className="mt-1.5 flex flex-nowrap items-center gap-x-3 overflow-hidden">
+        <span className="tabular shrink-0 text-[11px] text-ink-faint">
           Range {formatDuration(startSec)} → {formatDuration(endSec)} ({formatDuration(exportLength)})
         </span>
         <button
           type="button"
           disabled={running}
           onClick={onUseWholeClip}
-          className="text-[11px] text-ink-muted underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink disabled:opacity-45"
+          className="shrink-0 text-[11px] text-ink-muted underline decoration-line-strong underline-offset-2 transition-colors hover:text-ink disabled:opacity-45"
         >
           Use whole clip
         </button>
         {running ? (
           <>
-            <span className="tabular text-[11px] text-ink-muted">{percent}%</span>
-            <div className="h-1 w-32 overflow-hidden rounded bg-line">
+            <span className="tabular shrink-0 text-[11px] text-ink-muted">{percent}%</span>
+            <div className="h-1 w-32 shrink-0 overflow-hidden rounded bg-line">
               <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
             </div>
             <Button variant="ghost" size="sm" onClick={() => void api.editorExportCancel()}>
@@ -726,8 +658,10 @@ function ExportSection({
           </>
         ) : null}
         {result ? (
-          <span className="flex items-center gap-2 text-[11px] text-ink-muted">
-            Saved <span className="truncate">{result.path.split(/[\\/]/).pop()}</span> ({formatBytes(result.bytes)})
+          <span className="flex min-w-0 items-center gap-2 text-[11px] text-ink-muted">
+            <span className="truncate">
+              Saved <span title={result.path}>{result.path.split(/[\\/]/).pop()}</span> ({formatBytes(result.bytes)})
+            </span>
             <Button variant="ghost" size="sm" onClick={() => void api.showClipInFolder(result.path)}>
               Show in folder
             </Button>

@@ -1795,7 +1795,6 @@ function isExportRequest(v: unknown): v is {
   clipPath: string
   startSec: number
   endSec: number
-  maxHeight: 480 | 720 | 1080 | null
   targetMb: number
   suffix?: string
 } {
@@ -1804,7 +1803,6 @@ function isExportRequest(v: unknown): v is {
   if (typeof a.clipPath !== 'string' || a.clipPath.length === 0) return false
   if (typeof a.startSec !== 'number' || !Number.isFinite(a.startSec) || a.startSec < 0) return false
   if (typeof a.endSec !== 'number' || !Number.isFinite(a.endSec) || a.endSec <= a.startSec) return false
-  if (a.maxHeight !== null && ![480, 720, 1080].includes(a.maxHeight)) return false
   if (typeof a.targetMb !== 'number' || !Number.isFinite(a.targetMb) || a.targetMb < 0.1 || a.targetMb > 500) {
     return false
   }

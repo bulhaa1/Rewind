@@ -224,8 +224,6 @@ export interface ExportRequest {
   startSec: number
   /** Seconds into the clip where the export ends. */
   endSec: number
-  /** Cap the output height; null keeps the source dimensions. */
-  maxHeight: 480 | 720 | 1080 | null
   /** Two-pass target in MB (audio always kept at 128 kbps inside it). */
   targetMb: number
   /** Filename suffix in the output name, e.g. `(compressed)`. */

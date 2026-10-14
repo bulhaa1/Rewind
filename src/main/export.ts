@@ -24,19 +24,14 @@ const AUDIO_KBPS = 128
 /** Below this the two-pass video bitrate cannot express anything watchable. */
 const MIN_VIDEO_KBPS = 200
 
-/** Adds a scale filter when the source is taller than the requested height. */
-function scaleArgs(maxHeight: number | null, sourceHeight: number): string[] {
-  if (!maxHeight || maxHeight >= sourceHeight) return []
-  return ['-vf', `scale=-2:${maxHeight}:flags=lanczos`]
-}
-
 /**
  * Exports a clip range as a small shareable MP4.
  *
  * The range is cut with input-side `-ss`/`-t`: with a re-encode ffmpeg decodes from
  * the keyframe and discards the excess, so the cut is frame-accurate and still fast.
  * A target size is honoured by a two-pass ABR encode, which lands within a few
- * percent of the ask.
+ * percent of the ask. The output keeps the source's resolution: a share clip is
+ * encoded at the pixels it was recorded with, never downscaled.
  */
 export async function exportClip(
   req: ExportRequest,
@@ -80,7 +75,6 @@ async function runExport(
   const out = uniquePath(dir, suffix ? `${stem} (${suffix})` : stem, '.mp4')
 
   const seek = ['-ss', start.toFixed(3), '-t', duration.toFixed(3), '-i', req.clipPath]
-  const scale = scaleArgs(req.maxHeight, info.height)
   const progress = ['-progress', 'pipe:1', '-nostats']
   const report = (ofTotal: (pct: number) => number) => {
     if (!deps.onProgress) return undefined
@@ -97,7 +91,7 @@ async function runExport(
     const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
     const passlog = path.join(passDir, 'pass')
     try {
-      const videoArgs = [...seek, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
+      const videoArgs = [...seek, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
       await runFfmpeg(
         [...videoArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
         signal,
