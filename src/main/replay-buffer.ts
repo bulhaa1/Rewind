@@ -109,28 +109,6 @@ function modifiedAfter(file: string, ms: number): boolean {
   }
 }
 
-/**
- * Releases an OBS factory object, logging rather than throwing.
- *
- * An output holds a reference to its encoder, so leaking either one keeps a
- * hardware encoder locked and the next recording fails to start. Destroys that
- * take over a second are logged because that is the usual symptom of OBS
- * wedging during teardown.
- */
-function destroyObsObject(obs: ObsModule | null, obj: any, factoryKey: keyof ObsModule, label: string): void {
-  if (!obj) return
-  const t0 = Date.now()
-  try {
-    const factory = (obs as any)?.[factoryKey]
-    if (factory?.destroy) factory.destroy(obj)
-    else log.warn(`No destroy() on ${factoryKey} for ${label}`)
-  } catch (e) {
-    log.warn(`Failed to destroy ${label}: ${e}`)
-  }
-  const took = Date.now() - t0
-  if (took > 1000) log.warn(`Destroying ${label} took ${took}ms`)
-}
-
 export class ReplayBuffer {
   private replayBuffer: any = null
   /** Config donor for the replay buffer. Never started. */
@@ -156,6 +134,8 @@ export class ReplayBuffer {
   /** True while the buffer is paused by the user; settings changes must not silently resume it. */
   private userPaused = false
   private pendingSave: ReturnType<typeof deferred<string>> | null = null
+  /** The save in flight, shared by callers that overlap one. See `saveReplayBuffer`. */
+  private saveInFlight: Promise<string> | null = null
   private pendingStop: ReturnType<typeof deferred<void>> | null = null
   private pendingStart: ReturnType<typeof deferred<void>> | null = null
   private lastObsError: { code: number; signal: string; error?: string } | null = null
@@ -181,7 +161,6 @@ export class ReplayBuffer {
       obs: ObsModule | null
       isInitialized(): boolean
       getConfig(): ReplayConfig
-      updateConfigOutputPath(p: string): void
       audioTrackMask(): number
       ensureOutputScene?(): boolean
     },
@@ -972,10 +951,17 @@ export class ReplayBuffer {
    /**
    * Flushes the rolling buffer to disk. Resolves with the saved file path.
    * The OBS `saved`/`wrote` signal is what actually confirms the flush completed.
+   *
+   * A save already in flight is shared rather than started again. OBS answers one
+   * flush per `save()`, so a second call would replace the pending deferred and
+   * leave the first caller to time out after ten seconds -- reporting a clip as
+   * unsaved (and triggering wedge recovery, since that is what a timeout looks
+   * like) when it was written all along.
    */
   async saveReplayBuffer(sourceType: CaptureMode = 'display'): Promise<string> {
     if (!this.obsCore.isInitialized()) throw new Error('OBS not initialized')
     if (!this.active || !this.replayBuffer) throw new Error('Replay buffer is not running')
+    if (this.saveInFlight) return this.saveInFlight
 
     const d = deferred<string>(TIMING.SAVE, 'Timeout waiting for replay buffer save')
     this.pendingSave = d
@@ -985,7 +971,12 @@ export class ReplayBuffer {
       this.pendingSave = null
       throw e instanceof Error ? e : new Error(String(e))
     }
-    return d.promise
+
+    const flight = d.promise.finally(() => {
+      this.saveInFlight = null
+    })
+    this.saveInFlight = flight
+    return flight
   }
 
   /**

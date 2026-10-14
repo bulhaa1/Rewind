@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -360,8 +360,10 @@ export function Rail({
   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null)
   const [renaming, setRenaming] = useState<ClipInfo | null>(null)
 
-  const sortedClips = sortNewest(clips)
-  const sortedShots = sortNewest(shots)
+  // Memoized: the rail re-renders on menu opens, width drags and view switches, and
+  // sorting both full lists on each of those is wasted work once the library is big.
+  const sortedClips = useMemo(() => sortNewest(clips), [clips])
+  const sortedShots = useMemo(() => sortNewest(shots), [shots])
   const items: (ClipInfo | ScreenshotInfo)[] = view === 'clips' ? sortedClips : sortedShots
   const loading = view === 'clips' ? clipsPending : shotsPending
 

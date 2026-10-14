@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron'
 import path from 'node:path'
 import { scope } from './logger.js'
+import { devServerUrl } from './window.js'
 import type { BufferStatus } from '@shared/types.js'
 
 const log = scope('Notification')
@@ -96,8 +97,8 @@ export function notify(type: BufferStatus, deps: NotifyDeps, message?: string, t
   const win = new BrowserWindow({
     width: NOTIFICATION_WIDTH,
     height: NOTIFICATION_HEIGHT,
-    x: screen.getPrimaryDisplay().workAreaSize.width - NOTIFICATION_WIDTH - SCREEN_MARGIN,
-    y: SCREEN_MARGIN,
+    x: screen.getPrimaryDisplay().workArea.x + screen.getPrimaryDisplay().workArea.width - NOTIFICATION_WIDTH - SCREEN_MARGIN,
+    y: screen.getPrimaryDisplay().workArea.y + SCREEN_MARGIN,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -131,7 +132,7 @@ export function notify(type: BufferStatus, deps: NotifyDeps, message?: string, t
     win.moveTop()
   })
 
-  const devUrl = process.env.REWIND_DEV_SERVER
+  const devUrl = devServerUrl()
   const indexHtml = path.join(deps.rendererDir, 'index.html')
   const params = new URLSearchParams({ notification: type })
   if (message) params.set('message', message)

@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, screen, shell } from 'electron'
+import { BrowserWindow, screen } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
@@ -11,8 +11,7 @@ import {
   resolveFfmpeg,
   uniquePath,
 } from './ffmpeg.js'
-import { isInside, nonEmptyString, shortString } from './util.js'
-import { log as mainLog } from './logger.js'
+import { devServerUrl } from './window.js'
 
 const log = scope('ClipEditor')
 const winLog = scope('EditorWindow')
@@ -114,10 +113,6 @@ export function analyzeAudio(info: ProbeAudioInfo): { split: boolean; streams: n
 /**
  * Remux MKV to MP4 for preview: OBS can record MKV, but Chromium's demuxer is
  * unreliable with it, and a stream copy is cheap.
- */
-/**
- * Remux MKV to MP4 for preview: OBS can record MKV, but Chromium's demuxer is
- * unreliable with it, and a stream copy is cheap.
  *
  * Same argument-order correction as extractTrackPreview: `-i` first, then the
  * output options. FFMPEG_MAP's input-side form only works when nothing else
@@ -132,7 +127,6 @@ async function remuxForPreview(file: string): Promise<string> {
   return out
 }
 
-/** Extracts one audio stream to m4a so the renderer can decode a waveform. */
 /**
  * Extracts one audio stream to m4a so the renderer can decode a waveform.
  *
@@ -473,7 +467,7 @@ const EDITOR_MIN_HEIGHT = 600
  */
 export function openEditorWindow(clipPath: string, preloadPath: string, rendererDir: string): void {
   const indexHtml = path.join(rendererDir, 'index.html')
-  const devUrl = process.env.REWIND_DEV_SERVER
+  const devUrl = devServerUrl()
   const urlFor = (p: string) => {
     const query = `?editor=1&clipPath=${encodeURIComponent(p)}`
     return devUrl ? `${devUrl}${query}` : `file://${indexHtml}${query}`
@@ -563,5 +557,3 @@ export function currentEditorClip(): { clipPath: string } | null {
 export function closeEditorWindow(): void {
   if (editorWindow && !editorWindow.isDestroyed()) editorWindow.close()
 }
-
-export { isInside, nonEmptyString, shortString, dialog, shell, mainLog }

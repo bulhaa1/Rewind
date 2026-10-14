@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { isInside, isReservedDeviceName, nonEmptyString } from './util.js'
-import { probeClip, probeDuration, probe, type ClipProbe } from './ffmpeg.js'
+import { probeClip, probeDuration, type ClipProbe } from './ffmpeg.js'
 import { clipMeta, type ClipMeta } from './store.js'
 import { setClipMeta } from './clip-meta.js'
 import {
@@ -12,7 +12,6 @@ import {
   RECORDING_PREFIX,
   REPLAY_PREFIX,
   parseRecordingStamp,
-  THUMBNAIL,
 } from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
 
@@ -299,7 +298,7 @@ export function renameLegacySourceFolders(root: string): void {
 }
 
 /** Files the library should surface: real recordings and editor copies, not temporaries. */
-function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>, uploadKeys: Set<string>): boolean {
+function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>): boolean {
   if (!fileName.endsWith('.mp4') && !fileName.endsWith('.mkv')) return false
   // A trim in progress is a half-written file that is about to be renamed over
   // its source. Listing it would show a clip that is about to stop existing.
@@ -311,7 +310,21 @@ function shouldInclude(fullPath: string, fileName: string, metaKeys: Set<string>
   // alone meant a continuous recording could silently vanish from the library.
   if (fileName.startsWith(REPLAY_PREFIX) || fileName.startsWith(RECORDING_PREFIX)) return true
   if (isEditorCopy(fileName)) return true
-  return metaKeys.has(fullPath.toLowerCase()) || uploadKeys.has(fullPath)
+  return metaKeys.has(fullPath.toLowerCase())
+}
+
+/**
+ * The store key for a file, whatever case it was written with.
+ *
+ * Windows paths are case-insensitive and this store is not, so a record written
+ * under `...\Captures\REWIND\...` is invisible to a lookup for
+ * `...\Captures\Rewind\...`. That mismatch is how 82 clips lost their source and
+ * audio tracks once; every read of the map goes through here for that reason.
+ */
+function findMetaKey(meta: Record<string, ClipMeta>, file: string): string | undefined {
+  if (file in meta) return file
+  const lower = file.toLowerCase()
+  return Object.keys(meta).find((key) => key.toLowerCase() === lower)
 }
 
 /**
@@ -336,7 +349,6 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
   const metaByLower = new Map<string, ClipMeta>()
   for (const [key, record] of Object.entries(meta)) metaByLower.set(key.toLowerCase(), record)
   const metaKeys = new Set(metaByLower.keys())
-  const uploadKeys = new Set<string>()
 
   const found: { fullPath: string; filename: string; sourceName?: string }[] = []
 
@@ -351,7 +363,7 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         await walk(full, entry.name)
-      } else if (entry.isFile() && shouldInclude(full, entry.name, metaKeys, uploadKeys)) {
+      } else if (entry.isFile() && shouldInclude(full, entry.name, metaKeys)) {
         found.push({ fullPath: full, filename: entry.name, sourceName })
       }
     }
@@ -360,6 +372,16 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
 
   const out: ClipInfo[] = []
   const metaUpdates: Record<string, (typeof meta)[string]> = {}
+
+  /*
+   * Two phases, because measuring is the expensive half.
+   *
+   * Every stale clip needs its own ffmpeg process, and a fresh machine or a
+   * deleted `clip-meta.json` makes every clip stale. Probing them one after
+   * another is minutes of nothing on a large library, so the filesystem walk
+   * decides what needs measuring and the probes then run a few at a time.
+   */
+  const stale: { item: (typeof found)[number]; recordedAt: number; size: number }[] = []
 
   for (const item of found) {
     let st: fs.Stats
@@ -374,11 +396,9 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
       record?.recordedAt ?? parseRecordingStamp(item.filename) ?? Math.round(st.mtimeMs / 1000) * 1000
 
     // Re-probe when we have never measured, or when the file changed underneath us.
-    const stale = record?.duration === undefined || record?.probedSize !== st.size
-    let duration = record?.duration ?? 0
-    if (stale) {
-      duration = await probeDuration(item.fullPath)
-      metaUpdates[item.fullPath] = { recordedAt, duration, probedSize: st.size }
+    if (record?.duration === undefined || record?.probedSize !== st.size) {
+      stale.push({ item, recordedAt, size: st.size })
+      continue
     }
 
     out.push({
@@ -388,12 +408,36 @@ export async function scanClips(outputRoot: string): Promise<ClipInfo[]> {
       recordedAt,
       edited: record?.edited,
       editedAt: record?.editedAt,
-      duration,
+      duration: record.duration,
       fileSize: st.size,
       sourceName: item.sourceName ?? record?.source ?? null,
       localExists: true,
       audioTracks: record?.audioTracks ?? ['Mix'],
     })
+  }
+
+  const PROBE_BATCH = 4
+  for (let i = 0; i < stale.length; i += PROBE_BATCH) {
+    await Promise.all(
+      stale.slice(i, i + PROBE_BATCH).map(async ({ item, recordedAt, size }) => {
+        const record = metaByLower.get(item.fullPath.toLowerCase())
+        const duration = await probeDuration(item.fullPath)
+        metaUpdates[item.fullPath] = { recordedAt, duration, probedSize: size }
+        out.push({
+          id: item.fullPath,
+          path: item.fullPath,
+          filename: item.filename,
+          recordedAt,
+          edited: record?.edited,
+          editedAt: record?.editedAt,
+          duration,
+          fileSize: size,
+          sourceName: item.sourceName ?? record?.source ?? null,
+          localExists: true,
+          audioTracks: record?.audioTracks ?? ['Mix'],
+        })
+      }),
+    )
   }
 
   if (Object.keys(metaUpdates).length > 0) {
@@ -515,9 +559,10 @@ export function renameClip(file: string, rawName: string, carryThumbnail: (from:
   // scanner only adopts non-`Replay` filenames it has metadata for, so a renamed
   // clip without a record would silently vanish from the list.
   const meta = clipMeta.get('clips') ?? {}
-  const carried = meta[file] ?? { recordedAt: statMtimeMs(file) }
+  const key = findMetaKey(meta, file)
+  const carried = (key ? meta[key] : undefined) ?? { recordedAt: statMtimeMs(file) }
   const next = { ...meta, [target]: carried }
-  delete next[file]
+  delete next[key ?? file]
   clipMeta.set('clips', next)
   try {
     carryThumbnail(file, target)
@@ -546,8 +591,11 @@ export function deleteClip(file: string, scope: DeleteScope, onThumbnailDeleted:
 
   try {
     const meta = clipMeta.get('clips') ?? {}
-    delete meta[file]
-    clipMeta.set('clips', meta)
+    const key = findMetaKey(meta, file)
+    if (key) {
+      delete meta[key]
+      clipMeta.set('clips', meta)
+    }
   } catch (e) {
     log.warn(`Deleted ${path.basename(file)} but failed to drop its metadata:`, e)
   }
@@ -577,5 +625,3 @@ export function resolveClipPath(
   }
   return { path: candidate }
 }
-
-export { probe, THUMBNAIL }

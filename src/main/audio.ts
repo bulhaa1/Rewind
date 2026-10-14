@@ -153,7 +153,9 @@ function logInventory(devices: AudioDevice[], channels: Record<AudioChannel, str
 
 /** True when the stored id still resolves to a live endpoint. */
 export function deviceAvailable(obs: ObsModule | null, id: string, kind: DeviceKind): boolean {
-  if (id === 'default') return true
+  // "default" is a device the OS resolves, so there is no id to look up -- but a
+  // machine with no input endpoint at all must not report a microphone as usable.
+  if (id === 'default') return kind === 'output' || listDevices(obs, true).some((d) => d.kind === 'input')
   return listDevices(obs, true).some((d) => d.id === id && d.kind === kind)
 }
 
@@ -473,7 +475,9 @@ export class AudioMix {
 
   applyMaster(): void {
     if (!this.ready) return
-    if (this.customActive) {
+    // Custom mode with no app source live has nothing of its own to apply, so the
+    // loopback fallback (see `syncSources`) carries the master level instead.
+    if (this.customActive && this.appSources.size > 0) {
       for (const exe of this.appSources.keys()) this.applyAppFader(exe)
       return
     }
@@ -528,12 +532,28 @@ export class AudioMix {
     }
 
     const missing = apps.filter((a) => !this.appSources.has(a.exe))
+
+    /*
+     * With no app session captured, custom mode would record silence: the loopback
+     * was released when custom mode was entered, and a stored per-app level keeps
+     * `customized()` true even after that app has been closed. Falling back to the
+     * whole desktop keeps system sounds and window-less apps audible; the loopback
+     * goes away again as soon as an app source exists.
+     */
+    if (this.appSources.size === 0 && missing.length === 0) {
+      this.createLoopback()
+      return
+    }
+    if (this.appSources.size > 0) this.releaseLoopback()
+
     if (missing.length === 0) return
 
     const probes = this.probeAppWindows(force || this.isProbeStale())
     for (const app of missing) {
-      if (this.appSources.size >= SLOT.APP_MAX) {
-        mixLog.warn(`App audio source cap (${SLOT.APP_MAX}) reached, skipping: ${app.exe}`)
+      // Slots run APP_BASE..APP_MAX exclusive, so the count of usable slots is the
+      // difference -- not APP_MAX, which is an index bound.
+      if (this.appSources.size >= SLOT.APP_MAX - SLOT.APP_BASE) {
+        mixLog.warn(`App audio source cap (${SLOT.APP_MAX - SLOT.APP_BASE}) reached, skipping: ${app.exe}`)
         break
       }
       const windowId = probes.get(app.exe)

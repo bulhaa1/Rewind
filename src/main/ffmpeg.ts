@@ -14,6 +14,18 @@ const log = scope('Ffmpeg')
  */
 const SCREENSHOT_TIMEOUT_MS = 20_000
 
+/**
+ * How long `ffmpeg -i` may take to describe a file.
+ *
+ * The library can live on a mapped or network drive, and a disconnected share
+ * makes `ffmpeg -i` block on I/O forever. Without a ceiling the scan that awaits
+ * it never returns and the library spins for the life of the session.
+ */
+const PROBE_TIMEOUT_MS = 15_000
+
+/** ffmpeg's output kept for the error message. See `runFfmpeg`. */
+const MAX_STDERR_CHARS = 8_192
+
 let ffmpegPath: string | null = null
 
 /** Packaged builds ship the static binary in resources; dev falls back to the npm package. */
@@ -74,7 +86,10 @@ export function runFfmpeg(args: string[], signal?: AbortSignal, onProgress?: (se
     signal?.addEventListener('abort', onAbort, { once: true })
 
     child.stderr?.on('data', (d) => {
-      stderr += String(d)
+      // Only the tail is kept: a damaged clip makes ffmpeg print a warning per bad
+      // frame, and the whole thing ends up inside the thrown Error and in the
+      // renderer's error line.
+      stderr = (stderr + String(d)).slice(-MAX_STDERR_CHARS)
     })
     child.stdout?.on('data', (d) => {
       stdout += String(d)
@@ -229,7 +244,7 @@ export function probe(file: string): Promise<ProbeResult | null> {
       resolveFfmpeg(),
       // No output file on purpose: ffmpeg prints the input block and exits 1.
       ['-hide_banner', '-i', file],
-      { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      { windowsHide: true, maxBuffer: 8 * 1024 * 1024, timeout: PROBE_TIMEOUT_MS },
       (_err, _stdout, stderr) => {
         const parsed = parseInputBlock(String(stderr ?? ''))
         if (!parsed) {

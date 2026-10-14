@@ -151,7 +151,9 @@ export async function stitchSegments(opts: StitchOptions): Promise<{ file: strin
   const t0 = Date.now()
 
   if (parts.length === 1) {
-    fs.copyFileSync(parts[0], opts.outputPath)
+    // Async on purpose: this can be hundreds of megabytes, and the synchronous
+    // form freezes the whole app (no repaint, no IPC, no hotkeys) until it is done.
+    await fs.promises.copyFile(parts[0], opts.outputPath)
   } else {
     const listFile = path.join(opts.scratchDir, 'parts.txt')
     // Written without a BOM: the concat demuxer reads this file literally, and a

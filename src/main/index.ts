@@ -492,7 +492,10 @@ async function applyProfileLocked(index: number): Promise<void> {
  * reinit doesn't produce a live buffer, since a wedged OBS can poison itself.
  */
 async function recoverFromWedge(): Promise<void> {
-  await reinitPipeline('Restarting recording...')
+  // Caught, not awaited bare: a reinit that throws is exactly the case the relaunch
+  // exists for, and letting the rejection escape skipped it and left the app open
+  // with a dead buffer and no recovery path.
+  await reinitPipeline('Restarting recording...').catch((e) => log.error('Reinit after wedge failed:', e))
   if (pipelineActive()) return
   log.warn('OBS reinit after wedge failed; relaunching for a clean process')
   app.relaunch()
@@ -1426,6 +1429,18 @@ async function runProfilesSelfTest(): Promise<void> {
     expect(planProfileChange(base, { ...base, bufferDuration: 120, name: 'x' }) === 'duration', 'tier: length -> duration')
     expect(planProfileChange(base, { ...base, visualQuality: 'low', name: 'x' }) === 'chain', 'tier: quality -> chain')
     expect(planProfileChange(base, { ...base, fps: 60, name: 'x' }) === 'full', 'tier: fps -> full')
+
+    /*
+     * The gain filter takes a dB offset, and the slider is a linear multiplier. The
+     * conversion had no assertion at all: every probe checked the stored number and
+     * the multiplier OBS echoed back, so a wrong constant would have recorded at the
+     * wrong gain and passed.
+     */
+    const { mulToDb } = require('./obs-core.js') as typeof import('./obs-core.js')
+    expect(Math.abs(mulToDb(1) - 0) < 0.01, `gain 1x is 0 dB (${mulToDb(1)})`)
+    expect(Math.abs(mulToDb(0.8) + 1.94) < 0.05, `gain 0.8x is -1.9 dB (${mulToDb(0.8)})`)
+    expect(Math.abs(mulToDb(1.5) - 3.52) < 0.05, `gain 1.5x is +3.5 dB (${mulToDb(1.5)})`)
+    expect(mulToDb(0) <= -60, `gain 0x is the filter's floor (${mulToDb(0)})`)
 
     // A switch writes the profile's values into the live settings.
     const profiles = getProfiles().profiles

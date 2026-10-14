@@ -105,6 +105,16 @@ export function MicStrip() {
   }, [commit])
 
   const toggleMute = () => {
+    // At the floor the icon reports silence, and the label promises sound back.
+    // Muting an already-silent microphone would do the opposite of what it says, so
+    // the button restores the level instead.
+    if (silent && !muted) {
+      void runAction(async () => {
+        const res = await api.setChannelVolume('microphone', 1)
+        if (!res.success) throw new Error(res.error)
+      }).then(() => client.invalidateQueries({ queryKey: ['audio-levels'] }))
+      return
+    }
     void runAction(async () => {
       const res = await api.setChannelMuted('microphone', !muted)
       if (!res.success) throw new Error(res.error)

@@ -11,7 +11,21 @@ const crashLog = scope('Crash')
 
 const PRELOAD = path.join(__dirname, '../preload/index.js')
 const RENDERER_DIR = path.join(__dirname, '../renderer')
-const DEV_URL = process.env.REWIND_DEV_SERVER
+
+/**
+ * The Vite dev server URL, honoured only in an unpackaged build.
+ *
+ * A packaged app must never load remote content: whichever page is loaded receives
+ * the preload bridge and therefore every IPC channel, and this variable is
+ * inherited from the environment rather than chosen by the user. Dev URLs are
+ * meant to be loopback, but nothing here can prove that, so the build flag is what
+ * decides.
+ */
+export function devServerUrl(): string | undefined {
+  return app.isPackaged ? undefined : process.env.REWIND_DEV_SERVER
+}
+
+const DEV_URL = devServerUrl()
 
 const MAIN_WIDTH = 1000
 const MAIN_HEIGHT = 620
@@ -25,6 +39,8 @@ const MIN_HEIGHT = 540
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+/** True once the shutdown wait has finished, so a later quit may proceed at once. */
+let cleanupDone = false
 
 /** True once a real quit is underway (used to distinguish hide-vs-quit). */
 export const lifecycle = { value: false, installing: false }
@@ -161,14 +177,17 @@ function acquireSingleInstanceLock(onReady: () => void): void {
 // ---------------------------------------------------------------------------
 
 function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWindow {
-  const { width: areaW, height: areaH } = screen_workArea()
+  const area = screen_workArea()
   const win = new BrowserWindow({
     width: MAIN_WIDTH,
     height: MAIN_HEIGHT,
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
-    x: areaW - MAIN_WIDTH,
-    y: areaH - MAIN_HEIGHT,
+    // Placed from the work area's origin, not just its size: with the taskbar on the
+    // left or the top the work area starts at an offset, and ignoring it put the
+    // panel partly underneath the taskbar.
+    x: area.x + area.width - MAIN_WIDTH,
+    y: area.y + area.height - MAIN_HEIGHT,
     show: false,
     resizable: true,
     // Frameless with a native overlay: Windows still draws the real caption
@@ -228,9 +247,10 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
   return win
 }
 
-function screen_workArea(): { width: number; height: number } {
+/** Work area of the primary display: size and origin, since the taskbar may sit on any edge. */
+function screen_workArea(): { x: number; y: number; width: number; height: number } {
   const { screen } = require('electron')
-  return screen.getPrimaryDisplay().workAreaSize
+  return screen.getPrimaryDisplay().workArea
 }
 
 export function getMainWindow(): BrowserWindow | null {
@@ -327,7 +347,13 @@ export function bootstrap(hooks: {
   app.on('window-all-closed', () => {})
 
   app.on('before-quit', (e) => {
-    if (lifecycle.value) return
+    if (lifecycle.value) {
+      // A second quit (a repeated SIGINT, an installer handing over) must not skip
+      // the wait: `will-quit` force-kills obs64, and the recording being stitched
+      // is the file the first quit is holding on for.
+      if (!cleanupDone) e.preventDefault()
+      return
+    }
     lifecycle.value = true
 
     // The installer is already running and force-kills this process a few seconds
@@ -336,6 +362,7 @@ export function bootstrap(hooks: {
     // hands over, and the Install button refuses to start while a recording is
     // running, so there is nothing to protect at this point.
     if (lifecycle.installing) {
+      cleanupDone = true
       destroyTray()
       return
     }
@@ -361,6 +388,7 @@ export function bootstrap(hooks: {
       } catch (err) {
         log.error('Cleanup failed:', err)
       }
+      cleanupDone = true
       app.quit()
     })()
   })

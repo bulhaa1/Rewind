@@ -522,10 +522,6 @@ export class ObsCore {
     this.config.bufferDuration = seconds
   }
 
-  updateConfigOutputPath(p: string): void {
-    this.config.outputPath = p
-  }
-
   /**
    * The scene OBS renders for outputs that are not bound to an explicit channel.
    *
@@ -678,8 +674,9 @@ export function createAudioSource(
   mod: ObsModule,
   spec: { type: string; name: string; settings: Record<string, unknown>; slot: number; track: number; boostable?: boolean },
 ): any | null {
+  let source: any = null
   try {
-    const source = mod.InputFactory.create(spec.type, spec.name, spec.settings)
+    source = mod.InputFactory.create(spec.type, spec.name, spec.settings)
     if (!source) {
       log.error(`Failed to create audio source (null): ${spec.name}`)
       return null
@@ -697,6 +694,14 @@ export function createAudioSource(
     return { source, fader, gain, slot: spec.slot, track: spec.track }
   } catch (e) {
     log.error(`Failed to create audio source ${spec.name}:`, e)
+    // The slot was bound before the fader existed, and the caller gets null, so
+    // nothing else can release it. Unbind and release, or the source stays in the
+    // output slot for the life of the process with no handle to reach it.
+    try {
+      destroyAudioSource(mod, { source, slot: spec.slot })
+    } catch (cleanupError) {
+      log.warn(`Could not release the failed audio source ${spec.name}:`, cleanupError)
+    }
     return null
   }
 }
@@ -734,7 +739,7 @@ function createInputGainFilter(mod: ObsModule, name: string, source: any): any |
 }
 
 /** Linear multiplier to the dB offset the gain filter expects. */
-function mulToDb(mul: number): number {
+export function mulToDb(mul: number): number {
   // The filter's own floor. Anything at or below it is silence, and log10 of zero has
   // no answer, so this is the one value that has to be special-cased.
   if (mul <= 0) return MUTE_DB

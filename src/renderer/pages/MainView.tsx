@@ -164,6 +164,11 @@ export function MainView() {
       } finally {
         setIsSaving(false)
       }
+    }).then((ran) => {
+      // `runAction` drops a call while another action is in flight, and it drops it
+      // before running anything -- so the `finally` above never runs and the button
+      // would stay busy until the window reloaded.
+      if (!ran) setIsSaving(false)
     })
   }, [isSaving, runAction])
 
@@ -176,6 +181,8 @@ export function MainView() {
       } finally {
         setIsCapturing(false)
       }
+    }).then((ran) => {
+      if (!ran) setIsCapturing(false)
     })
   }, [isCapturing, runAction])
 
