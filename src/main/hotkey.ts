@@ -8,7 +8,7 @@ const log = scope('Hotkey')
 export type { HotkeyAction }
 
 interface HotkeySpec {
-  setting: 'saveReplayHotkey' | 'quickClipHotkey' | 'screenshotHotkey' | 'toggleRecordHotkey' | 'nextProfileHotkey'
+  setting: 'saveReplayHotkey' | 'quickClipHotkey' | 'screenshotHotkey' | 'toggleRecordHotkey'
   label: string
 }
 
@@ -17,7 +17,6 @@ export const HOTKEYS: Record<HotkeyAction, HotkeySpec> = {
   'save-quick-clip': { setting: 'quickClipHotkey', label: 'Save Quick Clip' },
   screenshot: { setting: 'screenshotHotkey', label: 'Screenshot' },
   'toggle-record': { setting: 'toggleRecordHotkey', label: 'Start / Stop Recording' },
-  'next-profile': { setting: 'nextProfileHotkey', label: 'Next Profile' },
 }
 
 export const ACTIONS: HotkeyAction[] = Object.keys(HOTKEYS) as HotkeyAction[]

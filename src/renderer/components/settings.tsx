@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Camera,
+  Copy,
   Crosshair,
   Database,
   FileText,
@@ -14,9 +15,11 @@ import {
   ListFilter,
   Mic,
   Monitor,
+  Plus,
   Power,
   RefreshCw,
   Sliders,
+  Trash2,
   Volume2,
   X,
 } from 'lucide-react'
@@ -812,7 +815,6 @@ const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
   { action: 'save-quick-clip', label: 'Save Quick Clip' },
   { action: 'screenshot', label: 'Screenshot' },
   { action: 'toggle-record', label: 'Start / Stop Recording' },
-  { action: 'next-profile', label: 'Next Profile' },
 ]
 
 /**
@@ -846,12 +848,20 @@ function ProfilesSection() {
     }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
   }
 
+  /** Runs one CRUD action through the shared error surface, then refetches. */
+  const run = (fn: () => Promise<IpcResult<unknown>>) => {
+    void runAction(async () => {
+      const res = await fn()
+      if (!res.success) throw new Error(res.error)
+    }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
+  }
+
   return (
     <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">
       <div className="space-y-3">
         <p className="text-[11px] text-ink-faint">
-          Four presets. Switch with the Next Profile hotkey or the numbered buttons on the main page; edits to
-          the active profile apply immediately.
+          Switch with the numbered buttons on the main page. Edits to the active profile apply immediately; &ldquo;Save
+          current settings&rdquo; copies the live settings into the active profile.
         </p>
         {profiles.map((profile, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
@@ -905,8 +915,55 @@ function ProfilesSection() {
                 </option>
               ))}
             </select>
+            <span className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+              {i === activeProfile ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="profile-save-current"
+                  title="Copy the live capture settings into this profile"
+                  onClick={() => run(() => api.saveActiveProfile())}
+                >
+                  Save current settings
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                size="iconSm"
+                data-testid={`profile-duplicate-${i}`}
+                title="Duplicate"
+                onClick={() => run(() => api.duplicateProfile(i))}
+              >
+                <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="iconSm"
+                data-testid={`profile-remove-${i}`}
+                title={
+                  profiles.length <= 1
+                    ? 'Cannot remove the only profile'
+                    : i === activeProfile
+                      ? 'Switch to another profile before removing it'
+                      : 'Remove'
+                }
+                disabled={i === activeProfile || profiles.length <= 1}
+                onClick={() => run(() => api.removeProfile(i))}
+              >
+                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </Button>
+            </span>
           </div>
         ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          data-testid="profile-add"
+          onClick={() => run(() => api.addProfile())}
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Add profile
+        </Button>
       </div>
     </Section>
   )

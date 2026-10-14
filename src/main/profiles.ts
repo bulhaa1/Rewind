@@ -5,9 +5,6 @@ import type { Profile } from '@shared/types.js'
 
 const log = scope('Profiles')
 
-/** Four, like the numbered slots this is modelled on. */
-export const PROFILE_COUNT = DEFAULT_PROFILES.length
-
 /**
  * How much of the pipeline a switch has to rebuild.
  *
@@ -19,9 +16,9 @@ export type ProfileTier = 'none' | 'duration' | 'chain' | 'full'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(Math.round(value), min), max)
 
-/** A stored profile, clamped and completed from the default for its slot. */
-export function clampProfile(stored: Partial<Profile> | undefined, index: number): Profile {
-  const fallback = DEFAULT_PROFILES[index] ?? DEFAULT_PROFILES[0]
+/** A stored profile, clamped and completed from the defaults. */
+export function clampProfile(stored: Partial<Profile> | undefined): Profile {
+  const fallback = DEFAULT_PROFILES[0]
   const name = typeof stored?.name === 'string' && stored.name.trim() ? stored.name.trim().slice(0, 24) : fallback.name
   const fps = ALLOWED_FPS.includes(stored?.fps as (typeof ALLOWED_FPS)[number]) ? (stored!.fps as number) : fallback.fps
   const visualQuality = VISUAL_QUALITIES.includes(stored?.visualQuality as never)
@@ -34,14 +31,14 @@ export function clampProfile(stored: Partial<Profile> | undefined, index: number
   return { name, bufferDuration, fps, visualQuality }
 }
 
-/** The stored profiles, padded to four, plus which one the live settings belong to. */
+/** The stored profiles (never empty), plus which one the live settings belong to. */
 export function getProfiles(): { profiles: Profile[]; activeProfile: number } {
   const stored = getSetting('profiles') as Partial<Profile>[] | undefined
-  const profiles = Array.from({ length: PROFILE_COUNT }, (_, i) => clampProfile(stored?.[i], i))
+  const profiles = stored?.length ? stored.map(clampProfile) : DEFAULT_PROFILES.map((p) => ({ ...p }))
   const active = getSetting('activeProfile')
   return {
     profiles,
-    activeProfile: Number.isInteger(active) && active >= 0 && active < PROFILE_COUNT ? active : 0,
+    activeProfile: Number.isInteger(active) && active >= 0 && active < profiles.length ? active : 0,
   }
 }
 
@@ -61,7 +58,8 @@ export function planProfileChange(
  *
  * Without this, editing the buffer length in Settings and then switching away and back
  * would silently undo the edit: the profile is a stored value, and the live settings
- * are what the user just changed.
+ * are what the user just changed. The panel's "Save current settings" button calls the
+ * same path explicitly.
  */
 export function captureActiveProfileValues(): void {
   const { profiles, activeProfile } = getProfiles()
@@ -85,8 +83,47 @@ export function captureActiveProfileValues(): void {
 /** Writes one profile's fields. `patch` is already validated by the caller. */
 export function writeProfileValues(index: number, patch: Partial<Profile>): Profile {
   const { profiles } = getProfiles()
-  const merged = clampProfile({ ...profiles[index], ...patch }, index)
+  const merged = clampProfile({ ...profiles[index], ...patch })
   profiles[index] = merged
   setSetting('profiles', profiles)
   return merged
+}
+
+/** Appends a profile with the default values and a free name. */
+export function addProfile(): { profiles: Profile[]; activeProfile: number } {
+  const { profiles } = getProfiles()
+  const base = 'Profile'
+  const taken = new Set(profiles.map((p) => p.name))
+  let name = base
+  for (let n = profiles.length + 1; taken.has(name); n++) name = `${base} ${n}`
+  profiles.push(clampProfile({ ...DEFAULT_PROFILES[0], name }))
+  setSetting('profiles', profiles)
+  return { profiles, activeProfile: getProfiles().activeProfile }
+}
+
+/** Inserts a copy of a profile right after it. The copy is never the active one. */
+export function duplicateProfile(index: number): { profiles: Profile[]; activeProfile: number } {
+  const { profiles } = getProfiles()
+  const source = profiles[index]
+  const base = `${source.name} copy`
+  profiles.splice(index + 1, 0, clampProfile({ ...source, name: base }))
+  setSetting('profiles', profiles)
+  return { profiles, activeProfile: getProfiles().activeProfile }
+}
+
+/**
+ * Removes a profile.
+ *
+ * The active one is refused, not silently remapped: the live settings are its values,
+ * and re-pointing `activeProfile` at a neighbour would make the store claim settings
+ * the engine is not running. One profile is also refused, so the list never empties.
+ */
+export function removeProfile(index: number): { profiles: Profile[]; activeProfile: number } | string {
+  const { profiles, activeProfile } = getProfiles()
+  if (profiles.length <= 1) return 'Cannot remove the only profile'
+  if (index === activeProfile) return 'Switch to another profile before removing it'
+  if (!profiles[index]) return 'Invalid profile'
+  profiles.splice(index, 1)
+  setSetting('profiles', profiles)
+  return { profiles, activeProfile }
 }

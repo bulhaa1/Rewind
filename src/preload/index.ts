@@ -38,10 +38,14 @@ api.retryOBSInit = invoke(IPC.retryOBSInit)
 api.setReplayBufferActive = invoke(IPC.setReplayBufferActive)
 api.isReplayBufferActive = invoke(IPC.isReplayBufferActive)
 
-// Profiles: four capture presets, cycled with a hotkey.
+// Profiles: user-defined capture presets, switched from the deck.
 api.getProfiles = invoke(IPC.getProfiles)
 api.setProfile = invoke(IPC.setProfile)
 api.setProfileValues = invoke(IPC.setProfileValues)
+api.addProfile = invoke(IPC.addProfile)
+api.duplicateProfile = invoke(IPC.duplicateProfile)
+api.removeProfile = invoke(IPC.removeProfile)
+api.saveActiveProfile = invoke(IPC.saveActiveProfile)
 
 // Continuous recording
 api.startRecording = invoke(IPC.startRecording)

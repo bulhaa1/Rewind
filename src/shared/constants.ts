@@ -99,7 +99,6 @@ export const DEFAULT_SETTINGS = {
   videoEncoder: 'auto' as EncoderVendor,
   profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
   activeProfile: 0,
-  nextProfileHotkey: 'Alt+4',
 } satisfies Omit<import('./types.js').PersistedSettings, never> as import('./types.js').PersistedSettings
 
 /** Screenshots default to `<outputPath>/Screenshots`. */

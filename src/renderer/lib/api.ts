@@ -78,10 +78,15 @@ export interface RewindApi {
   setReplayBufferActive(active: boolean): Promise<IpcResult<{ active: boolean; changed: boolean }>>
   isReplayBufferActive(): Promise<IpcResult<{ active: boolean; startedAt: number }>>
   setBufferDuration(seconds: number): Promise<IpcResult>
-  // Profiles: four capture presets, cycled with a hotkey.
+  // Profiles: user-defined capture presets, switched from the deck.
   getProfiles(): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
   setProfile(index: number): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
   setProfileValues(index: number, patch: Partial<Profile>): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  addProfile(): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  duplicateProfile(index: number): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  removeProfile(index: number): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
+  /** Copies the live capture settings into the active profile. */
+  saveActiveProfile(): Promise<IpcResult<{ profiles: Profile[]; activeProfile: number }>>
   recoverReplayBuffer(): Promise<IpcResult>
   reinitOBS(): Promise<IpcResult>
   retryOBSInit(): Promise<IpcResult<{ success?: boolean; alreadyReady?: boolean }>>

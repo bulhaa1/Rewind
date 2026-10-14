@@ -112,8 +112,6 @@ export interface Services {
   registerFinishedFromBufferStop: (finished: string) => void
   /** Switches to a profile and returns the index that ended up applied. */
   applyProfile: (index: number) => Promise<number>
-  /** Cycles to the next profile, for a rebind made in the panel. */
-  cycleProfile?: () => Promise<void>
   getProfiles: () => { profiles: Profile[]; activeProfile: number }
   reinitPipeline: (reason?: string, opts?: { preservePaused?: boolean }) => Promise<void>
   /** `title` names the action and key on hotkey popups; `message` is the body line. */
@@ -1022,8 +1020,8 @@ export function registerIpc(s: Services): void {
   handle(IPC.getProfiles, () => ok(s.getProfiles()))
 
   handle(IPC.setProfile, async (index: unknown) => {
-    const { PROFILE_COUNT } = require('./profiles.js')
-    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= PROFILE_COUNT) {
+    const { getProfiles } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= getProfiles().profiles.length) {
       return fail('Invalid profile')
     }
     try {
@@ -1039,8 +1037,8 @@ export function registerIpc(s: Services): void {
    * editing any other only stores it.
    */
   handle(IPC.setProfileValues, async (index: unknown, patch: unknown) => {
-    const { PROFILE_COUNT, getProfiles, writeProfileValues } = require('./profiles.js')
-    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= PROFILE_COUNT) {
+    const { getProfiles, writeProfileValues } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= getProfiles().profiles.length) {
       return fail('Invalid profile')
     }
     if (!patch || typeof patch !== 'object') return fail('Invalid profile values')
@@ -1068,6 +1066,29 @@ export function registerIpc(s: Services): void {
         return fail(messageOf(e))
       }
     }
+    return ok(s.getProfiles())
+  })
+
+  handle(IPC.addProfile, () => ok(require('./profiles.js').addProfile()))
+
+  handle(IPC.duplicateProfile, (index: unknown) => {
+    const { getProfiles, duplicateProfile } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= getProfiles().profiles.length) {
+      return fail('Invalid profile')
+    }
+    return ok(duplicateProfile(index))
+  })
+
+  handle(IPC.removeProfile, (index: unknown) => {
+    const { getProfiles, removeProfile } = require('./profiles.js')
+    if (typeof index !== 'number' || !Number.isInteger(index)) return fail('Invalid profile')
+    const result = removeProfile(index)
+    return typeof result === 'string' ? fail(result) : ok(result)
+  })
+
+  /** The panel's "Save current settings": live settings become the active profile's values. */
+  handle(IPC.saveActiveProfile, () => {
+    require('./profiles.js').captureActiveProfileValues()
     return ok(s.getProfiles())
   })
 
@@ -1274,7 +1295,6 @@ export function registerIpc(s: Services): void {
       screenshot: () => void s.takeScreenshotHotkey(),
       'save-quick-clip': () => void s.saveQuickClip(),
       'toggle-record': () => void s.toggleRecording?.(),
-      'next-profile': () => void s.cycleProfile?.(),
     }
 
     if (!hk.registerHotkey(action as any, accelerator, HOTKEY_CALLBACKS[action as import('./hotkey.js').HotkeyAction])) {

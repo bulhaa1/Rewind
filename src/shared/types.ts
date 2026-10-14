@@ -10,7 +10,7 @@
 export type CaptureMode = 'display' | 'window' | 'game'
 
 /** Bindable actions the global keyboard hook can trigger. */
-export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record' | 'next-profile'
+export type HotkeyAction = 'save-replay' | 'save-quick-clip' | 'screenshot' | 'toggle-record'
 
 export type EncoderVendor = 'auto' | 'nvenc' | 'amf' | 'qsv' | 'x264'
 
@@ -79,11 +79,10 @@ export interface PersistedSettings {
   visualQuality: 'low' | 'standard' | 'high' | 'highest'
   videoCodec: VideoCodec
   videoEncoder: EncoderVendor
-  /** Four capture presets, cycled with a hotkey. */
+  /** Capture profiles the user defines. Edited in Settings; switched from the deck. */
   profiles: Profile[]
   /** Index into `profiles` of the preset the live settings belong to. */
   activeProfile: number
-  nextProfileHotkey: string
 }
 
 /**

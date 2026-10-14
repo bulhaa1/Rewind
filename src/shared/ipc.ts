@@ -17,10 +17,14 @@ export const IPC = {
   getConfig: 'get-config',
   getBufferDuration: 'get-buffer-duration',
   setBufferDuration: 'set-buffer-duration',
-  // Profiles. Four capture presets the user switches between.
+  // Profiles. User-defined capture presets, switched from the deck.
   getProfiles: 'get-profiles',
   setProfile: 'set-profile',
   setProfileValues: 'set-profile-values',
+  addProfile: 'add-profile',
+  duplicateProfile: 'duplicate-profile',
+  removeProfile: 'remove-profile',
+  saveActiveProfile: 'save-active-profile',
   recoverReplayBuffer: 'recover-replay-buffer',
   reinitOBS: 'reinit-obs',
   retryOBSInit: 'retry-obs-init',

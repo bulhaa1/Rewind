@@ -480,7 +480,7 @@ export function Deck({
 
         <div className="flex items-center gap-3">
           <span className="label shrink-0">Profile</span>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {profiles.map((profile, i) => (
               <button
                 key={i}
@@ -507,15 +507,6 @@ export function Deck({
               ? `${profiles[activeProfile].name} · ${profiles[activeProfile].bufferDuration}s · ${profiles[activeProfile].fps}fps`
               : ''}
           </span>
-          {hotkeys?.['next-profile'] ? (
-            <span className="ml-auto">
-              <HotkeyChip
-                hotkey={hotkeys['next-profile']}
-                onClick={() => setEditAction('next-profile')}
-                variant="keycap"
-              />
-            </span>
-          ) : null}
         </div>
 
         <div className="flex items-center gap-3">
