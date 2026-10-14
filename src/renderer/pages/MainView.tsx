@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { QK, bufferActiveQuery, configQuery, sourceNameQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
-import { useClipEvents, useHeldSeconds } from '../lib/hooks'
+import { useClipEvents, useHeldSeconds, useProfileEvents } from '../lib/hooks'
 import { Titlebar } from '../components/titlebar'
 import { Deck } from '../components/deck'
 import { Rail } from '../components/rail'
@@ -150,6 +150,9 @@ export function MainView() {
   const bufferActive = bufferState?.active ?? false
 
   useClipEvents(() => setLastSaved(Date.now()))
+  // A profile switched by the hotkey happens in the main process; the panel has to be
+  // told, or it keeps showing the old chip.
+  useProfileEvents()
 
   const saveClip = useCallback(() => {
     if (isSaving) return

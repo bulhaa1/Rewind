@@ -149,4 +149,5 @@ export const EVENT_CHANNELS = [
   'hotkey-capture-key',
   'play-notification-sound',
   'update-state',
+  'profiles-changed',
 ] as const

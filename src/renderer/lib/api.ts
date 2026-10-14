@@ -198,6 +198,7 @@ export interface RewindApi {
   on(event: 'update-state', handler: (s: UpdateState) => void): () => void
   on(event: 'hotkey-capture-key', handler: (hotkey: string) => void): () => void
   on(event: 'play-notification-sound', handler: () => void): () => void
+  on(event: 'profiles-changed', handler: (p: { activeProfile: number }) => void): () => void
 }
 
 const bridge = (window as unknown as { electronAPI?: RewindApi }).electronAPI

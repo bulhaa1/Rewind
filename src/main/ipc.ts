@@ -110,8 +110,8 @@ export interface Services {
    * `toggleReplay`, so nothing else consumes `finishedOnTeardown` for it.
    */
   registerFinishedFromBufferStop: (finished: string) => void
-  /** Switches to a profile: writes its settings, then applies them once. */
-  applyProfile: (index: number) => Promise<void>
+  /** Switches to a profile and returns the index that ended up applied. */
+  applyProfile: (index: number) => Promise<number>
   /** Cycles to the next profile, for a rebind made in the panel. */
   cycleProfile?: () => Promise<void>
   getProfiles: () => { profiles: Profile[]; activeProfile: number }
@@ -1054,12 +1054,17 @@ export function registerIpc(s: Services): void {
       return fail('Invalid visual quality value')
     }
 
+    const before = getProfiles().profiles[index]
     writeProfileValues(index, p)
     const { activeProfile } = getProfiles()
     if (index === activeProfile) {
       try {
         await withStatus(OBS_STATUS_MESSAGES.changingSettings, () => s.applyProfile(index))
       } catch (e) {
+        // The stored profile was written before the engine was asked to apply it, so a
+        // failure has to put it back: otherwise the panel keeps values the engine
+        // refused and the next switch would try them again.
+        writeProfileValues(index, before)
         return fail(messageOf(e))
       }
     }

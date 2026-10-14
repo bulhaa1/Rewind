@@ -824,22 +824,26 @@ const HOTKEY_ROWS: { action: HotkeyAction; label: string }[] = [
  */
 function ProfilesSection() {
   const client = useQueryClient()
+  const { runAction } = useBackgroundAction()
   const { data } = useQuery(profilesQuery)
-  const [busy, setBusy] = useState(false)
   const profiles: Profile[] = data?.profiles ?? []
   const activeProfile = data?.activeProfile ?? 0
 
-  const save = async (index: number, patch: Partial<Profile>) => {
-    setBusy(true)
-    try {
+  /**
+   * Saves one field, through the same error surface as every other action.
+   *
+   * The inputs are uncontrolled and save on blur, which fires even when nothing was
+   * typed -- and re-applying an unchanged value would restart the engine for nothing.
+   */
+  const save = (index: number, patch: Partial<Profile>, current: Profile) => {
+    const changed = Object.entries(patch).some(
+      ([key, value]) => (current as unknown as Record<string, unknown>)[key] !== value,
+    )
+    if (!changed) return
+    void runAction(async () => {
       const res = await api.setProfileValues(index, patch)
       if (!res.success) throw new Error(res.error)
-    } catch (e) {
-      console.error('Profile edit failed:', e)
-    } finally {
-      setBusy(false)
-      await client.invalidateQueries({ queryKey: QK.profiles })
-    }
+    }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
   }
 
   return (
@@ -862,7 +866,7 @@ function ProfilesSection() {
               defaultValue={profile.name}
               maxLength={24}
               aria-label={`Profile ${i + 1} name`}
-              onBlur={(e) => void save(i, { name: e.target.value })}
+              onBlur={(e) => save(i, { name: e.target.value }, profile)}
               className="h-7 w-28 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
             />
             <label className="flex items-center gap-1 text-[11px] text-ink-faint">
@@ -872,7 +876,7 @@ function ProfilesSection() {
                 min={BUFFER_DURATION_MIN}
                 max={BUFFER_DURATION_MAX}
                 aria-label={`Profile ${i + 1} buffer seconds`}
-                onBlur={(e) => void save(i, { bufferDuration: Number(e.target.value) })}
+                onBlur={(e) => save(i, { bufferDuration: Number(e.target.value) }, profile)}
                 className="h-7 w-16 rounded border border-line bg-raised px-2 text-[12px] text-ink outline-none focus:border-accent"
               />
               s
@@ -880,7 +884,7 @@ function ProfilesSection() {
             <select
               value={profile.fps}
               aria-label={`Profile ${i + 1} fps`}
-              onChange={(e) => void save(i, { fps: Number(e.target.value) })}
+              onChange={(e) => save(i, { fps: Number(e.target.value) }, profile)}
               className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
             >
               {ALLOWED_FPS.map((fps) => (
@@ -892,7 +896,7 @@ function ProfilesSection() {
             <select
               value={profile.visualQuality}
               aria-label={`Profile ${i + 1} quality`}
-              onChange={(e) => void save(i, { visualQuality: e.target.value as Profile['visualQuality'] })}
+              onChange={(e) => save(i, { visualQuality: e.target.value as Profile['visualQuality'] }, profile)}
               className="h-7 rounded border border-line bg-raised px-1.5 text-[12px] text-ink outline-none focus:border-accent"
             >
               {VISUAL_QUALITIES.map((quality) => (
@@ -901,7 +905,6 @@ function ProfilesSection() {
                 </option>
               ))}
             </select>
-            {busy && i === activeProfile ? <InlineSpinner /> : null}
           </div>
         ))}
       </div>

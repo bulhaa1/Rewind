@@ -79,6 +79,37 @@ export default async function ({ evaluate }) {
   const back = (await profiles()).data.activeProfile
   if (back !== start.data.activeProfile) problems.push(`cycling did not wrap: ${back} != ${start.data.activeProfile}`)
 
+  /*
+   * The deck has to follow a switch it did not start. The hotkey runs in the main
+   * process, and the panel hides to the tray rather than unmounting, so without an
+   * event the old chip stays highlighted and clicking the one that looks active does
+   * nothing.
+   */
+  const activeChip = () =>
+    evaluate(
+      `(() => { const n = document.querySelector('[data-testid^="profile-chip-"][data-active="true"]'); return n ? n.dataset.testid : null })()`,
+    )
+  const chipBefore = await activeChip()
+  const apiBefore = (await profiles()).data.activeProfile
+  focusApp()
+  await sleep(800)
+  pressNextProfile()
+  let chipAfter = chipBefore
+  const chipDeadline = Date.now() + 20_000
+  while (Date.now() < chipDeadline) {
+    await sleep(500)
+    chipAfter = await activeChip()
+    if (chipAfter !== chipBefore) break
+  }
+  const apiAfter = (await profiles()).data.activeProfile
+  const expectedChip = `profile-chip-${apiAfter}`
+  console.log(
+    `${chipAfter === expectedChip ? 'PASS' : 'FAIL'}  deck follows a hotkey switch: chip ${chipBefore} -> ${chipAfter} (api ${apiBefore} -> ${apiAfter})`,
+  )
+  if (chipAfter !== expectedChip) {
+    problems.push(`deck chip is ${chipAfter}, api says ${apiAfter}`)
+  }
+
   // The deck must show the same thing the settings store says.
   const chips = await evaluate(`(() => {
     const nodes = [...document.querySelectorAll('[data-testid^="profile-chip-"]')]

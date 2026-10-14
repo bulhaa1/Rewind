@@ -192,6 +192,9 @@ let audioDevices: AudioDeviceChannels | null = null
 
 let currentStatus: { status: ObsStatus; message?: string } = OBS_STATUS_MESSAGES.initializing
 let reinitMutex = new Mutex()
+/** Set while a profile switch runs; a request arriving meanwhile replaces it. */
+let pendingProfile: number | null = null
+let profileSwitchRunning = false
 let wedgeRecoveryInFlight = false
 
 const pipelineActive = (): boolean => !!(obsCore?.isInitialized() && replay?.isReplayBufferActive())
@@ -233,6 +236,11 @@ function buildPipeline(): void {
 }
 
 async function initPipeline(): Promise<void> {
+  // An install that predates profiles has live settings and no stored profiles. Copy
+  // them into the active slot, or the first switch away and back would silently replace
+  // the user's frame rate, quality and buffer length with the defaults.
+  captureActiveProfileValues()
+
   installDefaultHotkeys({
     'save-replay': () => void saveFromHotkey(),
     'save-quick-clip': () => void saveQuickClipFromHotkey(),
@@ -319,9 +327,6 @@ async function shutdownPipeline(): Promise<void> {
         log.error('Recording finished by pipeline teardown but could not be registered:', err)
       }
     }
-    // The meter's source goes with the engine; detach before the objects vanish.
-    // (Already detached at the top of this function on the normal path; this
-    // covers the timeout path, where the engine is abandoned mid-teardown.)
     obsCore = null
     replay = null
     capture = null
@@ -343,7 +348,10 @@ async function shutdownPipeline(): Promise<void> {
  * A failure has to land on `error` rather than `ready`, or the panel would claim to
  * be recording with no engine behind it.
  */
-async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean } = {}): Promise<void> {
+async function reinitPipeline(
+  reason?: string,
+  opts: { preservePaused?: boolean; wasPaused?: boolean } = {},
+): Promise<void> {
   await reinitMutex.run(async () => {
     /*
      * A rebuild boots the engine the way the app boots: buffer running. A user who
@@ -351,8 +359,13 @@ async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean 
      * about the pause, and the alternative is a recording they did not ask for.
      * Wedge recovery deliberately does not pass this: its whole point is a live
      * buffer again.
+     *
+     * `wasPaused` overrides the status check for callers that know the answer
+     * themselves, because a caller that announces a busy status first would otherwise
+     * erase the pause before this reads it.
      */
-    const wasPaused = opts.preservePaused === true && currentStatus.status === 'paused'
+    const wasPaused =
+      opts.wasPaused ?? (opts.preservePaused === true && currentStatus.status === 'paused')
 
     log.info(`Reinitializing OBS pipeline${reason ? ` (${reason})` : ''}...`)
     setStatus(reason ? { status: 'initializing', message: reason } : OBS_STATUS_MESSAGES.initializing, getMainWindow())
@@ -380,13 +393,35 @@ async function reinitPipeline(reason?: string, opts: { preservePaused?: boolean 
 /**
  * Switches to a profile: writes its three settings, then applies them once.
  *
- * The diff decides the cost. Identical settings cost nothing; a length change restarts
- * the chain (about a second); a quality change rebuilds it; an fps change takes the
- * engine down and back up (about ten seconds), because the frame rate is only read from
- * OBS's profile at startup. Applying each setting through its own handler would pay the
- * heaviest tier up to three times.
+ * Coalesced: pressing the cycle hotkey three times to reach a slot is normal, and
+ * applying each press would take the engine down and back up three times. Only the
+ * newest request survives while one is running, so the engine sees at most two
+ * switches -- the one in flight and the one the user ended on.
  */
-async function applyProfile(index: number): Promise<void> {
+async function switchToProfile(index: number): Promise<number> {
+  if (profileSwitchRunning) {
+    pendingProfile = index
+    log.info(`Profile ${index} queued behind the switch in flight`)
+    return index
+  }
+
+  profileSwitchRunning = true
+  let applied = index
+  try {
+    let target: number | null = index
+    while (target !== null) {
+      pendingProfile = null
+      await applyProfileLocked(target)
+      applied = target
+      target = pendingProfile
+    }
+  } finally {
+    profileSwitchRunning = false
+  }
+  return applied
+}
+
+async function applyProfileLocked(index: number): Promise<void> {
   const { profiles, activeProfile: previousIndex } = getProfiles()
   const target = profiles[index]
   if (!target) throw new Error(`No profile ${index}`)
@@ -398,18 +433,32 @@ async function applyProfile(index: number): Promise<void> {
   }
   const tier = planProfileChange(current, target)
 
+  /*
+   * Read the engine's state before anything is written or announced.
+   *
+   * A caller that sets a busy status first -- which the panel's handlers do -- used to
+   * make the reinit think the buffer had never been paused, so switching a profile from
+   * the panel started capture the user had stopped. The state is captured here and
+   * passed down instead of being re-read from a status someone else owns.
+   */
+  const wasActive = replay?.isReplayBufferActive() === true
+
   setSetting('fps', target.fps)
   setSetting('visualQuality', target.visualQuality)
   setSetting('bufferDuration', target.bufferDuration)
   setSetting('activeProfile', index)
+  // The chain reads its length from obsCore's config, not from the settings file: a
+  // switch that only wrote the setting rebuilt the chain at the old length (measured:
+  // "Long buffer applied: 120s" followed by "Replay buffer configured: 60s").
+  obsCore?.setBufferDuration(target.bufferDuration)
 
   try {
     if (tier === 'full') {
-      await reinitPipeline(`Applying ${target.name}...`, { preservePaused: true })
-    } else if (tier === 'chain' && replay?.isReplayBufferActive()) {
-      await replay.rebuildAndRestart()
-    } else if (tier === 'duration' && replay?.isReplayBufferActive()) {
-      await replay.setBufferDuration(target.bufferDuration)
+      await reinitPipeline(`Applying ${target.name}...`, { preservePaused: true, wasPaused: !wasActive })
+    } else if (tier === 'chain' && wasActive) {
+      await replay!.rebuildAndRestart()
+    } else if (tier === 'duration' && wasActive) {
+      await replay!.setBufferDuration(target.bufferDuration)
     }
   } catch (e) {
     // Put everything back, the active profile included: restoring only the settings
@@ -418,10 +467,24 @@ async function applyProfile(index: number): Promise<void> {
     setSetting('visualQuality', current.visualQuality)
     setSetting('bufferDuration', current.bufferDuration)
     setSetting('activeProfile', previousIndex)
+    obsCore?.setBufferDuration(current.bufferDuration)
     throw e
   }
 
+  // A chain-tier switch tears the chain down, which finishes a recording in flight and
+  // parks it. Whoever asked for the teardown has to register it, or the file waits for
+  // the next teardown and lands under whatever source is current then.
+  const finished = replay?.takeFinishedOnTeardown?.() ?? null
+  if (finished) {
+    try {
+      registerFinishedFromBufferStop(finished)
+    } catch (e) {
+      log.error('Recording finished by a profile switch but could not be registered:', e)
+    }
+  }
+
   log.info(`Profile ${index} (${target.name}) applied: tier=${tier}, ${target.bufferDuration}s @ ${target.fps}fps ${target.visualQuality}`)
+  services.getMainWindow()?.webContents.send('profiles-changed', { activeProfile: index })
 }
 
 /**
@@ -550,14 +613,16 @@ async function saveQuickClipFromHotkey(): Promise<void> {
  * Cycles to the next profile, from the hotkey.
  *
  * Wraps at the end, and says which profile it landed on: a hotkey that silently
- * changes how the next clip is captured is a hotkey nobody can trust.
+ * changes how the next clip is captured is a hotkey nobody can trust. The next index is
+ * chosen inside the switch lock, so holding the key down does not queue four switches
+ * to the same slot.
  */
 async function cycleProfileFromHotkey(): Promise<void> {
   const { profiles, activeProfile } = getProfiles()
   const next = (activeProfile + 1) % profiles.length
   const target = profiles[next]
   try {
-    await applyProfile(next)
+    await switchToProfile(next)
     showNotification(
       'saved',
       `${target.name} · ${target.bufferDuration}s · ${target.fps}fps · ${target.visualQuality}`,
@@ -565,7 +630,13 @@ async function cycleProfileFromHotkey(): Promise<void> {
     )
   } catch (e) {
     log.error('Failed to switch profile:', e)
-    showNotification('error', errorMessage(e), hotkeyTitle('next-profile', 'Profile not switched'))
+    const message = errorMessage(e)
+    showNotification('error', message, hotkeyTitle('next-profile', 'Profile not switched'))
+    // A switch that wedges obs64 leaves the app with no engine; the same recovery the
+    // save paths use puts it back.
+    if (/Failed to make IPC call|Timeout waiting for replay buffer/i.test(message)) {
+      scheduleWedgeRecovery()
+    }
   }
 }
 
@@ -608,6 +679,13 @@ function registerFinishedFromBufferStop(finished: string): void {
   )
   services.getMainWindow()?.webContents.send('clip-saved', { clipPath: moved })
   log.info(`Recording finished because the buffer stopped: ${moved}`)
+  /*
+   * Say so. Every path that tears the chain down while a recording runs lands here --
+   * pause, a settings change, a display change, a profile switch -- and without a popup
+   * the recording simply stops, with nothing on screen to explain why the timer went
+   * away or that the file was kept.
+   */
+  showNotification('saved', path.basename(moved), 'Recording saved')
 }
 
 /**
@@ -787,7 +865,7 @@ const services = {
    * `toggleReplayForUser`, and so never touched `finishedOnTeardown`.
    */
   registerFinishedFromBufferStop,
-  applyProfile,
+  applyProfile: switchToProfile,
   cycleProfile: cycleProfileFromHotkey,
   getProfiles,
   reinitPipeline,
@@ -1340,7 +1418,17 @@ async function runProfilesSelfTest(): Promise<void> {
     if (!ok) exitCode = 1
   }
 
+  // Recordings made by this test land in a temp folder, not the user's library, and the
+  // folder starts empty: files from an earlier run would otherwise be counted.
+  const outDir = process.env.REWIND_SELFTEST_OUT ?? path.join(app.getPath('temp'), 'rewind-profiles-test')
+  const realOutputPath = getSetting('outputPath')
+
   try {
+    fs.rmSync(outDir, { recursive: true, force: true })
+    fs.mkdirSync(outDir, { recursive: true })
+    setSetting('outputPath', outDir)
+    await obsCore.setOutputPath(outDir)
+
     await waitForBuffer(replay, 60_000)
     await sleep(5_000)
 
@@ -1355,7 +1443,7 @@ async function runProfilesSelfTest(): Promise<void> {
 
     // A switch writes the profile's values into the live settings.
     const profiles = getProfiles().profiles
-    await applyProfile(1)
+    await switchToProfile(1)
     const live = {
       fps: getSetting('fps'),
       visualQuality: getSetting('visualQuality'),
@@ -1367,6 +1455,17 @@ async function runProfilesSelfTest(): Promise<void> {
     )
     expect(getSetting('activeProfile') === 1, 'active profile moved to 1')
 
+    /*
+     * The settings file is not the engine. The chain takes its length from obsCore's
+     * config, so a switch that only wrote settings left the engine on the old length --
+     * measured: the log said "Profile 1 (Long buffer) applied: tier=chain, 120s" and the
+     * next line said "Replay buffer configured: 60s".
+     */
+    expect(
+      obsCore.getConfig().bufferDuration === profiles[1].bufferDuration,
+      `engine buffer length follows the profile (engine ${obsCore.getConfig().bufferDuration}s, profile ${profiles[1].bufferDuration}s)`,
+    )
+
     // An edit to a live setting belongs to the profile that is active.
     setSetting('fps', 120)
     captureActiveProfileValues()
@@ -1377,16 +1476,49 @@ async function runProfilesSelfTest(): Promise<void> {
     expect(getSetting('bufferDuration') !== 45, 'editing an inactive profile leaves the live settings alone')
     expect(getProfiles().profiles[2].bufferDuration === 45, 'the inactive profile kept the edit')
 
-    // A paused buffer stays paused across a switch, including the full tier. Paused the
-    // way the panel pauses it: the status the reinit consults is the app's, not the
-    // buffer's, so pausing below that layer would test the wrong thing.
+    /*
+     * A recording in flight across a chain-tier switch. The switch tears the chain down,
+     * which finishes and parks the recording; whoever asked for the teardown has to
+     * register it, or the file sits in the library root with no metadata and is
+     * registered later under whatever source is current then.
+     */
+    await switchToProfile(1)
+    await replay.startContinuousRecording()
+    await sleep(6_000)
+    await switchToProfile(3) // profile 1 -> 3 changes quality only: the chain tier
+    await sleep(2_000)
+    const recordings: string[] = []
+    const collect = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) collect(full)
+        else if (/^Recording .*\.(mp4|mkv)$/i.test(entry.name)) recordings.push(full)
+      }
+    }
+    collect(outDir)
+    // Registered means it has metadata: the file lands in its source folder as it is
+    // written, so the folder proves nothing on its own.
+    const registered = recordings.filter((f) => getClipMeta(f)?.recordedAt)
+    expect(
+      recordings.length > 0 && registered.length === recordings.length,
+      `recording finished by a profile switch was registered (${registered.length}/${recordings.length} with metadata)`,
+    )
+
+    /*
+     * A paused buffer stays paused across a switch, including the full tier -- and it
+     * stays paused even when the caller sets a busy status first, which is exactly what
+     * the panel's handlers do before they call in. Reading "was it paused?" from that
+     * status is how a panel switch used to restart a buffer the user had stopped.
+     */
     await services.toggleReplay()
     expect(replay.isReplayBufferActive() === false, 'paused through the panel path')
-    await applyProfile(3)
-    expect(replay.isReplayBufferActive() === false, 'a paused buffer stays paused across a full-tier switch')
+    services.status.set({ status: 'initializing', message: 'PROFILES TEST' })
+    // Profile 2 is 60 fps against a live 30, so this switch really is the full tier.
+    await switchToProfile(2)
+    expect(replay.isReplayBufferActive() === false, 'stays paused even with a busy status set first')
 
     // Put it back the way it was found.
-    await applyProfile(0)
+    await switchToProfile(0)
     await services.toggleReplay()
     await waitForBuffer(replay, 30_000)
     log.info('PROFILES TEST complete')
@@ -1394,6 +1526,11 @@ async function runProfilesSelfTest(): Promise<void> {
     log.error('PROFILES TEST failed:', e)
     results.push(`FAIL threw: ${e instanceof Error ? e.message : String(e)}`)
     exitCode = 1
+  } finally {
+    if (realOutputPath) {
+      setSetting('outputPath', realOutputPath)
+      await obsCore.setOutputPath(realOutputPath).catch(() => {})
+    }
   }
 
   for (const r of results) log.info(`PROFILES TEST ${r}`)

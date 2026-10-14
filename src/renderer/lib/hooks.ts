@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { QK } from '../lib/queries'
 
 /**
  * Two-note sine chime, synthesised with WebAudio.
@@ -109,6 +111,30 @@ export function useClipEvents(onClipSaved?: () => void): void {
     // refetched the same two queries twice.
     return api.on('clip-saved', () => saved.current?.())
   }, [])
+}
+
+/**
+ * Refreshes the panel when a profile is switched from outside it.
+ *
+ * The hotkey switches profiles in the main process, and the panel spends most of its
+ * life hidden to the tray rather than unmounted, so without this the deck keeps
+ * highlighting the old chip and clicking the one that looks active does nothing.
+ */
+export function useProfileEvents(): void {
+  const client = useQueryClient()
+  useEffect(
+    () =>
+      api.on('profiles-changed', () => {
+        void client.invalidateQueries({ queryKey: QK.profiles })
+        // The switch changes fps, quality and buffer length, so anything reading them
+        // is stale too: the deck's limit control, the dial, the encoder section.
+        void client.invalidateQueries({ queryKey: QK.config })
+        void client.invalidateQueries({ queryKey: QK.setting('bufferDuration') })
+        void client.invalidateQueries({ queryKey: QK.setting('fps') })
+        void client.invalidateQueries({ queryKey: QK.setting('visualQuality') })
+      }),
+    [client],
+  )
 }
 
 /**

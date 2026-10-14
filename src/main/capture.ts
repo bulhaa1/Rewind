@@ -310,7 +310,15 @@ export class CaptureManager {
         }
       }
       const finished = buffer?.takeFinishedOnTeardown?.() ?? null
-      if (finished) this.onRecordingFinished?.(finished)
+      if (finished) {
+        try {
+          this.onRecordingFinished?.(finished)
+        } catch (e) {
+          // A failed registration must not take the display sync down with it, and must
+          // not swallow the caller's pending re-run either.
+          log.error('Display change: could not register the finished recording', e)
+        }
+      }
     }
 
     if (!changed) return null
