@@ -8,7 +8,7 @@ import type { CaptureMode, MonitorInfo } from '@shared/types.js'
 
 const log = scope('Capture')
 
-/** OBS window_capture `method`. 2 = WGC, 0 = automatic. */
+/** OBS `method`, shared by monitor_capture and window_capture. 2 = WGC, 0 = automatic. */
 export const CAPTURE_METHOD = { AUTOMATIC: 0, WGC: 2 } as const
 
 /**
@@ -17,11 +17,20 @@ export const CAPTURE_METHOD = { AUTOMATIC: 0, WGC: 2 } as const
  */
 const GAME_HOOK_MIN_BUILD = 20344
 
+/** Windows Graphics Capture, which monitor capture uses. Windows 10 1903 (18362). */
+const WGC_MIN_BUILD = 18362
+
+/** `os.release()` is "10.0.<build>" on Windows; the build is the third field. */
+const windowsBuild = (): number => Number(os.release().split('.')[2] ?? 0)
+
 export const hasGameHook = (): boolean => {
   if (process.platform !== 'win32') return false
-  // os.release() is "10.0.<build>" on Windows; the build is the third field.
-  const build = Number(os.release().split('.')[2] ?? 0)
-  return build >= GAME_HOOK_MIN_BUILD
+  return windowsBuild() >= GAME_HOOK_MIN_BUILD
+}
+
+export const supportsWgc = (): boolean => {
+  if (process.platform !== 'win32') return false
+  return windowsBuild() >= WGC_MIN_BUILD
 }
 
 /**
@@ -179,7 +188,13 @@ export class CaptureManager {
       settings: {
         monitor_id: this.getOBSMonitorId(index),
         capture_cursor: true,
-        method: CAPTURE_METHOD.AUTOMATIC,
+        // WGC, not DXGI duplication. A duplicated output delivers no frames at all
+        // when obs64 is only system-DPI aware -- measured: every clip and recording
+        // came out a flat black frame (YAVG 16) while the app's own ffmpeg
+        // screenshots of the same monitor were fine. obs64's DPI awareness comes
+        // from whatever loads first, and the packaged build drops obs-browser (CEF),
+        // which is what used to set it to per-monitor. WGC does not care.
+        method: supportsWgc() ? CAPTURE_METHOD.WGC : CAPTURE_METHOD.AUTOMATIC,
       },
       resolution: this.getMonitorResolution(index),
     }

@@ -3,12 +3,19 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-14, at the 1.3.0 release: the clip editor (trim, per-track
-audio with waveforms and live monitoring, replace-or-copy), compression on the GPU
-with a source-relative quality ladder into `Rewind/Compressed/`, user-defined capture
-profiles, and the twenty findings of the 1.3.0 repository audit — two of which could
-leave a button stuck, one of which could hang the library on an unreachable drive, and
-one of which could silently cost every clip its desktop audio.
+Last updated: 2026-10-14, at the 1.3.1 hotfix: monitor capture moved to Windows Graphics
+Capture after the installed build was found to write flat black clips — DXGI desktop
+duplication delivers nothing to a process that is only system-DPI aware, which the
+packaged obs64 is once obs-browser (CEF) is excluded from the installer. Also in 1.3.1:
+the Record row fades out while the buffer is off, and the redundant "Auto detect launched
+game" card is gone from the capture source picker.
+
+Previous: 1.3.0, the clip editor (trim, per-track audio with waveforms and live
+monitoring, replace-or-copy), compression on the GPU with a source-relative quality ladder
+into `Rewind/Compressed/`, user-defined capture profiles, and the twenty findings of the
+1.3.0 repository audit — two of which could leave a button stuck, one of which could hang
+the library on an unreachable drive, and one of which could silently cost every clip its
+desktop audio.
 
 Status values:
 
@@ -118,6 +125,36 @@ for the idle cost. Not started; not obviously right for a replay tool.
 ---
 
 ## Verified
+
+### Black video in every clip and recording (monitor capture)
+
+Found 2026-10-14 from the report "black screen when recording or clipping and no game is
+launched, even in display mode". Every clip and recording written by the installed build
+was a flat black frame — `lavfi.signalstats.YAVG` measured **16** (limited-range black) on
+all five of the user's clips, against **43** on one from the morning — while the app's own
+Screenshot, which goes through ffmpeg's `ddagrab` on the same monitor, was fine. The
+engine side of the log looked perfect: source created, `method: DXGI`, frames drawn,
+encoder started, buffer written. The composed frame simply had nothing in it.
+
+**Cause.** OBS's DXGI desktop duplication delivers no frames to a process that is not
+per-monitor DPI aware. obs64.exe has no DPI declaration in its manifest, so its awareness
+is whatever is set at runtime — and in the packaged build it ends up `SYSTEM_AWARE`
+(measured with `GetProcessDpiAwareness`), which is enough for everything except the
+duplicator. The dev build never showed the bug because it loads `obs-browser.dll`, whose
+CEF runtime sets the process to `PER_MONITOR_AWARE_V2`. That plugin is deliberately
+excluded from the installer (CEF is ~214 MB), so the packaged app lost the accidental
+fix. Reproduced on the dev build by moving `obs-browser.dll` (plus `libcef.dll`,
+`chrome_elf.dll`, `libEGL.dll`, `libGLESv2.dll`) out of
+`node_modules/@streamlabs/obs-studio-node/obs-plugins/64bit`: obs64 became `SYSTEM_AWARE`
+and the clip came out at YAVG 16.
+
+**Fix.** Monitor capture now uses Windows Graphics Capture (`method: 2`) instead of letting
+OBS pick DXGI duplication — the same method the window source already used. WGC does not
+depend on the process's DPI awareness at all. Guarded on Windows build 18362 (1903), the
+release that introduced it; older builds keep `Automatic`. Measured after the change, with
+obs-browser absent and obs64 still `SYSTEM_AWARE`: YAVG **30.0** with real desktop content
+in the frame, and the OBS log's `method:` line reads `WGC`. Re-checked with obs-browser
+restored: YAVG 30.0, no regression.
 
 ### Capture profiles
 
