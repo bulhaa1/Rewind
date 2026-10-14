@@ -52,16 +52,12 @@ function Thumb({
   fetch,
   fallback,
   duration,
-  overlay,
-  onHoverChange,
   height,
 }: {
   cacheKey: string
   fetch: () => Promise<{ success: boolean; data?: string | null }>
   fallback: React.ReactNode
   duration?: string
-  overlay?: React.ReactNode
-  onHoverChange?: (hovering: boolean) => void
   /** Computed from the rail's width, so a row lays out with the resize. */
   height: number
 }) {
@@ -86,11 +82,8 @@ function Thumb({
       className="relative flex w-full items-center justify-center overflow-hidden rounded-md bg-raised"
       style={{ height }}
       data-testid="card-thumb"
-      onPointerEnter={() => onHoverChange?.(true)}
-      onPointerLeave={() => onHoverChange?.(false)}
     >
       {data ? <img src={data} alt="" draggable={false} className="h-full w-full object-cover" /> : fallback}
-      {overlay}
       {duration ? (
         <span className="tabular absolute bottom-1 right-1 rounded bg-black/75 px-1 text-[11px] leading-tight">
           {duration}
@@ -156,64 +149,6 @@ function Item({
   )
 }
 
-/** Clip URLs go through the same protocol the editor plays. */
-function clipUrl(filePath: string): string {
-  return `rewind-clip://local/${encodeURIComponent(filePath)}`
-}
-
-/**
- * Hover scrub.
- *
- * A single `<video>` per hovered card, mounted only while the pointer is over the
- * thumbnail and never while the window is hidden. The frame under the cursor is a
- * `currentTime` seek, so a scrub costs one decode per pointer move rather than one
- * playing stream per card in the list.
- *
- * If a clip cannot be decoded (AV1 on an older GPU, a file mid-remux), `failed`
- * latches and the thumbnail stays. A card must never look broken because a preview
- * could not be built.
- */
-function ScrubLayer({ filePath, duration }: { filePath: string; duration: number }) {
-  const [failed, setFailed] = useState(false)
-  const [ready, setReady] = useState(false)
-  const [hidden, setHidden] = useState(() => document.hidden)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-
-  // A hidden window must not keep a decoder alive: closing to the tray happens
-  // with the pointer still resting on a card.
-  useEffect(() => {
-    const onVisibility = () => setHidden(document.hidden)
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [])
-
-  if (failed || hidden) return null
-
-  const seek = (event: React.PointerEvent<HTMLDivElement>) => {
-    const video = videoRef.current
-    if (!video || !ready || document.hidden) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const ratio = Math.min(Math.max((event.clientX - rect.left) / Math.max(rect.width, 1), 0), 1)
-    const length = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : duration
-    if (length > 0) video.currentTime = ratio * length
-  }
-
-  return (
-    <div className="absolute inset-0" data-testid="scrub-layer" onPointerEnter={seek} onPointerMove={seek}>
-      <video
-        ref={videoRef}
-        src={clipUrl(filePath)}
-        muted
-        playsInline
-        preload="metadata"
-        onLoadedData={() => setReady(true)}
-        onError={() => setFailed(true)}
-        className={cn('h-full w-full object-cover transition-opacity', ready ? 'opacity-100' : 'opacity-0')}
-      />
-    </div>
-  )
-}
-
 /**
  * One clip card.
  *
@@ -237,7 +172,6 @@ function ClipCard({
   onRename: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [hovering, setHovering] = useState(false)
 
   return (
     <motion.div
@@ -273,8 +207,6 @@ function ClipCard({
           fetch={() => api.getClipThumbnail(clip.path)}
           fallback={<Film className="h-4 w-4 text-accent" strokeWidth={1.5} />}
           duration={clip.duration > 0 ? formatDuration(clip.duration) : undefined}
-          overlay={hovering ? <ScrubLayer filePath={clip.path} duration={clip.duration} /> : null}
-          onHoverChange={setHovering}
           height={thumbHeight}
         />
 
