@@ -112,6 +112,9 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   // Kept apart from `loadError`: a preview that will not decode is not a reason to
   // throw away the loaded metadata and the trim range the user has already set.
   const [previewError, setPreviewError] = useState<string | null>(null)
+  // Flips the Copy button to "Copied" for a moment, so a clipboard write that has
+  // no visible result still confirms itself.
+  const [copied, setCopied] = useState(false)
 
   const [tracks, setTracks] = useState<ClipAudioTrack[]>([])
   const [volumes, setVolumes] = useState<Record<number, number>>({})
@@ -280,8 +283,18 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   // Live monitoring: the sliders are heard as they are dragged, no re-encode.
   usePreviewAudio({ ready: !loading, broken: !!previewError, videoRef, tracks, volumes, masterVolume, masterMuted })
 
-  const save = async (mode: 'overwrite' | 'copy') => {
-    setSaving({ mode })
+  /** Copy the clip file for sharing; the label confirms the write. */
+  const copyClip = async () => {
+    const res = await api.copyClip(clipPath)
+    if (res.success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } else {
+      setSaveError(res.error)
+    }
+  }
+
+  const save = async (mode: 'overwrite' | 'copy') => {    setSaving({ mode })
     setSaveError(null)
     try {
       const res = await api.editorSaveClip({ clipPath, startSec, endSec, mode, trackVolumes })
@@ -496,6 +509,14 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
         <p className="flex-1 text-[11px] text-ink-faint">
           {volumesChanged ? 'Audio volumes changed — the clip will be re-encoded.' : 'No audio changes — trim is a stream copy.'}
         </p>
+        <Button
+          variant="ghost"
+          data-testid="copy-clip"
+          title="Copy the clip file — paste it straight into a chat"
+          onClick={() => void copyClip()}
+        >
+          {copied ? 'Copied' : 'Copy clip'}
+        </Button>
         <Button variant="secondary" disabled={!!saving} onClick={() => void api.editorCancel()}>
           Close
         </Button>
@@ -729,6 +750,14 @@ function ExportSection({
         {result ? (
           <span className="flex items-center gap-2 text-[11px] text-ink-muted">
             Saved <span className="truncate">{result.path.split(/[\\/]/).pop()}</span> ({formatBytes(result.bytes)})
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Copy this file — paste it straight into a chat"
+              onClick={() => void api.copyClip(result.path)}
+            >
+              Copy
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => void api.showClipInFolder(result.path)}>
               Show in folder
             </Button>

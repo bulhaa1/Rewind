@@ -142,6 +142,7 @@ export const IPC = {
   editorCancel: 'editor-cancel',
   editorExport: 'editor-export',
   editorExportCancel: 'editor-export-cancel',
+  copyClip: 'copy-clip',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

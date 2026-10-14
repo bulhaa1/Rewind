@@ -158,6 +158,7 @@ api.editorSaveClip = invoke(IPC.editorSaveClip)
 api.editorCancel = invoke(IPC.editorCancel)
 api.editorExport = invoke(IPC.editorExport)
 api.editorExportCancel = invoke(IPC.editorExportCancel)
+api.copyClip = invoke(IPC.copyClip)
 
 /**
  * Subscribes to a main-process push event. Returns an unsubscribe function.

@@ -102,4 +102,15 @@ export default async function ({ evaluate, drainErrors, url }) {
   if (!exportPanel?.readout) console.log('FAIL probe-editor-ui: export size readout missing')
 
   console.log('renderer errors:', drainErrors().length ? drainErrors() : 'none')
+
+  // Copy clip: the footer button writes the file to the clipboard and confirms.
+  const copyResult = await evaluate(`(async () => {
+    const b = document.querySelector('[data-testid="copy-clip"]')
+    if (!b) return 'missing'
+    b.click()
+    await new Promise((r) => setTimeout(r, 800))
+    return b.textContent.trim()
+  })()`)
+  console.log('copy clip button:', copyResult)
+  if (copyResult !== 'Copied') console.log('FAIL probe-editor-ui: copy clip button did not confirm')
 }

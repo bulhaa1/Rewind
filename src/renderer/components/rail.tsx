@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Menu as BaseMenu } from '@base-ui-components/react/menu'
-import { Camera, Film, FolderOpen, Image as ImageIcon, MoreHorizontal, Pencil, Scissors, Trash2 } from 'lucide-react'
+import { Camera, Copy, Film, FolderOpen, Image as ImageIcon, MoreHorizontal, Pencil, Scissors, Trash2 } from 'lucide-react'
 import { api, formatBytes, formatDuration, formatSourceName, formatTimestamp, messageOf } from '../lib/api'
 import { QK, clipsQuery, hotkeysQuery, screenshotsQuery } from '../lib/queries'
 import { SPRING_SNAPPY, SPRING_SOFT } from '../lib/motion'
@@ -225,6 +225,12 @@ function ClipCard({
             <CardMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <Item icon={<Scissors className="h-3.5 w-3.5" strokeWidth={1.5} />} onSelect={onOpenEditor}>
                 Trim in editor
+              </Item>
+              <Item
+                icon={<Copy className="h-3.5 w-3.5" strokeWidth={1.5} />}
+                onSelect={() => void api.copyClip(clip.path)}
+              >
+                Copy clip
               </Item>
               <Item
                 icon={<FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />}

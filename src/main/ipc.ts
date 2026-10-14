@@ -1,4 +1,4 @@
-import { app, ipcMain, shell, dialog, BrowserWindow, screen } from 'electron'
+import { app, ipcMain, shell, dialog, BrowserWindow, screen, clipboard } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
@@ -1413,6 +1413,29 @@ export function registerIpc(s: Services): void {
   handle(IPC.editorExportCancel, () => {
     require('./export.js').cancelExport()
     return ok()
+  })
+
+  /**
+   * Copy a clip file to the clipboard so it can be pasted into a chat.
+   *
+   * Windows has no Electron API for a real file copy (CF_HDROP needs a native
+   * module), so this writes the FileNameW format, which is what Explorer and most
+   * chat apps read as "a file was copied". An app that insists on CF_HDROP gets
+   * the path as text from the fallback instead of nothing at all.
+   */
+  handle(IPC.copyClip, (file: unknown) => {
+    const resolved = resolveVideo(file, s, 'copy-clip')
+    if ('error' in resolved) return resolved
+    const target = resolved.path
+    try {
+      clipboard.writeBuffer('FileNameW', Buffer.from(`${target}\u0000`, 'ucs2'))
+      log.info(`Clip copied to the clipboard as a file: ${target}`)
+      return ok({ mode: 'file' as const })
+    } catch (e) {
+      clipboard.writeText(target)
+      log.warn(`FileNameW clipboard write failed (${messageOf(e)}); copied the path instead`)
+      return ok({ mode: 'path' as const })
+    }
   })
 
   handle(IPC.notificationClick, () => {
