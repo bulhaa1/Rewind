@@ -62,25 +62,33 @@ export default async function ({ evaluate }) {
   console.log(`${afterClick === target ? 'PASS' : 'FAIL'}  chip click: active ${beforeClick} -> ${afterClick} (expected ${target})`)
   if (afterClick !== target) problems.push(`chip click moved ${beforeClick} -> ${afterClick}, expected ${target}`)
 
-  // Add. A new profile is appended and is never the active one.
+  // CRUD with shift-aware activeProfile expectations:
+  // duplicating at index 0 inserts at 1, shifting the active index up when it was >= 1;
+  // removing at index 1 shifts it back down when it was > 1. Appending never shifts.
+  let a = (await profiles()).data.activeProfile
   const added = await evaluate('window.electronAPI.addProfile()')
   if (!added?.success) problems.push(`addProfile failed: ${JSON.stringify(added)}`)
   const afterAdd = await waitForCount(evaluate, count + 1)
-  const addedOk =
-    afterAdd && afterAdd.profiles.length === count + 1 && afterAdd.activeProfile === start.data.activeProfile
-  console.log(`${addedOk ? 'PASS' : 'FAIL'}  add profile: ${count} -> ${afterAdd?.profiles.length}`)
+  const addedOk = afterAdd && afterAdd.profiles.length === count + 1 && afterAdd.activeProfile === a
+  console.log(`${addedOk ? 'PASS' : 'FAIL'}  add profile: ${count} -> ${afterAdd?.profiles.length}, active ${a}`)
   if (!addedOk) problems.push('addProfile did not append one inactive profile')
 
-  // Duplicate. The copy sits after its source and carries its values.
   const source = afterAdd.profiles[0]
   const dup = await evaluate('window.electronAPI.duplicateProfile(0)')
   if (!dup?.success) problems.push(`duplicateProfile failed: ${JSON.stringify(dup)}`)
+  const expectedActiveAfterDup = a >= 1 ? a + 1 : a
   const afterDup = await waitForCount(evaluate, count + 2)
   const copy = afterDup?.profiles[1]
   const dupOk =
-    copy && copy.name === `${source.name} copy` && copy.fps === source.fps && copy.bufferDuration === source.bufferDuration
-  console.log(`${dupOk ? 'PASS' : 'FAIL'}  duplicate profile 0: ${copy ? copy.name : 'none'}`)
-  if (!dupOk) problems.push('duplicateProfile did not insert a values copy after its source')
+    copy &&
+    copy.name === `${source.name} copy` &&
+    copy.fps === source.fps &&
+    copy.bufferDuration === source.bufferDuration &&
+    afterDup.activeProfile === expectedActiveAfterDup
+  console.log(
+    `${dupOk ? 'PASS' : 'FAIL'}  duplicate profile 0: ${copy ? copy.name : 'none'}, active ${afterDup?.activeProfile} (expected ${expectedActiveAfterDup})`,
+  )
+  if (!dupOk) problems.push('duplicateProfile did not insert a values copy with the active index shifted')
 
   // Remove the active profile is refused; the store is untouched.
   const activeIndex = (await profiles()).data.activeProfile
@@ -92,24 +100,31 @@ export default async function ({ evaluate }) {
   // Remove the copy, then the added profile, back to where it started.
   const removedCopy = await evaluate('window.electronAPI.removeProfile(1)')
   if (!removedCopy?.success) problems.push(`removeProfile(1) failed: ${JSON.stringify(removedCopy)}`)
+  const expectedActiveAfterRemove = expectedActiveAfterDup > 1 ? expectedActiveAfterDup - 1 : expectedActiveAfterDup
   const backOne = await waitForCount(evaluate, count + 1)
+  const shiftOk = backOne && backOne.activeProfile === expectedActiveAfterRemove
+  console.log(
+    `${shiftOk ? 'PASS' : 'FAIL'}  removing above the active profile shifts it: ${backOne?.activeProfile} (expected ${expectedActiveAfterRemove})`,
+  )
+  if (!shiftOk) problems.push('removeProfile did not shift the active index down')
+
   const removedAdded = await evaluate(`window.electronAPI.removeProfile(${count})`)
   if (!removedAdded?.success) problems.push(`removeProfile(${count}) failed: ${JSON.stringify(removedAdded)}`)
   const restored = await waitForCount(evaluate, count)
-  const restoredOk = restored && restored.profiles.length === count && restored.activeProfile === activeIndex
+  const restoredOk = restored && restored.profiles.length === count && restored.activeProfile === expectedActiveAfterRemove
   console.log(`${restoredOk ? 'PASS' : 'FAIL'}  removals restore the original list`)
   if (!restoredOk) problems.push('removals did not restore the original list')
 
   // Save current settings: the active profile then carries the live values.
-  const live = await evaluate('window.electronAPI.getConfig()')
+  const liveFps = await evaluate('window.electronAPI.getFps()')
+  const liveQuality = await evaluate('window.electronAPI.getVisualQuality()')
   const saved = await evaluate('window.electronAPI.saveActiveProfile()')
   if (!saved?.success) problems.push(`saveActiveProfile failed: ${JSON.stringify(saved)}`)
   const active = saved?.data?.profiles[saved.data.activeProfile]
-  const liveFps = live?.data?.fps
-  const liveQuality = live?.data?.visualQuality
-  const savedOk = active && liveFps !== undefined && active.fps === liveFps && active.visualQuality === liveQuality
+  const savedOk =
+    active && liveFps?.data !== undefined && active.fps === liveFps.data && active.visualQuality === liveQuality.data
   console.log(
-    `${savedOk ? 'PASS' : 'FAIL'}  save current settings: profile ${active?.fps}/${active?.visualQuality} vs live ${liveFps}/${liveQuality}`,
+    `${savedOk ? 'PASS' : 'FAIL'}  save current settings: profile ${active?.fps}/${active?.visualQuality} vs live ${liveFps?.data}/${liveQuality?.data}`,
   )
   if (!savedOk) problems.push('saveActiveProfile did not copy the live values into the active profile')
 

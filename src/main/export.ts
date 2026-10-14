@@ -42,8 +42,23 @@ export async function exportClip(
   req: ExportRequest,
   deps: { onProgress?: (percent: number) => void } = {},
 ): Promise<ExportResult> {
+  // Claimed before the first await: two rapid requests must not both pass the guard.
   if (running) throw new Error('An export is already running')
+  const claim = new AbortController()
+  running = { abort: () => claim.abort() }
 
+  try {
+    return await runExport(req, deps, claim.signal)
+  } finally {
+    running = null
+  }
+}
+
+async function runExport(
+  req: ExportRequest,
+  deps: { onProgress?: (percent: number) => void },
+  signal: AbortSignal,
+): Promise<ExportResult> {
   const info = await probeClip(req.clipPath)
   if (!info || !info.durationSec) throw new Error('Could not read the clip')
   if (info.width < 2 || info.height < 2) throw new Error('Could not read the clip dimensions')
@@ -51,25 +66,34 @@ export async function exportClip(
   const start = Math.min(Math.max(0, req.startSec), Math.max(0, info.durationSec - 0.1))
   const duration = Math.min(Math.max(req.endSec - req.startSec, 0.5), info.durationSec - start)
 
+  // A size target below the floor cannot produce anything watchable; refuse before
+  // any file is created so nothing partial is left behind.
+  if (req.format === 'mp4' && req.targetMb && req.targetMb > 0) {
+    let videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration)
+    if (req.audio) videoKbps -= AUDIO_KBPS
+    if (videoKbps < MIN_VIDEO_KBPS) {
+      throw new Error('Target size is too small for this duration — raise it or drop the audio')
+    }
+  }
+
   const ext = req.format === 'gif' ? '.gif' : '.mp4'
   const dir = path.dirname(req.clipPath)
   const stem = path.basename(req.clipPath, path.extname(req.clipPath))
-  const suffix = req.suffix?.trim().slice(0, 24)
+  // Filename characters only: this string reaches openSync via uniquePath.
+  const suffix = req.suffix?.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 24)
   const out = uniquePath(dir, suffix ? `${stem} (${suffix})` : stem, ext)
 
   const seek = ['-ss', start.toFixed(3), '-t', duration.toFixed(3), '-i', req.clipPath]
   const scale = scaleArgs(req.maxHeight, info.height)
   const progress = ['-progress', 'pipe:1', '-nostats']
-  const ctl = new AbortController()
   const report = (ofTotal: (pct: number) => number) => {
     if (!deps.onProgress) return undefined
+    // Input-side `-ss` resets output timestamps to 0, so `seconds` runs 0..duration.
     return (seconds: number) => {
-      const pct = duration > 0 ? ((seconds - start) / duration) * 100 : 0
+      const pct = duration > 0 ? (seconds / duration) * 100 : 0
       deps.onProgress!(Math.min(99, Math.max(0, Math.round(ofTotal(pct)))))
     }
   }
-
-  running = { abort: () => ctl.abort() }
 
   try {
     if (req.format === 'gif') {
@@ -81,7 +105,7 @@ export async function exportClip(
         `split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3`
       await runFfmpeg(
         [...seek, ...progress, '-filter_complex', filter, '-an', '-loop', '0', '-y', out],
-        ctl.signal,
+        signal,
         report((p) => p),
       ).promise
     } else if (req.targetMb && req.targetMb > 0) {
@@ -89,22 +113,19 @@ export async function exportClip(
       // where the user asked rather than wherever the quality knob happens to fall.
       let videoKbps = Math.floor((req.targetMb * 8 * 1024) / duration)
       if (req.audio) videoKbps -= AUDIO_KBPS
-      if (videoKbps < MIN_VIDEO_KBPS) {
-        throw new Error('Target size is too small for this duration — raise it or drop the audio')
-      }
       const passDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-export-'))
       const passlog = path.join(passDir, 'pass')
       try {
         const videoArgs = [...seek, ...scale, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${videoKbps}k`]
         await runFfmpeg(
           [...videoArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
-          ctl.signal,
+          signal,
           report((p) => p * 0.4),
         ).promise
         const audioArgs = req.audio ? ['-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`] : ['-an']
         await runFfmpeg(
           [...videoArgs, ...audioArgs, ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out],
-          ctl.signal,
+          signal,
           report((p) => 40 + p * 0.6),
         ).promise
       } finally {
@@ -127,7 +148,7 @@ export async function exportClip(
           '-movflags', '+faststart',
           '-y', out,
         ],
-        ctl.signal,
+        signal,
         report((p) => p),
       ).promise
     }
@@ -142,7 +163,15 @@ export async function exportClip(
       height: result?.height ?? info.height,
       durationSec: result?.durationSec ?? duration,
     }
-  } finally {
-    running = null
+  } catch (e) {
+    // uniquePath pre-creates the file and a killed encode leaves it partial, so a
+    // failed or cancelled export takes its output with it.
+    try {
+      fs.rmSync(out, { force: true })
+    } catch {
+      /* best effort */
+    }
+    throw e
   }
 }
+

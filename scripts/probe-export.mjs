@@ -87,6 +87,21 @@ export default async function ({ evaluate }) {
   console.log(`${maxPercent >= 90 ? 'PASS' : 'FAIL'}  progress events reached ${maxPercent}%`)
   if (maxPercent < 90) problems.push(`progress never passed 90% (max ${maxPercent})`)
 
+  // A range that starts mid-clip: input-side -ss resets timestamps to 0, so the
+  // progress must still run 0..100 against the RANGE, not the clip.
+  await evaluate(`window.__exportProgress = []`)
+  const long = clips.find((c) => c.duration >= 20) ?? clip
+  const midStart = Math.min(10, Math.max(0, long.duration - 3))
+  const midEnd = Math.min(midStart + 3, long.duration)
+  const mid = await evaluate(
+    `window.electronAPI.editorExport({ clipPath: ${JSON.stringify(long.path)}, startSec: ${midStart}, endSec: ${midEnd}, format: 'mp4', maxHeight: 480, targetMb: null, audio: false })`,
+  )
+  const midProgress = await evaluate('window.__exportProgress')
+  const midMax = Math.max(0, ...(midProgress ?? [0]))
+  const midOk = mid?.success && midMax >= 90
+  console.log(`${midOk ? 'PASS' : 'FAIL'}  mid-clip export progress reached ${midMax}% (range ${midStart}s..${midEnd}s)`)
+  if (!midOk) problems.push(`mid-clip export: progress stuck at ${midMax}%, success ${mid?.success}`)
+
   if (problems.length) {
     console.log('FAIL probe-export: ' + problems.join('; '))
     throw new Error('export assertion failed')

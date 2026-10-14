@@ -34,7 +34,7 @@ export function clampProfile(stored: Partial<Profile> | undefined): Profile {
 /** The stored profiles (never empty), plus which one the live settings belong to. */
 export function getProfiles(): { profiles: Profile[]; activeProfile: number } {
   const stored = getSetting('profiles') as Partial<Profile>[] | undefined
-  const profiles = stored?.length ? stored.map(clampProfile) : DEFAULT_PROFILES.map((p) => ({ ...p }))
+  const profiles = Array.isArray(stored) && stored.length ? stored.map(clampProfile) : DEFAULT_PROFILES.map((p) => ({ ...p }))
   const active = getSetting('activeProfile')
   return {
     profiles,
@@ -103,12 +103,15 @@ export function addProfile(): { profiles: Profile[]; activeProfile: number } {
 
 /** Inserts a copy of a profile right after it. The copy is never the active one. */
 export function duplicateProfile(index: number): { profiles: Profile[]; activeProfile: number } {
-  const { profiles } = getProfiles()
+  const { profiles, activeProfile } = getProfiles()
   const source = profiles[index]
   const base = `${source.name} copy`
+  // Inserting above the active entry shifts it up; the stored index must follow.
+  const nextActive = index + 1 <= activeProfile ? activeProfile + 1 : activeProfile
   profiles.splice(index + 1, 0, clampProfile({ ...source, name: base }))
   setSetting('profiles', profiles)
-  return { profiles, activeProfile: getProfiles().activeProfile }
+  setSetting('activeProfile', nextActive)
+  return { profiles, activeProfile: nextActive }
 }
 
 /**
@@ -117,6 +120,8 @@ export function duplicateProfile(index: number): { profiles: Profile[]; activePr
  * The active one is refused, not silently remapped: the live settings are its values,
  * and re-pointing `activeProfile` at a neighbour would make the store claim settings
  * the engine is not running. One profile is also refused, so the list never empties.
+ * Removing a profile above the active one shifts the indices down, so the stored
+ * `activeProfile` moves with them.
  */
 export function removeProfile(index: number): { profiles: Profile[]; activeProfile: number } | string {
   const { profiles, activeProfile } = getProfiles()
@@ -124,6 +129,8 @@ export function removeProfile(index: number): { profiles: Profile[]; activeProfi
   if (index === activeProfile) return 'Switch to another profile before removing it'
   if (!profiles[index]) return 'Invalid profile'
   profiles.splice(index, 1)
+  const nextActive = index < activeProfile ? activeProfile - 1 : activeProfile
   setSetting('profiles', profiles)
-  return { profiles, activeProfile }
+  setSetting('activeProfile', nextActive)
+  return { profiles, activeProfile: nextActive }
 }

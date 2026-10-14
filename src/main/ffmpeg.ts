@@ -77,7 +77,9 @@ export function runFfmpeg(args: string[], signal?: AbortSignal, onProgress?: (se
       stderr += String(d)
     })
     child.stdout?.on('data', (d) => {
-      stdout += String(d)
+      // Keep only the tail: `-progress` output is small, but a hours-long encode
+      // would otherwise have every chunk re-scanning the whole accumulation.
+      stdout = (stdout + String(d)).slice(-512)
       if (!onProgress) return
       // `-progress pipe:1` prints key=value blocks; out_time_ms is microseconds
       // despite the name. The last complete line wins.

@@ -28,7 +28,7 @@ import { captureActiveProfileValues, getProfiles, planProfileChange } from './pr
 import { measureStreamVolume, probe } from './ffmpeg.js'
 import { isInside } from './util.js'
 import { Mutex, sleep, withTimeout } from './obs-bind.js'
-import { TIMING, clampQuickClip, shutdownBudgetMs } from '@shared/constants.js'
+import { DEFAULT_PROFILES, TIMING, clampQuickClip, shutdownBudgetMs } from '@shared/constants.js'
 import type { BufferStatus, HotkeyAction, ObsStatus } from '@shared/types.js'
 
 const log = scope('App')
@@ -1409,6 +1409,10 @@ async function runProfilesSelfTest(): Promise<void> {
     fs.mkdirSync(outDir, { recursive: true })
     setSetting('outputPath', outDir)
     await obsCore.setOutputPath(outDir)
+    // The assertions below index fixed slots, but the list is user-editable now, so
+    // it is seeded back to the defaults the same way the output path is redirected.
+    setSetting('profiles', DEFAULT_PROFILES.map((p) => ({ ...p })))
+    setSetting('activeProfile', 0)
 
     await waitForBuffer(replay, 60_000)
     await sleep(5_000)
