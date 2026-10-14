@@ -1,7 +1,7 @@
 {
   "name": "rewind-desktop",
   "productName": "Rewind",
-  "version": "1.2.0-rc.2",
+  "version": "1.2.0-rc.3",
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
   "author": {
