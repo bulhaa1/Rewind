@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Volume2, VolumeX } from 'lucide-react'
 import { api, clipUrl, formatBytes, formatDuration, messageOf } from '../lib/api'
 import { usePreviewAudio } from '../lib/editor-audio'
 import { Button, CenteredSpinner, cn } from './ui'
@@ -112,9 +111,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
   // Kept apart from `loadError`: a preview that will not decode is not a reason to
   // throw away the loaded metadata and the trim range the user has already set.
   const [previewError, setPreviewError] = useState<string | null>(null)
-  // Flips the Copy button to "Copied" for a moment, so a clipboard write that has
-  // no visible result still confirms itself.
-  const [copied, setCopied] = useState(false)
 
   const [tracks, setTracks] = useState<ClipAudioTrack[]>([])
   const [volumes, setVolumes] = useState<Record<number, number>>({})
@@ -126,16 +122,10 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
    * multiply at save time. Folding it in would make "reset the track" and "nudge
    * the master" fight each other, and there would be no way back to the original
    * per-track balance without redoing it by hand.
+   *
+   * There is no separate mute: a fader at zero IS the mute, on screen and on save.
    */
   const [masterVolume, setMasterVolume] = useState(1)
-  /*
-   * Whether the whole clip is muted.
-   *
-   * Held up here rather than inside the row, because the save has to know: if
-   * only the row knew, a muted clip would still be written at full volume and
-   * the mute would be a lie that only exists on screen.
-   */
-  const [masterMuted, setMasterMuted] = useState(false)
   const [peaks, setPeaks] = useState<Record<number, number[]>>({})
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -257,9 +247,9 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     () =>
       tracks.map((t) => ({
         stream: t.stream,
-        volume: masterMuted ? 0 : masterVolume * (volumes[t.stream] ?? 1),
+        volume: masterVolume * (volumes[t.stream] ?? 1),
       })),
-    [tracks, volumes, masterVolume, masterMuted],
+    [tracks, volumes, masterVolume],
   )
 
   // The clip row's waveform: the loudest of the tracks at each point, so the
@@ -278,21 +268,11 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     return out
   }, [tracks, peaks])
 
-  const volumesChanged = masterMuted || masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
+  const volumesChanged = masterVolume !== 1 || Object.values(volumes).some((v) => v !== 1)
 
   // Live monitoring: the sliders are heard as they are dragged, no re-encode.
-  usePreviewAudio({ ready: !loading, broken: !!previewError, videoRef, tracks, volumes, masterVolume, masterMuted })
-
-  /** Copy the clip file for sharing; the label confirms the write. */
-  const copyClip = async () => {
-    const res = await api.copyClip(clipPath)
-    if (res.success) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
-    } else {
-      setSaveError(res.error)
-    }
-  }
+  // Live monitoring: the sliders are heard as they are dragged, no re-encode.
+  usePreviewAudio({ ready: !loading, broken: !!previewError, videoRef, tracks, volumes, masterVolume })
 
   const save = async (mode: 'overwrite' | 'copy') => {
     setSaving({ mode })
@@ -438,9 +418,7 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
             <>
               <MasterVolumeRow
                 value={masterVolume}
-                muted={masterMuted}
                 onChange={setMasterVolume}
-                onMuteChange={setMasterMuted}
                 peaks={masterPeaks ?? undefined}
                 startSec={startSec}
                 endSec={endSec}
@@ -510,14 +488,6 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
         <p className="flex-1 text-[11px] text-ink-faint">
           {volumesChanged ? 'Audio volumes changed — the clip will be re-encoded.' : 'No audio changes — trim is a stream copy.'}
         </p>
-        <Button
-          variant="ghost"
-          data-testid="copy-clip"
-          title="Copy the clip file — paste it straight into a chat"
-          onClick={() => void copyClip()}
-        >
-          {copied ? 'Copied' : 'Copy clip'}
-        </Button>
         <Button variant="secondary" disabled={!!saving} onClick={() => void api.editorCancel()}>
           Close
         </Button>
@@ -758,14 +728,6 @@ function ExportSection({
         {result ? (
           <span className="flex items-center gap-2 text-[11px] text-ink-muted">
             Saved <span className="truncate">{result.path.split(/[\\/]/).pop()}</span> ({formatBytes(result.bytes)})
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Copy this file — paste it straight into a chat"
-              onClick={() => void api.copyClip(result.path)}
-            >
-              Copy
-            </Button>
             <Button variant="ghost" size="sm" onClick={() => void api.showClipInFolder(result.path)}>
               Show in folder
             </Button>
@@ -997,9 +959,7 @@ function Timeline({
  */
 function MasterVolumeRow({
   value,
-  muted,
   onChange,
-  onMuteChange,
   peaks,
   startSec,
   endSec,
@@ -1008,9 +968,7 @@ function MasterVolumeRow({
   onSeek,
 }: {
   value: number
-  muted: boolean
   onChange: (v: number) => void
-  onMuteChange: (v: boolean) => void
   /** Loudest of the tracks at each point — the shape of the whole mix. */
   peaks?: number[]
   startSec: number
@@ -1019,26 +977,14 @@ function MasterVolumeRow({
   duration: number
   onSeek: (t: number) => void
 }) {
-  const shown = muted ? 0 : value
+  const shown = value
 
   return (
     // Same grid as AudioTrackLane, cell for cell: label 20, waveform, slider 20,
-    // readout 9. The mute button lives inside the label cell so the waveform and
-    // slider start at the same x as the Desktop and Microphone rows.
+    // readout 9. The label cell stays the same width so the waveform and slider
+    // start at the same x as the Desktop and Microphone rows.
     <div className="flex items-center gap-2">
-      <span className="flex w-20 shrink-0 items-center gap-1 truncate text-xs text-ink-muted">
-        <button
-          type="button"
-          onClick={() => onMuteChange(!muted)}
-          aria-label={muted ? 'Unmute clip' : 'Mute clip'}
-          aria-pressed={muted}
-          title={muted ? 'Unmute clip' : 'Mute clip'}
-          className="shrink-0 text-ink-faint transition-colors hover:text-ink"
-        >
-          {muted ? <VolumeX className="h-3 w-3 text-danger" /> : <Volume2 className="h-3 w-3" />}
-        </button>
-        Clip
-      </span>
+      <span className="w-20 shrink-0 truncate text-xs text-ink-muted">Clip</span>
       <LaneGraph
         label="Clip volume"
         peaks={peaks}
@@ -1056,11 +1002,7 @@ function MasterVolumeRow({
         value={Math.round(shown * 100)}
         aria-label="Clip volume"
         title="Applies to every audio track, on top of each track's own volume."
-        onChange={(e) => {
-          // Dragging the slider is an instruction to hear something again.
-          onMuteChange(false)
-          onChange(Number(e.target.value) / 100)
-        }}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
         className="h-1 w-20 shrink-0 cursor-pointer appearance-none rounded-full bg-line-strong accent-accent"
       />
       <span className="tabular w-9 shrink-0 text-right text-[11px] text-ink-faint">{Math.round(shown * 100)}%</span>

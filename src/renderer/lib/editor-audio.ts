@@ -12,7 +12,6 @@ interface PreviewAudioArgs {
   tracks: ClipAudioTrack[]
   volumes: Record<number, number>
   masterVolume: number
-  masterMuted: boolean
 }
 
 interface AudioGraph {
@@ -47,7 +46,6 @@ export function usePreviewAudio({
   tracks,
   volumes,
   masterVolume,
-  masterMuted,
 }: PreviewAudioArgs): void {
   const graphRef = useRef<AudioGraph | null>(null)
 
@@ -77,7 +75,7 @@ export function usePreviewAudio({
         graph.lanes.push({ el, gain, stream: t.stream })
       }
       // A graph rebuilt after a slider change must not start at the defaults.
-      graph.master.gain.value = masterMuted ? 0 : masterVolume
+      graph.master.gain.value = masterVolume
       for (const lane of graph.lanes) lane.gain.gain.value = volumes[lane.stream] ?? 1
     } catch {
       // No graph: the video keeps its own audio.
@@ -152,7 +150,8 @@ export function usePreviewAudio({
   useEffect(() => {
     const graph = graphRef.current
     if (!graph) return
-    graph.master.gain.value = masterMuted ? 0 : masterVolume
+    graph.master.gain.value = masterVolume
     for (const lane of graph.lanes) lane.gain.gain.value = volumes[lane.stream] ?? 1
-  }, [volumes, masterVolume, masterMuted])
+  }, [volumes, masterVolume])
 }
+
