@@ -156,6 +156,7 @@ function ActionRow({
   onClick,
   onEditHotkey,
   busy,
+  disabled = false,
   tone = 'quiet',
 }: {
   testid: string
@@ -165,6 +166,8 @@ function ActionRow({
   onClick: () => void
   onEditHotkey?: () => void
   busy?: boolean
+  /** Fades the row and blocks the click, for an action the engine cannot run. */
+  disabled?: boolean
   tone?: 'quiet' | 'primary' | 'danger'
 }) {
   return (
@@ -174,13 +177,20 @@ function ActionRow({
         tone === 'primary' && 'border-accent/30 bg-accent-soft hover:border-accent/60',
         tone === 'quiet' && 'border-line hover:border-line-strong hover:bg-raised',
         tone === 'danger' && 'border-danger/40 bg-danger/10 hover:border-danger/70',
+        // Faded, and with the hover feedback suppressed so it does not read as
+        // clickable-but-unresponsive.
+        disabled && 'cursor-not-allowed opacity-45 hover:border-line hover:bg-transparent',
       )}
     >
       <button
         type="button"
         data-testid={testid}
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+        disabled={disabled}
+        className={cn(
+          'flex min-w-0 flex-1 items-center gap-2.5 text-left',
+          disabled && 'cursor-not-allowed',
+        )}
       >
         <span
           className={cn(
@@ -387,6 +397,9 @@ export function Deck({
           onClick={toggleRecording}
           onEditHotkey={() => setEditAction('toggle-record')}
           busy={recordBusy}
+          // Continuous recording rides on the buffer's replay chain: with the buffer
+          // off there is nothing to record, and the engine rejects the start.
+          disabled={!bufferActive && !recording}
         />
         <ActionRow
           testid="screenshot"

@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Camera,
-  Crosshair,
   Database,
   FileText,
   Film,
@@ -54,9 +53,9 @@ const AUTO_GAME = '__auto_game_capture__'
 /**
  * Capture source picker.
  *
- * "Game Capture" is auto-detect — the concrete window is chosen by the detector, so
- * an explicit window list is offered alongside it. Both are `window` mode
- * internally; the distinction is only which window handle is active.
+ * "Game Capture" is auto-detect — the detector picks the window, so no window needs
+ * choosing and the mode button itself is the choice. The list below it is for pinning
+ * one specific window instead; both are `window` mode internally.
  */
 function CaptureSection() {
   const client = useQueryClient()
@@ -179,48 +178,38 @@ function CaptureSection() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <SelectableCard
-                icon={<Crosshair />}
-                selected={selectedWindow === AUTO_GAME}
-                onClick={() => chooseWindow(AUTO_GAME)}
-                title="Auto detect launched game"
-                subtitle="Records desktop, auto-switches when a game is launched"
-              />
-
-              <div className="space-y-2 border-t border-line pt-4">
-                <div className="flex items-center justify-between">
-                  <span className="label">Select Window</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={() => void refreshWindows()}
-                    disabled={refreshing}
-                  >
-                    <RefreshCw className={refreshing ? 'mr-1 h-3 w-3 animate-spin' : 'mr-1 h-3 w-3'} />
-                    Refresh
-                  </Button>
-                </div>
-
-                {windowRows.length === 0 ? (
-                  <p className="py-8 text-center text-[13px] text-ink-muted">No windows found. Try refreshing.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {windowRows.map((w) => (
-                      <SelectableCard
-                        key={w.id}
-                        icon={<Gamepad2 />}
-                        selected={selectedWindow === w.id}
-                        disabled={!!w.inactive}
-                        onClick={() => chooseWindow(w.id)}
-                        title={w.name}
-                        badge={w.inactive ? 'Inactive' : undefined}
-                      />
-                    ))}
-                  </div>
-                )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="label">Select Window</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => void refreshWindows()}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={refreshing ? 'mr-1 h-3 w-3 animate-spin' : 'mr-1 h-3 w-3'} />
+                  Refresh
+                </Button>
               </div>
+
+              {windowRows.length === 0 ? (
+                <p className="py-8 text-center text-[13px] text-ink-muted">No windows found. Try refreshing.</p>
+              ) : (
+                <div className="space-y-2">
+                  {windowRows.map((w) => (
+                    <SelectableCard
+                      key={w.id}
+                      icon={<Gamepad2 />}
+                      selected={selectedWindow === w.id}
+                      disabled={!!w.inactive}
+                      onClick={() => chooseWindow(w.id)}
+                      title={w.name}
+                      badge={w.inactive ? 'Inactive' : undefined}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>
