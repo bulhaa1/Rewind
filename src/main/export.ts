@@ -1,7 +1,8 @@
-import { spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import { probeClip, resolveFfmpeg, runFfmpeg, uniquePath } from './ffmpeg.js'
 import { scope } from './logger.js'
 import { getSetting } from './store.js'
@@ -35,24 +36,35 @@ const MIN_VIDEO_KBPS = 200
 const GPU_ENCODERS = ['h264_nvenc', 'h264_amf', 'h264_qsv'] as const
 let gpuEncoder: string | null | undefined
 
-function detectGpuEncoder(): string | null {
+/**
+ * Probed with execFile, never spawnSync: this runs on the Electron main process,
+ * and a synchronous wait would freeze every IPC handler and OBS callback for the
+ * probe's whole timeout.
+ */
+const execFileP = promisify(execFile)
+
+async function probeEncoder(encoder: string): Promise<boolean> {
+  try {
+    await execFileP(
+      resolveFfmpeg(),
+      ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.1', '-c:v', encoder, '-frames:v', '1', '-f', 'null', 'NUL'],
+      { windowsHide: true, timeout: 5000 },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function detectGpuEncoder(): Promise<string | null> {
   if (gpuEncoder !== undefined) return gpuEncoder
   gpuEncoder = null
   for (const encoder of GPU_ENCODERS) {
-    try {
-      const probe = spawnSync(
-        resolveFfmpeg(),
-        ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.1', '-c:v', encoder, '-frames:v', '1', '-f', 'null', 'NUL'],
-        { windowsHide: true, timeout: 5000 },
-      )
-      if (probe.status === 0) {
-        gpuEncoder = encoder
-        break
-      }
-      log.info(`${encoder} not usable (exit ${probe.status})`)
-    } catch (e) {
-      log.warn(`${encoder} probe failed:`, e)
+    if (await probeEncoder(encoder)) {
+      gpuEncoder = encoder
+      break
     }
+    log.info(`${encoder} not usable`)
   }
   log.info(`Export encoder: ${gpuEncoder ?? 'libx264 (CPU fallback)'}`)
   return gpuEncoder
@@ -138,8 +150,11 @@ async function runExport(
     }
   }
 
-  const encoder = detectGpuEncoder()
+  const encoder = await detectGpuEncoder()
   const vArgs = videoArgs(encoder, videoKbps)
+  // The CPU fallback's thread budget limits the decoder too: input-side threads.
+  const cpuThreads = getSetting('exportThreads') || 0
+  const inputThreads = !encoder && cpuThreads > 0 ? ['-threads', String(cpuThreads)] : []
 
   try {
     if (encoder) {
@@ -159,13 +174,13 @@ async function runExport(
       const passlog = path.join(passDir, 'pass')
       try {
         await runFfmpeg(
-          [...seek, ...vArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
+          [...inputThreads, ...seek, ...vArgs, ...progress, '-an', '-pass', '1', '-passlogfile', passlog, '-f', 'null', 'NUL'],
           signal,
           report((p) => p * 0.4),
         ).promise
         await runFfmpeg(
           [
-            ...seek, ...vArgs,
+            ...inputThreads, ...seek, ...vArgs,
             '-map', '0:v:0', '-map', '0:a:0?', '-c:a', 'aac', '-b:a', `${AUDIO_KBPS}k`,
             ...progress, '-pass', '2', '-passlogfile', passlog, '-movflags', '+faststart', '-y', out,
           ],

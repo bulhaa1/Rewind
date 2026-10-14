@@ -8,12 +8,8 @@ interface ClipInfo {
   duration: number
   previewPath: string
   audioTracks: ClipAudioTrack[]
-  /** Source size in bytes; drives the trim savings estimate. 0 if unreadable. */
+  /** Source size in bytes; drives the compress savings estimate. 0 if unreadable. */
   fileSize: number
-  /** Source video dimensions and frame rate; the export size readout scales from them. */
-  width: number
-  height: number
-  fps: number
 }
 
 /**
@@ -453,15 +449,17 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
           variant="secondary"
           disabled={!!saving || selectionLength < 1}
           onClick={() => void save('copy')}
+          title="Writes the trimmed range to a new file; the original is kept"
         >
-          {saving?.mode === 'copy' ? 'Saving…' : 'Save as Copy'}
+          {saving?.mode === 'copy' ? 'Saving…' : 'Save a copy'}
         </Button>
         <Button
           variant="primary"
           disabled={!!saving || selectionLength < 1}
           onClick={() => void save('overwrite')}
+          title="Writes the trimmed range over the original clip"
         >
-          {saving?.mode === 'overwrite' ? 'Saving…' : 'Overwrite'}
+          {saving?.mode === 'overwrite' ? 'Saving…' : 'Replace original'}
         </Button>
       </footer>
     </div>
@@ -510,7 +508,8 @@ function ExportSection({
    * The size model: each chip encodes at a fraction of the source's own bitrate
    * (video = fraction − 128 kbps of audio, floored at 200). The readout and the
    * target the encoder receives are the same arithmetic, so the file lands on the
-   * number shown, and the ask can never exceed what the source spent.
+   * number shown. On very low-bitrate sources the 200 kbps floor can exceed the
+   * fraction — the percent readout says so honestly.
    */
   const srcKbps = fileSize > 0 && duration > 0 ? (fileSize * 8) / duration / 1000 : 0
   // The validator caps an export at 500 MB; keep the ask inside it instead of
@@ -539,14 +538,12 @@ function ExportSection({
     setResult(null)
     setPercent(0)
     try {
-      // Always a copy beside the clip; the original is never overwritten.
+      // Always a copy in the Compressed folder; the original is never overwritten.
       const req = {
         clipPath,
         startSec,
         endSec,
         targetMb: Math.max(0.1, ((videoKbps + 129) * exportLength) / 8 / 1024),
-        // A trimmed range is a cut, not a compression; name the copy for what it is.
-        suffix: exportLength < duration - 0.05 ? 'trimmed' : 'compressed',
       }
       const res = await api.editorExport(req)
       if (!res.success || !res.data) {

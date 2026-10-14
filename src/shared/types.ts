@@ -181,10 +181,7 @@ export interface ClipEditorInfo {
   duration: number
   previewPath: string
   audioTracks: ClipAudioTrack[]
-  /** Source video dimensions and frame rate; the export size readout scales from them. */
-  width: number
-  height: number
-  fps: number
+  /** Source size in bytes; drives the compress savings estimate. */
   fileSize: number
 }
 
