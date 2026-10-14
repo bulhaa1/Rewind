@@ -76,6 +76,7 @@ api.getScreenshotPath = invoke(IPC.getScreenshotPath)
 api.setScreenshotPath = invoke(IPC.setScreenshotPath)
 api.openScreenshotFolder = invoke(IPC.openScreenshotFolder)
 api.selectFolder = invoke(IPC.selectFolder)
+api.getStorageUsage = invoke(IPC.getStorageUsage)
 
 // Clips
 api.getSavedClips = invoke(IPC.getSavedClips)

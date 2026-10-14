@@ -201,6 +201,21 @@ function Body({
     )
   }
 
+  if (state.status === 'updated') {
+    return (
+      <>
+        <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
+          <Check className="h-3 w-3 text-accent" />
+          Updated to {state.version ?? 'the new version'}.
+        </p>
+        <Button size="sm" variant="outline" className="mt-2 w-full" onClick={onCheck}>
+          <RefreshCw className="h-3 w-3" />
+          Check for updates
+        </Button>
+      </>
+    )
+  }
+
   if (state.status === 'current') {
     return (
       <>

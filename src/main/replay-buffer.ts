@@ -15,6 +15,7 @@ import {
   OBS_SOURCE_NAMES,
   QSV_H264_LEGACY,
   QSV_TARGET_USAGE,
+  RECORDINGS_SUBDIR,
   REPLAY_PREFIX,
   RESOURCE_SAMPLE_INTERVAL_MS,
   TIMING,
@@ -916,7 +917,16 @@ export class ReplayBuffer {
 
   /** Timestamped name that will not collide with a clip saved in the same second. */
   private nextRecordingPath(): string {
-    const dir = this.obsCore.getConfig().outputPath
+    const root = this.obsCore.getConfig().outputPath
+    // Recordings get their own folder, so a game's folder holds clips and only clips.
+    let dir = path.join(root, RECORDINGS_SUBDIR)
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch (e) {
+      log.warn(`Could not create ${dir}; writing the recording into the root instead:`, e)
+      dir = root
+    }
+
     const d = new Date(this.recordingStartedAt)
     const pad = (n: number) => String(n).padStart(2, '0')
     const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`

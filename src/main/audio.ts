@@ -347,8 +347,8 @@ export class AudioMix {
         if (Array.isArray(items)) {
           for (const i of items) {
             const handle = String(i.value)
-            // Window handles are `<hwnd>:<class>:<title>:<exe>`; the exe is what
-            // the per-app audio source is keyed by.
+            // Window handles are `<title>:<class>:<exe>`; the exe is what the
+            // per-app audio source is keyed by, and it is the last field.
             const parts = handle.split(':')
             const exe = normalizeExe(parts[parts.length - 1] ?? '')
             if (exe && !out.has(exe)) out.set(exe, handle)
@@ -366,6 +366,9 @@ export class AudioMix {
     }
     this.windowProbeCache = out
     this.windowProbeAt = Date.now()
+    // The per-app list is only visible here: it comes from a different source than the
+    // window picker, so a mismatch between the two is otherwise undiagnosable.
+    mixLog.info(`Capturable app windows: ${out.size ? [...out.keys()].join(', ') : 'none'}`)
     return out
   }
 

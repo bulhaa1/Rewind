@@ -3,14 +3,16 @@ import path from 'node:path'
 import { scope } from './logger.js'
 import { isInside, isReservedDeviceName, nonEmptyString } from './util.js'
 import { probeClip, probeDuration, type ClipProbe } from './ffmpeg.js'
-import { clipMeta, type ClipMeta } from './store.js'
-import { setClipMeta } from './clip-meta.js'
+import { clipMeta, getSetting, setSetting, type ClipMeta } from './store.js'
+import { getClipMeta, setClipMeta } from './clip-meta.js'
 import {
   DISPLAY_CAPTURE_FOLDER,
   GAME_CAPTURE_FOLDER,
   LEGACY_AUTO_GAME_FOLDER,
+  RECORDINGS_SUBDIR,
   RECORDING_PREFIX,
   REPLAY_PREFIX,
+  STORAGE_LAYOUT_VERSION,
   parseRecordingStamp,
 } from '@shared/constants.js'
 import type { ClipInfo, DeleteScope } from '@shared/types.js'
@@ -81,44 +83,54 @@ export function toSubfolderName(sourceName: string): string {
 }
 
 /**
- * Moves the saved replay into a per-source subfolder.
+ * Moves a file into a named folder under the clips root.
  *
  * Rename is attempted first; a cross-volume or locked file falls back to
- * copy+unlink so the clip is never lost.
+ * copy+unlink so the file is never lost.
  */
-export function moveIntoSourceFolder(file: string, sourceName: string, outputRoot: string): string {
+export function moveIntoFolder(file: string, folderName: string, outputRoot: string): string {
   if (!file || !fs.existsSync(file)) return file
 
-  const folder = path.join(outputRoot, toSubfolderName(sourceName))
+  const folder = path.join(outputRoot, folderName)
 
   try {
     if (!fs.existsSync(folder)) {
       fs.mkdirSync(folder, { recursive: true })
-      log.info(`Created source subfolder: ${folder}`)
+      log.info(`Created folder: ${folder}`)
     }
   } catch (e) {
-    log.warn(`Cannot create subfolder ${folder}, keeping clip in base directory:`, e)
+    log.warn(`Cannot create folder ${folder}, keeping file where it is:`, e)
     return file
   }
 
   const target = path.join(folder, path.basename(file))
-  if (target === file) return file
+  if (target.toLowerCase() === file.toLowerCase()) return file
 
   try {
     fs.renameSync(file, target)
-    log.info(`Moved replay to: ${target}`)
+    log.info(`Moved file to: ${target}`)
     return target
   } catch {
     try {
       fs.copyFileSync(file, target)
       fs.unlinkSync(file)
-      log.info(`Copied replay to: ${target}`)
+      log.info(`Copied file to: ${target}`)
       return target
     } catch (e) {
-      log.warn('Could not move replay to subfolder:', e)
+      log.warn('Could not move file into its folder:', e)
       return file
     }
   }
+}
+
+/**
+ * Moves a saved replay into a per-source subfolder.
+ *
+ * Recordings do not come through here: they have a folder of their own, so that a
+ * game's folder holds clips and only clips.
+ */
+export function moveIntoSourceFolder(file: string, sourceName: string, outputRoot: string): string {
+  return moveIntoFolder(file, toSubfolderName(sourceName), outputRoot)
 }
 
 /**
@@ -150,7 +162,7 @@ export function registerFinishedRecording(
   outputRoot: string,
   audioTracks: string[] | undefined,
 ): string {
-  const moved = moveIntoSourceFolder(finished, sourceName, outputRoot)
+  const moved = moveIntoFolder(finished, RECORDINGS_SUBDIR, outputRoot)
   setClipMeta(moved, {
     recordedAt: Date.now(),
     source: sourceName,
@@ -294,6 +306,104 @@ export function renameLegacySourceFolders(root: string): void {
     } catch (e) {
       log.warn(`Failed to repair subfolder "${entry.name}":`, e)
     }
+  }
+}
+
+/**
+ * One-time move of an older library into the current layout.
+ *
+ * Two things change shape in 1.4.0: recordings leave the per-source folder they used
+ * to share with clips, and a clip that failed to move when it was saved (or that
+ * predates the per-source folders) is no longer left loose in the root.
+ *
+ * Only files Rewind named itself are touched -- `Replay *` and `Recording *` -- so
+ * anything else in that tree is never adopted or moved.
+ *
+ * `layoutVersion` is written even when a file could not be moved: one locked file
+ * must not make every launch repeat the whole sweep. A file left behind is still
+ * listed by the library, it is just still in the old place.
+ */
+export function migrateStorageLayout(root: string): void {
+  if (getSetting('layoutVersion') >= STORAGE_LAYOUT_VERSION) return
+  if (!fs.existsSync(root)) {
+    setSetting('layoutVersion', STORAGE_LAYOUT_VERSION)
+    return
+  }
+
+  const rootLower = path.resolve(root).toLowerCase()
+  const recordingsDir = path.join(root, RECORDINGS_SUBDIR)
+  const moves: { from: string; to: string }[] = []
+  let failed = 0
+
+  const walk = (dir: string, depth: number): void => {
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+
+      if (entry.isDirectory()) {
+        // `Recordings` is the destination, and nothing nests deeper than a source
+        // folder; walking into either would only cost time.
+        if (depth < 3 && entry.name.toLowerCase() !== RECORDINGS_SUBDIR.toLowerCase()) walk(full, depth + 1)
+        continue
+      }
+      if (!entry.isFile() || !isVideoFile(entry.name) || isTrimTemporary(entry.name)) continue
+
+      if (entry.name.startsWith(RECORDING_PREFIX)) {
+        if (path.dirname(full).toLowerCase() === recordingsDir.toLowerCase()) continue
+        const to = moveIntoFolder(full, RECORDINGS_SUBDIR, root)
+        if (to === full) failed++
+        else moves.push({ from: full, to })
+        continue
+      }
+
+      // A clip loose in the root belongs in the folder its source names.
+      if (entry.name.startsWith(REPLAY_PREFIX) && path.dirname(path.resolve(full)).toLowerCase() === rootLower) {
+        const source = getClipMeta(full)?.source
+        const to = moveIntoFolder(full, toSubfolderName(source || DISPLAY_CAPTURE_FOLDER), root)
+        if (to === full) failed++
+        else moves.push({ from: full, to })
+      }
+    }
+  }
+
+  walk(root, 0)
+
+  if (moves.length) {
+    const next: Record<string, ClipMeta> = { ...(clipMeta.get('clips') ?? {}) }
+    for (const { from, to } of moves) {
+      // Metadata is keyed by absolute path, so a move orphans the record without this.
+      const key = findMetaKey(next, from)
+      if (key) {
+        next[to] = { ...next[to], ...next[key] }
+        delete next[key]
+      }
+      moveThumbnail(from, to)
+    }
+    clipMeta.set('clips', next)
+  }
+
+  setSetting('layoutVersion', STORAGE_LAYOUT_VERSION)
+
+  const recordings = moves.filter((m) => path.dirname(m.to).toLowerCase() === recordingsDir.toLowerCase()).length
+  log.info(
+    `Storage layout: ${recordings} recording(s) into ${RECORDINGS_SUBDIR}, ` +
+      `${moves.length - recordings} clip(s) out of the root, ${failed} left in place`,
+  )
+}
+
+/** Carries a cached thumbnail across a move. A miss is fine: it regenerates on demand. */
+function moveThumbnail(from: string, to: string): void {
+  try {
+    const thumb = require('./thumbnail.js')
+    const src = thumb.thumbnailPath(from)
+    if (fs.existsSync(src)) fs.renameSync(src, thumb.thumbnailPath(to))
+  } catch {
+    /* the orphan pruner drops it */
   }
 }
 

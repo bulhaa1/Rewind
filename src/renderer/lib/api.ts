@@ -19,6 +19,7 @@ import type {
   Profile,
   SaveClipArgs,
   ScreenshotInfo,
+  StorageUsage,
   WindowInfo,
 } from '@shared/types.js'
 
@@ -50,8 +51,10 @@ export class IpcError extends Error {
 /** Update checker state. Mirrors main/updater.ts and the 'update-state' event. */
 export interface UpdateState {
   supported: boolean
-  status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error'
+  status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error' | 'updated'
   version?: string
+  /** The version this launch replaced, when it followed an update. */
+  updatedFrom?: string
   progress?: number
   error?: string
 }
@@ -119,6 +122,7 @@ export interface RewindApi {
   setScreenshotPath(p: string): Promise<IpcResult<string>>
   openScreenshotFolder(): Promise<IpcResult>
   selectFolder(kind: FolderKind): Promise<IpcResult<{ canceled: boolean; path: string | null }>>
+  getStorageUsage(): Promise<IpcResult<StorageUsage>>
 
   // Clips
   getSavedClips(): Promise<IpcResult<ClipInfo[]>>

@@ -74,6 +74,11 @@ The clip editor grew up, and compression moved to your GPU. The full list is in
 Go to releases. Download `Rewind-<version>-setup.exe` and run it. Per-user install, no admin, no
 account.
 
+There is also `Rewind-<version>-portable.zip`: unpack it anywhere and run `Rewind.exe`. It is the
+same app with no installer and no registry entry — settings, clips and screenshots still live in
+the usual per-user places, and the in-app updater is off, because updating a portable copy would
+install a second one. To move up a version, download the new zip.
+
 Recording, editing and clips are all local files. Rewind contains no analytics,
 no telemetry and no crash reporting, and it makes no network request on its own —
 the only way it ever contacts the network is if you press **Check for updates**
@@ -193,6 +198,7 @@ npm run dev          # run against node_modules
 npm run build        # compile main + renderer
 npm start            # build then run
 npm run package      # build the NSIS installer into release/
+npm run package:portable  # zip the packaged app into release/ as Rewind-<version>-portable.zip
 ```
 
 Verification, per area — each one runs the real path and reports what it measured:

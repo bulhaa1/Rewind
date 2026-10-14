@@ -1,0 +1,17 @@
+# Portable build config.
+#
+# Extends the installer config and swaps the NSIS target for a zip of the same
+# unpacked tree, so a portable copy is the identical app, extracted anywhere and run
+# in place. Built by `scripts/package-portable.mjs`, which puts a `portable.flag`
+# beside Rewind.exe first: the app reads it there and hides the in-app updater,
+# because an update in a portable copy would download and run the NSIS installer.
+#
+# Usage: npm run package:portable   (or npm run release:portable to publish)
+extends: ./electron-builder.yml
+
+win:
+  target:
+    - target: zip
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-portable.${ext}

@@ -885,8 +885,25 @@ function main(): void {
   // Everything below needs a live app: `app.getPath('videos')` (default output
   // location), the session, and the `screen` module all throw before ready.
   // These callbacks are registered before bootstrap's, so ordering is preserved.
+  //
+  // Declared out here because the window is built by `bootstrap` below, which needs
+  // to know whether this launch followed an update.
+  let updatedFrom: string | null = null
+
   app.whenReady().then(() => {
     buildPipeline()
+
+    /*
+     * One-time layout migration: recordings into `Recordings\`, and any clip left
+     * loose in the root into the folder its source names. Runs before the library is
+     * first read, so the first scan already sees the final tree.
+     */
+    try {
+      require('./clip-manager.js').migrateStorageLayout(outputRoot())
+    } catch (e) {
+      log.warn('Storage layout migration failed:', e)
+    }
+
     registerIpc(services as never)
     registerClipProtocol()
 
@@ -917,15 +934,20 @@ function main(): void {
     // Pushes the initial update state to the panel. This does not check for
     // updates -- it only reports whether checking is possible at all, which in a
     // dev build it is not. No network call happens here.
+    //
+    // Read before the window is built: a version change is what makes the panel show
+    // itself once after an update and say so in the popover.
+    updatedFrom = require('./updater.js').consumeVersionChange() as string | null
     require('./updater.js').initUpdater((state: unknown) => {
       getMainWindow()?.webContents.send('update-state', state)
-    })
+    }, updatedFrom)
   })
 
   bootstrap({
     onSaveClip: saveFromHotkey,
     onInitPipeline: initPipeline,
     shutdownBudget,
+    showOnStart: () => updatedFrom !== null,
     onPipelineWedge: async () => {
       detector?.stop()
       shutdownHotkeys()

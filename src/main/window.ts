@@ -176,7 +176,7 @@ function acquireSingleInstanceLock(onReady: () => void): void {
 // Main window
 // ---------------------------------------------------------------------------
 
-function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWindow {
+function createMainWindow(showOnStart: boolean, onCreated?: (win: BrowserWindow) => void): BrowserWindow {
   const area = screen_workArea()
   const win = new BrowserWindow({
     width: MAIN_WIDTH,
@@ -221,8 +221,19 @@ function createMainWindow(onCreated?: (win: BrowserWindow) => void): BrowserWind
   // shown, it just stays off screen until the tray icon, a hotkey or a second
   // launch asks for it. Read here rather than at quit time so the choice applies to
   // every launch, login-launched or not.
+  //
+  // `showOnStart` overrides it once after an update: a relaunch that lands silently
+  // in the tray is indistinguishable from an update that failed.
   win.once('ready-to-show', () => {
-    if (!getSetting('startMinimized')) win.show()
+    const show = showOnStart || !getSetting('startMinimized')
+    if (show) win.show()
+    log.info(
+      show
+        ? showOnStart
+          ? 'Panel shown: this launch follows an update'
+          : 'Panel shown'
+        : 'Panel left in the tray (Start minimized)',
+    )
   })
 
   onCreated?.(win)
@@ -312,6 +323,12 @@ export function bootstrap(hooks: {
   onInitPipeline: () => Promise<void>
   onPipelineWedge: () => Promise<void>
   onResume: () => Promise<void>
+  /**
+   * Show the panel on this launch even when "Start minimized" is on. A function
+   * because the answer is only known once the app is ready, which is after this
+   * options object is built.
+   */
+  showOnStart: () => boolean
   /** Milliseconds the engine teardown may take before Quit gives up on it. */
   shutdownBudget: () => number
 }): void {
@@ -325,7 +342,7 @@ export function bootstrap(hooks: {
       // Needs a live session: `session.defaultSession` throws before app-ready.
       applyContentSecurityPolicy()
 
-      mainWindow = createMainWindow()
+      mainWindow = createMainWindow(hooks.showOnStart())
 
       tray = createTray({
         onShow: showMainWindow,

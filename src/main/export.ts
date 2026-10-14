@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { probeClip, resolveFfmpeg, runFfmpeg, uniquePath } from './ffmpeg.js'
 import { scope } from './logger.js'
 import { getSetting } from './store.js'
+import { COMPRESSED_SUBDIR } from '@shared/constants.js'
 import type { ExportRequest, ExportResult } from '@shared/types.js'
 
 const log = scope('Export')
@@ -134,7 +135,7 @@ async function runExport(
   }
 
   if (!deps.outputRoot) throw new Error('No output folder configured')
-  const dir = path.join(deps.outputRoot, 'Compressed')
+  const dir = path.join(deps.outputRoot, COMPRESSED_SUBDIR)
   fs.mkdirSync(dir, { recursive: true })
   const stem = path.basename(req.clipPath, path.extname(req.clipPath))
   const out = uniquePath(dir, stem, '.mp4')

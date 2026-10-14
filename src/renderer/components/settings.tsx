@@ -3,16 +3,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Camera,
+  Copy,
   Database,
   FileText,
   Film,
   FolderOpen,
   Gauge,
   Gamepad2,
+  HardDrive,
   Keyboard,
   ListFilter,
   Mic,
   Monitor,
+  Plus,
   Power,
   RefreshCw,
   Sliders,
@@ -20,7 +23,7 @@ import {
   Volume2,
   X,
 } from 'lucide-react'
-import { api, read } from '../lib/api'
+import { api, formatBytes, read } from '../lib/api'
 import { QK, SETTINGS, captureStateQuery, dedupeWindows, hotkeysQuery, profilesQuery } from '../lib/queries'
 import { useBackgroundAction, useObsStatus } from '../lib/context'
 import { HotkeyChip, VolumeControl } from './audio-controls'
@@ -38,6 +41,7 @@ import {
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
   OUTPUT_RESOLUTION_OPTIONS,
+  PROFILE_COUNT_MAX,
   VISUAL_QUALITIES,
   VISUAL_QUALITY_OPTIONS,
 } from '@shared/constants.js'
@@ -648,7 +652,71 @@ function ScreenshotsSection() {
 
   return (
     <Section icon={<Camera />} title="Screenshots">
-      <PathRow label="Save Location" path={data ?? ''} onBrowse={() => void browse()} />
+      <div className="space-y-2">
+        <PathRow label="Save Location" path={data ?? ''} onBrowse={() => void browse()} />
+        <p className="text-[11px] text-ink-faint">
+          Screenshots are kept in a &ldquo;Screenshots&rdquo; folder inside this location, whatever game or capture
+          source they came from, so the folder holds nothing but screenshots.
+        </p>
+      </div>
+    </Section>
+  )
+}
+
+/**
+ * What the library takes on disk, plus what is left on the clips' drive.
+ *
+ * Measured on demand rather than polled: the scan walks every clip and screenshot,
+ * and the number only moves when one is saved or deleted.
+ */
+function UsageSection() {
+  const query = useQuery({
+    queryKey: ['storage-usage'],
+    queryFn: () => read(api.getStorageUsage(), null),
+  })
+  const usage = query.data ?? null
+  const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+
+  return (
+    <Section icon={<HardDrive />} title="Usage">
+      {usage ? (
+        <div className="space-y-4">
+          <Row label="Recordings" description={files(usage.recordingsFiles)}>
+            <span className="tabular text-[13px]">{formatBytes(usage.recordingsBytes)}</span>
+          </Row>
+          <Row label="Clips" description={files(usage.clipsFiles)}>
+            <span className="tabular text-[13px]">{formatBytes(usage.clipsBytes)}</span>
+          </Row>
+          <Row label="Screenshots" description={files(usage.screenshotsFiles)}>
+            <span className="tabular text-[13px]">{formatBytes(usage.screenshotsBytes)}</span>
+          </Row>
+          <Row label="Compressed" description={files(usage.compressedFiles)}>
+            <span className="tabular text-[13px]">{formatBytes(usage.compressedBytes)}</span>
+          </Row>
+          <Row
+            label="Free space"
+            description={usage.totalBytes ? 'On the drive holding your clips' : 'Could not read the drive'}
+          >
+            <span className="tabular text-[13px]">
+              {usage.totalBytes ? `${formatBytes(usage.freeBytes)} of ${formatBytes(usage.totalBytes)}` : '—'}
+            </span>
+          </Row>
+        </div>
+      ) : (
+        <p className="text-[11px] text-ink-faint">Measuring…</p>
+      )}
+
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-3"
+        data-testid="storage-usage-refresh"
+        disabled={query.isFetching}
+        onClick={() => void query.refetch()}
+      >
+        <RefreshCw className={cn('h-3.5 w-3.5', query.isFetching && 'animate-spin')} />
+        Refresh
+      </Button>
     </Section>
   )
 }
@@ -830,6 +898,7 @@ function ProfilesSection() {
   const { data } = useQuery(profilesQuery)
   const profiles: Profile[] = data?.profiles ?? []
   const activeProfile = data?.activeProfile ?? 0
+  const atCap = profiles.length >= PROFILE_COUNT_MAX
 
   /**
    * Saves one field, through the same error surface as every other action.
@@ -860,8 +929,8 @@ function ProfilesSection() {
     <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">
       <div className="space-y-2">
         <p className="text-[11px] text-ink-faint">
-          Four profiles. Switch with the numbered buttons on the main page; edits to the active profile apply
-          immediately, and &ldquo;Save current&rdquo; copies the live settings into it.
+          Up to {PROFILE_COUNT_MAX} profiles. Switch with the numbered buttons on the main page; edits to the active
+          profile apply immediately, and &ldquo;Save current&rdquo; copies the live settings into it.
         </p>
 
         {/* What each column is, so a row reads as labelled values rather than numbers. */}
@@ -940,6 +1009,16 @@ function ProfilesSection() {
               <Button
                 variant="ghost"
                 size="iconSm"
+                data-testid={`profile-duplicate-${i}`}
+                title={atCap ? `Up to ${PROFILE_COUNT_MAX} profiles` : 'Duplicate this profile'}
+                disabled={atCap}
+                onClick={() => run(() => api.duplicateProfile(i))}
+              >
+                <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="iconSm"
                 data-testid={`profile-remove-${i}`}
                 title={
                   profiles.length <= 1
@@ -956,6 +1035,19 @@ function ProfilesSection() {
             </span>
           </div>
         ))}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1"
+          data-testid="profile-add"
+          title={atCap ? `Up to ${PROFILE_COUNT_MAX} profiles` : 'Add a profile'}
+          disabled={atCap}
+          onClick={() => run(() => api.addProfile())}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add profile
+        </Button>
       </div>
     </Section>
   )
@@ -1059,7 +1151,7 @@ export const SETTINGS_SECTIONS = {
   encoder: [QualitySection],
   profiles: [ProfilesSection],
   // Storage owns every path and every door to the app's own files.
-  storage: [ReplaysSection, ScreenshotsSection, DataSection],
+  storage: [ReplaysSection, ScreenshotsSection, UsageSection, DataSection],
   hotkeys: [HotkeysSection],
   system: [NotificationsSection, StartupSection, VersionFooter],
 } as const

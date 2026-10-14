@@ -541,7 +541,6 @@ export function Deck({
             options={QUICK_CLIP_OPTIONS}
             label="Quick clip length"
           />
-          <span className="min-w-0 truncate text-[11px] text-ink-faint">kept by the quick-clip hotkey</span>
           {hotkeys?.['save-quick-clip'] ? (
             <span className="ml-auto">
               <HotkeyChip

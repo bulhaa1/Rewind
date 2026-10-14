@@ -7,10 +7,12 @@ import {
   ALLOWED_FPS,
   BUFFER_DURATION_MAX,
   BUFFER_DURATION_MIN,
+  COMPRESSED_SUBDIR,
   DEFAULT_SETTINGS,
   MIC_GAIN,
   QUICK_CLIP_MAX,
   QUICK_CLIP_MIN,
+  RECORDINGS_SUBDIR,
   SCREENSHOT_SUBDIR,
   VISUAL_QUALITIES,
   clampQuickClip,
@@ -635,9 +637,20 @@ export function registerIpc(s: Services): void {
     if (typeof target !== 'string' || target.length === 0) return fail('Invalid path')
     const problem = validateDirectory(target)
     if (problem) return fail(problem)
+
+    // The app's own folder inside the pick, created the moment a location is chosen:
+    // it is where shots actually land, and returning it is what lets the panel show
+    // that rather than the raw pick the app never writes into directly.
+    const effective = screenshotRoot(target)
+    try {
+      fs.mkdirSync(effective, { recursive: true })
+    } catch (e) {
+      return fail(`Could not create ${effective}: ${messageOf(e)}`)
+    }
+
     setSetting('screenshotPath', target)
-    filesLog.info(`Screenshot path set to: ${target}`)
-    return ok(target)
+    filesLog.info(`Screenshot path set to: ${target} (shots land in ${effective})`)
+    return ok(effective)
   })
 
   handle(IPC.openScreenshotFolder, async () => {
@@ -672,6 +685,42 @@ export function registerIpc(s: Services): void {
       filesLog.error('Failed to get saved clips:', e)
       return ok([])
     }
+  })
+
+  handle(IPC.getStorageUsage, async () => {
+    const { dirUsage, volumeSpace } = require('./storage.js')
+    const root = outputRoot()
+    const shots = screenshotPath()
+    const [everything, recordings, compressed, screenshots, volume] = await Promise.all([
+      dirUsage(root),
+      dirUsage(path.join(root, RECORDINGS_SUBDIR)),
+      dirUsage(path.join(root, COMPRESSED_SUBDIR)),
+      dirUsage(shots),
+      volumeSpace(root),
+    ])
+
+    /*
+     * Clips are the per-source folders: everything under the root, minus the folders
+     * that report themselves. Screenshots only count against the root when they live
+     * inside it (the default); with a location of their own they are not in
+     * `everything` to begin with.
+     */
+    const inside = [recordings, compressed, ...(isInside(shots, root) ? [screenshots] : [])]
+    const clipsBytes = Math.max(0, everything.bytes - inside.reduce((n, d) => n + d.bytes, 0))
+    const clipsFiles = Math.max(0, everything.files - inside.reduce((n, d) => n + d.files, 0))
+
+    return ok({
+      recordingsBytes: recordings.bytes,
+      recordingsFiles: recordings.files,
+      clipsBytes,
+      clipsFiles,
+      screenshotsBytes: screenshots.bytes,
+      screenshotsFiles: screenshots.files,
+      compressedBytes: compressed.bytes,
+      compressedFiles: compressed.files,
+      freeBytes: volume.freeBytes,
+      totalBytes: volume.totalBytes,
+    })
   })
 
   handle(IPC.getClipThumbnail, async (file: unknown) => {
@@ -875,7 +924,14 @@ export function registerIpc(s: Services): void {
     }
   })
 
-  handle(IPC.getAudioSessions, () => ok(require('./audio.js').listAudioApps()))
+  /*
+   * `AudioMix.getApps()` is the only thing that knows which apps can be captured
+   * individually, because that comes from the per-app capture source's own window
+   * list. This used to call `listAudioApps()` directly, whose `capturable` is
+   * hardcoded false -- so every fader in Settings > Audio rendered disabled, with
+   * the "can't be captured individually" tooltip, for every app.
+   */
+  handle(IPC.getAudioSessions, () => ok(audioMix()?.getApps?.() ?? require('./audio.js').listAudioApps()))
 
   handle(IPC.setAppVolume, (exe: unknown, volume: unknown) => {
     if (typeof exe !== 'string' || exe.length === 0) return fail('Invalid app identifier')
@@ -1565,7 +1621,6 @@ export async function saveQuickClipAndNotify(s: Services, seconds: number, actio
 
   const tail = await require('./ffmpeg.js').keepTail(savedPath, seconds)
   const moved = cm.moveIntoSourceFolder(tail.file, sourceName, outputRoot)
-
   meta.setClipMeta(moved, {
     recordedAt: Date.now(),
     source: sourceName,
@@ -1633,10 +1688,26 @@ export function outputRoot(): string {
   return rewindRoot(getSetting('outputPath'))
 }
 
+/**
+ * Where screenshots land: `<chosen location>\Screenshots`.
+ *
+ * The app owns that level the way clips get their own `Rewind` folder. Writing
+ * straight into the chosen location made that folder hold whatever else was in it, so
+ * the count and the size reported for screenshots described the parent directory --
+ * 5 GB of clips read as 5 GB of screenshots. One folder holds every screenshot,
+ * whatever the capture method or game: there are no per-source subfolders here.
+ *
+ * A stored path that already ends in `Screenshots` is used as-is rather than nested
+ * again.
+ */
+function screenshotRoot(configured: string): string {
+  const base = configured && path.isAbsolute(configured) ? configured : outputRoot()
+  if (path.basename(base).toLowerCase() === SCREENSHOT_SUBDIR.toLowerCase()) return base
+  return path.join(base, SCREENSHOT_SUBDIR)
+}
+
 export function screenshotPath(): string {
-  const configured = getSetting('screenshotPath')
-  if (configured && path.isAbsolute(configured)) return configured
-  return path.join(outputRoot(), SCREENSHOT_SUBDIR)
+  return screenshotRoot(getSetting('screenshotPath'))
 }
 
 async function scanScreenshots(s: Services): Promise<ScreenshotInfo[]> {

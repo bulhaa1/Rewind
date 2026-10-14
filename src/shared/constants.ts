@@ -103,10 +103,28 @@ export const DEFAULT_SETTINGS = {
   profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
   activeProfile: 0,
   exportThreads: 0,
+  // Empty means "no previous run recorded"; the first launch writes the version
+  // without treating itself as an update.
+  lastRunVersion: '',
+  // On-disk layout the library has been migrated to. See STORAGE_LAYOUT_VERSION.
+  layoutVersion: 0,
 } satisfies Omit<import('./types.js').PersistedSettings, never> as import('./types.js').PersistedSettings
 
 /** Screenshots default to `<outputPath>/Screenshots`. */
 export const SCREENSHOT_SUBDIR = 'Screenshots'
+
+/**
+ * Folders the app owns inside the clips root.
+ *
+ * Every video Rewind writes lands in one of these or in a per-source folder beside
+ * them, so nothing is left loose in the root: recordings get their own folder, the
+ * editor's compressed copies get theirs.
+ */
+export const RECORDINGS_SUBDIR = 'Recordings'
+export const COMPRESSED_SUBDIR = 'Compressed'
+
+/** Bumped when the on-disk layout changes; drives the one-time migration. */
+export const STORAGE_LAYOUT_VERSION = 1
 
 /** OBS recording filename template (same as the original). */
 export const OBS_FILE_FORMAT = '%CCYY-%MM-%DD %hh-%mm-%ss'

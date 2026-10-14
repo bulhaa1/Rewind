@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { scope } from './logger.js'
 import { lifecycle } from './window.js'
+import { getSetting, setSetting } from './store.js'
 
 const log = scope('Updater')
 
@@ -26,15 +27,34 @@ const log = scope('Updater')
 export interface UpdateState {
   /** False in a dev build, where no check is possible. */
   supported: boolean
-  status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error'
+  status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error' | 'updated'
   /** Version offered by the release feed, when one is. */
   version?: string
+  /** The version this launch replaced, when it followed an update. */
+  updatedFrom?: string
   /** Download progress 0..1. */
   progress?: number
   error?: string
 }
 
-let state: UpdateState = { supported: app.isPackaged, status: 'idle' }
+/**
+ * True when this copy is the portable zip.
+ *
+ * `scripts/package-portable.mjs` puts a `portable.flag` beside Rewind.exe. An update
+ * there would download and run the NSIS installer, which would install a second copy
+ * somewhere else, so the update control stays hidden and checks refuse.
+ */
+const PORTABLE_FLAG = 'portable.flag'
+
+export function isPortable(): boolean {
+  try {
+    return fs.existsSync(path.join(path.dirname(app.getPath('exe')), PORTABLE_FLAG))
+  } catch {
+    return false
+  }
+}
+
+let state: UpdateState = { supported: app.isPackaged && !isPortable(), status: 'idle' }
 let autoUpdater: typeof import('electron-updater').autoUpdater | null = null
 let onChange: (s: UpdateState) => void = () => {}
 
@@ -56,6 +76,7 @@ function set(patch: Partial<UpdateState>): void {
  */
 function load(): typeof import('electron-updater').autoUpdater | null {
   if (!app.isPackaged) return null
+  if (isPortable()) return null
   if (autoUpdater) return autoUpdater
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -110,10 +131,30 @@ function load(): typeof import('electron-updater').autoUpdater | null {
   }
 }
 
+/**
+ * Records the version this launch runs and reports the one it replaced.
+ *
+ * Called once at startup, before the window decides whether to show itself. `null`
+ * on a first run -- there is nothing to report -- and on every launch that is not
+ * an update.
+ */
+export function consumeVersionChange(): string | null {
+  const previous = getSetting('lastRunVersion')
+  const version = app.getVersion()
+  if (previous === version) return null
+  setSetting('lastRunVersion', version)
+  return previous === '' ? null : previous
+}
+
 /** Starts reporting state changes. Called once at startup. */
-export function initUpdater(send: (s: UpdateState) => void): void {
+export function initUpdater(send: (s: UpdateState) => void, updatedFrom: string | null = null): void {
   onChange = send
-  state = { supported: app.isPackaged, status: 'idle' }
+  state = {
+    supported: app.isPackaged && !isPortable(),
+    status: updatedFrom ? 'updated' : 'idle',
+    version: updatedFrom ?? undefined,
+    updatedFrom: updatedFrom ?? undefined,
+  }
   send(state)
 }
 

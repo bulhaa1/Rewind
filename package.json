@@ -1,7 +1,7 @@
 {
   "name": "rewind-desktop",
   "productName": "Rewind",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Lightweight OBS replay buffer - save the last 60 seconds of your screen & more",
   "main": "out/main/index.js",
   "author": {
@@ -19,6 +19,7 @@
     "rebuild": "node node_modules/@electron/rebuild/lib/src/cli.js -f -w @streamlabs/obs-studio-node,uiohook-napi,get-windows,native-sound-mixer,koffi",
     "package": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win --publish never && npm run package:stamp",
     "package:stamp": "node scripts/stamp-exe.mjs && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish never",
+    "package:portable": "node scripts/package-portable.mjs",
     "package:verify-exe": "node scripts/verify-exe.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
     "verify:channels": "node scripts/channel-check.mjs",
@@ -36,6 +37,7 @@
     "test:ui": "node scripts/cdp.mjs scripts/probe-regression.mjs",
     "test:quickclip": "node scripts/probe-quick-clip.mjs",
     "release": "npm run package && node node_modules/electron-builder/out/cli/cli.js --win nsis --prepackaged release/win-unpacked --publish always && node scripts/verify-exe.mjs",
+    "release:portable": "node scripts/package-portable.mjs --publish",
     "release:local": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win --publish never && npm run package:stamp"
   },
   "dependencies": {

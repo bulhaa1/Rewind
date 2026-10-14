@@ -88,6 +88,16 @@ export interface PersistedSettings {
    * encoder is available, so on most machines this knob does nothing.
    */
   exportThreads: number
+  /**
+   * The version this app last ran as, written at startup.
+   *
+   * A mismatch is what tells a launch that it follows an update: the panel shows
+   * itself once (even under "Start minimized") and the update popover says so,
+   * because a silent relaunch to the tray reads as a failed update.
+   */
+  lastRunVersion: string
+  /** On-disk layout the library has been migrated to. See `STORAGE_LAYOUT_VERSION`. */
+  layoutVersion: number
 }
 
 /**
@@ -169,6 +179,25 @@ export interface ScreenshotInfo {
   capturedAt: number
   source?: string | null
   localExists: boolean
+}
+
+/** What Settings > Storage reports about the library on disk. */
+export interface StorageUsage {
+  /** Continuous recordings: `Rewind\Recordings`. */
+  recordingsBytes: number
+  recordingsFiles: number
+  /** Replay-buffer clips: the per-source folders, everything in the root that is not
+   *  one of the other categories. */
+  clipsBytes: number
+  clipsFiles: number
+  screenshotsBytes: number
+  screenshotsFiles: number
+  /** Editor exports: `Rewind\Compressed`. */
+  compressedBytes: number
+  compressedFiles: number
+  /** Free and total bytes on the volume holding the clips. 0 when it can't be read. */
+  freeBytes: number
+  totalBytes: number
 }
 
 export interface ClipAudioTrack {
@@ -253,8 +282,9 @@ export interface RewindEvents {
   /** Update checker state, pushed on every transition. See main/updater.ts. */
   'update-state': {
     supported: boolean
-    status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error'
+    status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error' | 'updated'
     version?: string
+    updatedFrom?: string
     progress?: number
     error?: string
   }

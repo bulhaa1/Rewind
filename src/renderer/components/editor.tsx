@@ -498,9 +498,9 @@ function ExportSection({
   const [percent, setPercent] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ path: string; bytes: number } | null>(null)
-  // The box collapses to its title when the compressor is off, so it stays out of
-  // the way of the trim work it sits under.
-  const [compressOn, setCompressOn] = useState(true)
+  // Off by default: the box collapses to its title, out of the way of the trim work
+  // it sits under, and only opens when the user asks for a compressed copy.
+  const [compressOn, setCompressOn] = useState(false)
 
   useEffect(() => {
     return api.on('export-progress', (p) => setPercent(p.percent))

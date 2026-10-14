@@ -64,6 +64,7 @@ export const IPC = {
   setScreenshotPath: 'set-screenshot-path',
   openScreenshotFolder: 'open-screenshot-folder',
   selectFolder: 'select-folder',
+  getStorageUsage: 'get-storage-usage',
 
   // clips
   getSavedClips: 'get-saved-clips',
