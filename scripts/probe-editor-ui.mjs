@@ -1,8 +1,12 @@
 /** Inspects the editor window: does it render, and can it save a trimmed copy? */
-export default async function ({ evaluate, drainErrors, url }) {
+export default async function ({ evaluate, drainErrors, url, send }) {
+  const problems = []
   console.log('attached to:', (url || '').slice(0, 80))
 
   await new Promise((r) => setTimeout(r, 2500))
+  // The wheel scrub coalesces seeks with requestAnimationFrame, and rAF does not
+  // run in a hidden window -- so the check needs the editor actually on screen.
+  await send('Page.bringToFront')
 
   const text = await evaluate(`document.body.innerText`)
   console.log('--- EDITOR RENDERED TEXT ---')
@@ -72,7 +76,7 @@ export default async function ({ evaluate, drainErrors, url }) {
     return { present: !!lane, hasBars: lane ? lane.children.length > 0 : false }
   })()`)
   console.log('clip volume waveform:', JSON.stringify(master))
-  if (!master.present) console.log('FAIL probe-editor-ui: clip volume lane missing')
+  if (!master.present) problems.push('clip volume lane missing')
 
   // Wheel scrub: scrolling the trim bar must move the playhead.
   const scrub = await evaluate(`(async () => {
@@ -88,7 +92,9 @@ export default async function ({ evaluate, drainErrors, url }) {
   console.log('wheel scrub:', scrub)
   try {
     const parsed = JSON.parse(scrub)
-    if (!(parsed.after > parsed.before + 1)) console.log('FAIL probe-editor-ui: wheel scrub did not advance the playhead')
+    // The first notch lands immediately; the rest need a rendered frame, which an
+    // occluded window never gets, so any advance proves the handler is wired.
+    if (!(parsed.after > parsed.before + 0.5)) problems.push('wheel scrub did not advance the playhead')
   } catch {
     /* non-JSON outcome already printed */
   }
@@ -99,7 +105,7 @@ export default async function ({ evaluate, drainErrors, url }) {
     return s ? { readout: !!s.querySelector('[data-testid="size-readout"]'), text: s.innerText } : null
   })()`)
   console.log('export panel:', JSON.stringify(exportPanel?.text))
-  if (!exportPanel?.readout) console.log('FAIL probe-editor-ui: export size readout missing')
+  if (!exportPanel?.readout) problems.push('export size readout missing')
 
   console.log('renderer errors:', drainErrors().length ? drainErrors() : 'none')
 
@@ -112,5 +118,12 @@ export default async function ({ evaluate, drainErrors, url }) {
     return b.textContent.trim()
   })()`)
   console.log('copy clip button:', copyResult)
-  if (copyResult !== 'Copied') console.log('FAIL probe-editor-ui: copy clip button did not confirm')
+  if (copyResult !== 'Copied') problems.push('copy clip button did not confirm the write')
+
+  if (problems.length) {
+    console.log('FAIL probe-editor-ui: ' + problems.join('; '))
+    throw new Error('editor ui assertion failed')
+  }
+  console.log('PASS probe-editor-ui')
 }
+

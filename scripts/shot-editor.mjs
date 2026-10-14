@@ -1,35 +1,24 @@
-/** Captures the editor window for a look-and-fix pass. */
+/**
+ * Screenshot of the editor window, for a look-and-fix pass.
+ *
+ * Runs through the shared CDP driver (so CDP_PORT is honoured) and writes a PNG to
+ * %TEMP%/rewind-shots/. The editor window must already be open.
+ *
+ * Run: node scripts/cdp.mjs scripts/shot-editor.mjs editor=1 [name]
+ */
 import fs from 'node:fs'
-import path from 'node:path'
 import os from 'node:os'
+import path from 'node:path'
 
-const OUT = path.join(os.tmpdir(), 'rewind-shots')
-fs.mkdirSync(OUT, { recursive: true })
-
-const t = await (await fetch('http://127.0.0.1:9222/json')).json()
-const editor = t.find((x) => x.type === 'page' && x.webSocketDebuggerUrl && x.url.includes('editor=1'))
-if (!editor) {
-  console.log('no editor window open')
-  process.exit(1)
+export default async function ({ send, url }) {
+  const out = path.join(os.tmpdir(), 'rewind-shots')
+  fs.mkdirSync(out, { recursive: true })
+  const name = process.argv[4] ?? 'editor'
+  // A backgrounded window is not composited, so the surface capture would hang.
+  await send('Page.bringToFront')
+  const shot = await send('Page.captureScreenshot', { format: 'png', fromSurface: false })
+  const file = path.join(out, `${name}.png`)
+  fs.writeFileSync(file, Buffer.from(shot.data, 'base64'))
+  console.log(`attached to: ${(url || '').slice(0, 60)}`)
+  console.log(`screenshot: ${file}`)
 }
-const ws = new WebSocket(editor.webSocketDebuggerUrl)
-await new Promise((r) => ws.addEventListener('open', r))
-let id = 0
-const send = (method, params = {}) =>
-  new Promise((resolve) => {
-    const mid = ++id
-    const onMsg = (ev) => {
-      const m = JSON.parse(ev.data)
-      if (m.id === mid) {
-        ws.removeEventListener('message', onMsg)
-        resolve(m.result)
-      }
-    }
-    ws.addEventListener('message', onMsg)
-    ws.send(JSON.stringify({ id: mid, method, params }))
-  })
-const r = await send('Page.captureScreenshot', { format: 'png' })
-const name = process.argv[2] ?? 'editor'
-fs.writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.data, 'base64'))
-console.log(path.join(OUT, `${name}.png`))
-ws.close()

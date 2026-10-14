@@ -36,7 +36,7 @@ function scaleArgs(maxHeight: number | null, sourceHeight: number): string[] {
  * The range is cut with input-side `-ss`/`-t`: with a re-encode ffmpeg decodes from
  * the keyframe and discards the excess, so the cut is frame-accurate and still fast.
  * A target size is honoured by a two-pass ABR encode, which lands within a few
- * percent of the ask; without one the encode runs at CRF 23.
+ * percent of the ask.
  */
 export async function exportClip(
   req: ExportRequest,

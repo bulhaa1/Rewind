@@ -40,6 +40,7 @@ import {
   MULTIPASS_OPTIONS,
   NVENC_PRESET_OPTIONS,
   OUTPUT_RESOLUTION_OPTIONS,
+  PROFILE_COUNT_MAX,
   VISUAL_QUALITIES,
   VISUAL_QUALITY_OPTIONS,
 } from '@shared/constants.js'
@@ -856,7 +857,7 @@ function ProfilesSection() {
     }).then(() => client.invalidateQueries({ queryKey: QK.profiles }))
   }
 
-  const atCap = profiles.length >= 4
+  const atCap = profiles.length >= PROFILE_COUNT_MAX
 
   return (
     <Section icon={<Sliders className="h-4 w-4" />} title="Profiles">

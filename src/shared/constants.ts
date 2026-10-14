@@ -46,11 +46,14 @@ export const clampQuickClip = (seconds: number) =>
   Math.min(Math.max(Math.round(seconds), QUICK_CLIP_MIN), QUICK_CLIP_MAX)
 
 /**
- * The four presets a fresh install starts with.
+ * The four presets a fresh install starts with, and the most the list may hold.
  *
  * Chosen so the first one is what the app already did, and the other three are the
  * reasons someone would switch: reach further back, run smoother, or cost less.
+ * Shared so the main-process cap and the panel's disabled buttons cannot disagree.
  */
+export const PROFILE_COUNT_MAX = 4
+
 export const DEFAULT_PROFILES: import('./types.js').Profile[] = [
   { name: 'Balanced', bufferDuration: 60, fps: 30, visualQuality: 'high' },
   { name: 'Long buffer', bufferDuration: 120, fps: 30, visualQuality: 'standard' },

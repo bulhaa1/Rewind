@@ -62,18 +62,29 @@ export default async function ({ evaluate }) {
   console.log(`${afterClick === target ? 'PASS' : 'FAIL'}  chip click: active ${beforeClick} -> ${afterClick} (expected ${target})`)
   if (afterClick !== target) problems.push(`chip click moved ${beforeClick} -> ${afterClick}, expected ${target}`)
 
-  // CRUD with the four-profile cap and shift-aware activeProfile expectations:
-  // the list starts at four, so adding and duplicating are refused until a slot is
-  // freed; duplicating at index 0 inserts at 1 and shifts the active index up when
-  // it was >= 1; removing at index 1 shifts it back down when it was > 1.
+  // CRUD with the four-profile cap and shift-aware activeProfile expectations. The
+  // store may hold fewer than four (a user can delete one), so the probe fills up to
+  // the cap first and asserts the cap from there.
+  let cap = 4
+  let len = (await profiles()).data.profiles.length
+  while (len < cap) {
+    const fill = await evaluate('window.electronAPI.addProfile()')
+    if (!fill?.success) break
+    const filled = await waitForCount(evaluate, len + 1)
+    len = filled ? filled.profiles.length : len
+  }
+  if (len !== cap) {
+    console.log(`SKIP  cap checks: the store holds ${len} profiles and could not be filled to ${cap}`)
+  }
+
   let a = (await profiles()).data.activeProfile
   const refusedAdd = await evaluate('window.electronAPI.addProfile()')
-  const capOk = refusedAdd && refusedAdd.success === false && (await profiles()).data.profiles.length === count
-  console.log(`${capOk ? 'PASS' : 'FAIL'}  add at the cap is refused (${count} profiles)`)
+  const capOk = refusedAdd && refusedAdd.success === false && (await profiles()).data.profiles.length === cap
+  console.log(`${capOk ? 'PASS' : 'FAIL'}  add at the cap is refused (${cap} profiles)`)
   if (!capOk) problems.push('addProfile did not refuse at the cap')
 
   const refusedDup = await evaluate('window.electronAPI.duplicateProfile(0)')
-  const capDupOk = refusedDup && refusedDup.success === false && (await profiles()).data.profiles.length === count
+  const capDupOk = refusedDup && refusedDup.success === false && (await profiles()).data.profiles.length === cap
   console.log(`${capDupOk ? 'PASS' : 'FAIL'}  duplicate at the cap is refused`)
   if (!capDupOk) problems.push('duplicateProfile did not refuse at the cap')
 
@@ -81,7 +92,7 @@ export default async function ({ evaluate }) {
   const freeIndex = a === 0 ? 1 : 0
   const freed = await evaluate(`window.electronAPI.removeProfile(${freeIndex})`)
   if (!freed?.success) problems.push(`removeProfile(${freeIndex}) failed: ${JSON.stringify(freed)}`)
-  const afterFree = await waitForCount(evaluate, count - 1)
+  const afterFree = await waitForCount(evaluate, cap - 1)
   const expectedAfterFree = freeIndex < a ? a - 1 : a
   const freeOk = afterFree && afterFree.activeProfile === expectedAfterFree
   console.log(`${freeOk ? 'PASS' : 'FAIL'}  removing below the active profile shifts it: ${afterFree?.activeProfile} (expected ${expectedAfterFree})`)
@@ -90,8 +101,8 @@ export default async function ({ evaluate }) {
   a = expectedAfterFree
   const added = await evaluate('window.electronAPI.addProfile()')
   if (!added?.success) problems.push(`addProfile failed: ${JSON.stringify(added)}`)
-  const afterAdd = await waitForCount(evaluate, count)
-  const addedOk = afterAdd && afterAdd.profiles.length === count && afterAdd.activeProfile === a
+  const afterAdd = await waitForCount(evaluate, cap)
+  const addedOk = afterAdd && afterAdd.profiles.length === cap && afterAdd.activeProfile === a
   console.log(`${addedOk ? 'PASS' : 'FAIL'}  add into the free slot: ${afterAdd?.profiles.length}, active ${a}`)
   if (!addedOk) problems.push('addProfile did not append into the free slot')
 
@@ -128,8 +139,9 @@ export default async function ({ evaluate }) {
   const rows = await evaluate(
     `[...document.querySelectorAll('input[aria-label$="name"]')].filter((i) => i.getAttribute('aria-label').startsWith('Profile ')).length`,
   )
-  console.log(`${rows === count ? 'PASS' : 'FAIL'}  settings rows: ${rows} (expected ${count})`)
-  if (rows !== count) problems.push(`settings shows ${rows} profile rows, expected ${count}`)
+  const liveCount = (await profiles()).data.profiles.length
+  console.log(`${rows === liveCount ? 'PASS' : 'FAIL'}  settings rows: ${rows} (expected ${liveCount})`)
+  if (rows !== liveCount) problems.push(`settings shows ${rows} profile rows, expected ${liveCount}`)
   const addButton = await evaluate(`!!document.querySelector('[data-testid="profile-add"]')`)
   console.log(`${addButton ? 'PASS' : 'FAIL'}  settings has an Add profile button`)
   if (!addButton) problems.push('settings has no Add profile button')

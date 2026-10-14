@@ -1,12 +1,18 @@
-import { ALLOWED_FPS, BUFFER_DURATION_MAX, BUFFER_DURATION_MIN, DEFAULT_PROFILES, VISUAL_QUALITIES } from '@shared/constants.js'
+import {
+  ALLOWED_FPS,
+  BUFFER_DURATION_MAX,
+  BUFFER_DURATION_MIN,
+  DEFAULT_PROFILES,
+  PROFILE_COUNT_MAX,
+  VISUAL_QUALITIES,
+} from '@shared/constants.js'
 import { getSetting, setSetting } from './store.js'
 import { scope } from './logger.js'
 import type { Profile } from '@shared/types.js'
 
 const log = scope('Profiles')
 
-/** How many profiles the list holds. Four, like the numbered slots this is modelled on. */
-export const PROFILE_COUNT_MAX = 4
+export { PROFILE_COUNT_MAX }
 
 /**
  * How much of the pipeline a switch has to rebuild.

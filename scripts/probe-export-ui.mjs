@@ -1,6 +1,6 @@
 /**
- * Export via the real UI: clicks the format toggle and the export button in the
- * editor window, exactly like a user, and reports what the panel shows.
+ * Export via the real UI: clicks the export button in the editor window, exactly
+ * like a user, and reports what the panel shows.
  *
  * The editor window must already be open (scripts/probe-editor.mjs opens one).
  * Run: node scripts/cdp.mjs scripts/probe-export-ui.mjs editor=1

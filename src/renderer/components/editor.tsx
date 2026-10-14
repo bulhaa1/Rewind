@@ -294,7 +294,8 @@ export function EditorPage({ clipPath }: { clipPath: string }) {
     }
   }
 
-  const save = async (mode: 'overwrite' | 'copy') => {    setSaving({ mode })
+  const save = async (mode: 'overwrite' | 'copy') => {
+    setSaving({ mode })
     setSaveError(null)
     try {
       const res = await api.editorSaveClip({ clipPath, startSec, endSec, mode, trackVolumes })
@@ -873,12 +874,13 @@ function Timeline({
   }
 
   /*
-   * Wheel scrub: scroll up rewinds, scroll down advances. The wheel fires far
-   * faster than a seek can land, so events accumulate into a target that is
-   * applied one seek per animation frame -- the same unthrottled-seek lesson
-   * that ended the rail's hover scrub.
+   * Wheel scrub: scroll up rewinds, scroll down advances. The first notch lands
+   * immediately, so a single scroll responds at once; the rest coalesce into one
+   * seek per animation frame, because the wheel fires far faster than a seek can
+   * land -- the same unthrottled-seek lesson that ended the rail's hover scrub.
    */
-  const wheelTargetRef = useRef<number | null>(null)
+  const pendingRef = useRef<number | null>(null)
+  const lastRef = useRef<number | null>(null)
   const wheelRafRef = useRef<number | null>(null)
   const currentRef = useRef(currentSec)
   currentRef.current = currentSec
@@ -886,26 +888,37 @@ function Timeline({
   useEffect(() => {
     const lane = laneRef.current
     if (!lane) return
+    const clampToClip = (t: number) => Math.max(0, Math.min(duration, t))
+    const flush = () => {
+      wheelRafRef.current = null
+      const target = pendingRef.current
+      pendingRef.current = null
+      if (target !== null) {
+        lastRef.current = target
+        onSeek(target)
+      }
+    }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const step = (e.deltaY || e.deltaX) / 100 // one notch ≈ 1 second
-      const base = wheelTargetRef.current ?? currentRef.current
-      wheelTargetRef.current = Math.max(0, Math.min(duration, base + step))
-      if (wheelRafRef.current === null) {
-        wheelRafRef.current = requestAnimationFrame(() => {
-          wheelRafRef.current = null
-          const target = wheelTargetRef.current
-          wheelTargetRef.current = null
-          if (target !== null) onSeek(target)
-        })
+      const base = pendingRef.current ?? lastRef.current ?? currentRef.current
+      const next = clampToClip(base + step)
+      if (wheelRafRef.current !== null) {
+        // A frame is already queued: ride along with it.
+        pendingRef.current = next
+        return
       }
+      lastRef.current = next
+      onSeek(next)
+      wheelRafRef.current = requestAnimationFrame(flush)
     }
     lane.addEventListener('wheel', onWheel, { passive: false })
     return () => {
       lane.removeEventListener('wheel', onWheel)
       if (wheelRafRef.current !== null) cancelAnimationFrame(wheelRafRef.current)
       wheelRafRef.current = null
-      wheelTargetRef.current = null
+      pendingRef.current = null
+      lastRef.current = null
     }
   }, [duration, onSeek])
 
