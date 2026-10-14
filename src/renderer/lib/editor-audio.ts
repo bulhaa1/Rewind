@@ -74,6 +74,8 @@ export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume
     graphRef.current = graph
     video.dataset.monitorWired = '1'
     video.muted = true
+    // Probe/debug handle; mirrors the window.__exportProgress pattern.
+    ;(window as unknown as { __previewAudio?: AudioGraph }).__previewAudio = graph
 
     const syncTo = (t: number) => {
       for (const lane of graphRef.current?.lanes ?? []) {
@@ -125,6 +127,7 @@ export function usePreviewAudio({ ready, videoRef, tracks, volumes, masterVolume
       }
       void graphRef.current?.ctx.close().catch(() => {})
       graphRef.current = null
+      ;(window as unknown as { __previewAudio?: AudioGraph }).__previewAudio = undefined
     }
     // Rebuild when the editor becomes ready or the set of track previews changes
     // (a different clip). Slider state is deliberately not a dependency: gains are
