@@ -87,7 +87,9 @@ The clip editor grew up, and compression moved to your GPU. The full list is in
 
 ## Preview
 
-<a href="assets/preview/promo.mp4"><img width="990" alt="Promo video: the buffer dial fills under a spotlight, a clip lands in the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/panel.png" /></a>
+<img width="990" alt="Promo: the buffer dial fills under a spotlight, a keypress saves a clip into the rail" src="assets/preview/promo-teaser.gif" />
+
+*▲ The full 42-second film: [assets/preview/promo.mp4](assets/preview/promo.mp4) — plays after you open it.*
 
 <img width="990" alt="The Rewind panel: the rolling buffer on the left, the clip rail on the right" src="assets/preview/panel.png" />
 
