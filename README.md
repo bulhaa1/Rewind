@@ -87,7 +87,7 @@ The clip editor grew up, and compression moved to your GPU. The full list is in
 
 ## Preview
 
-<video width="990" controls src="https://raw.githubusercontent.com/bulhaa1/Rewind/main/assets/preview/promo.mp4"></video>
+<a href="assets/preview/promo.mp4"><img width="990" alt="Promo video: the buffer dial fills under a spotlight, a clip lands in the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/panel.png" /></a>
 
 <img width="990" alt="The Rewind panel: the rolling buffer on the left, the clip rail on the right" src="assets/preview/panel.png" />
 
@@ -260,4 +260,3 @@ Inspired by work from @toasterfork. Rewind is an entirely independent implementa
 
 Bundled third-party components keep their own licences, including OBS Studio
 (GPL-2.0), ffmpeg (GPL), koffi (MIT), uiohook-napi (MIT) and Electron (MIT).
-
