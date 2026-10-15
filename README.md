@@ -6,6 +6,10 @@
 
 I built **Rewind**, an open-source clipping tool inspired by Revidi, a closed-source application developed by toasterfork on Discord. He has accused me of stealing his code and threatened a DMCA takedown against this repository.
 
+During this dispute I said some things in a private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me — I apologize.
+
+It does not change a single fact in this statement
+
 His evidence includes a folder name in my Git history: `Revidi-Clone`.
 
 Let me be clear: **I have never had access to Revidi’s source code.** I used AI to study its externally observable behavior, then built my own implementation using the same publicly available OBS capture engine. Rewind has its own code, UI, features, architecture, and direction.
