@@ -57,6 +57,26 @@ Verify it yourself:
 - `git log --all -S 'Revidi-Clone'` — no remaining matches.
 - `git log --format='%ae' | sort -u` — only `bulhaa1@users.noreply.github.com`.
 
+### On the visual UI similarities
+
+Both applications are built on the same open-source OBS engine
+(`@streamlabs/obs-studio-node`), and a recorder on that engine must present
+the same controls: buffer length, frame rate, quality tiers, encoder
+selection (NVENC, AMF, QSV), and capture sources. Those parameters are
+defined by OBS itself — its public, GPL-2.0 source and documentation say
+what they are and what values they accept.
+
+The interface is built exclusively from public, permissively-licensed
+libraries — React and Tailwind CSS (MIT), lucide-react (ISC) for icons.
+When two apps use the same icon library, the icons are identical by
+definition; the dependency is declared in `package.json` for anyone to
+verify.
+
+Rewind's development has always been open about studying Revidi's behavior
+as an application, so it is no secret that the settings organization and
+some labels will feel familiar. Where they coincide, they are short
+functional phrases — the same words any recorder needs on the same screen.
+
 ## On the code-theft accusations
 
 Three facts matter:
