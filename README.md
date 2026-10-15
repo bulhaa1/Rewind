@@ -87,6 +87,10 @@ The clip editor grew up, and compression moved to your GPU. The full list is in
 
 ## Preview
 
+<a href="assets/preview/promo.mp4"><img width="990" alt="Promo video: the buffer dial fills under a spotlight, a clip lands in the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/panel.png" /></a>
+
+*▲ The 42-second promo. GitHub doesn't play repo videos inline — click the poster and the file (`promo.mp4`) plays in your browser.*
+
 <img width="990" alt="The Rewind panel: the rolling buffer on the left, the clip rail on the right" src="assets/preview/panel.png" />
 
 <img width="990" alt="The clip editor: trim range, per-track volume and a waveform per audio track" src="assets/preview/editor.png" />
