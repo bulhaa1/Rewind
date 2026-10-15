@@ -27,6 +27,14 @@ The whole point of open-source software is that users deserve alternatives, deve
 
 **Inspiration is not theft. A folder name is not evidence of copied code. Accusations are not proof.**
 
+## How Long This Statement Stays
+
+This statement exists to address the dispute, not define the project. It will remain public while the dispute is active. Once things have settled, either through direct resolution or a sustained period of silence or by a notice it will be taken down.
+
+This repository isn't a fight; it's a recorder, and the front page will go back to being about the software.
+
+
+
 ## What actually happened
 
 I started Rewind because I was frustrated with existing capture tools. Revidi was one of my inspirations, and I have never pretended otherwise.
