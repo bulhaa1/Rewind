@@ -12,6 +12,12 @@ Let me be clear: **I have never had access to Revidi’s source code.** I used A
 
 I credited Revidi as inspiration in my early README. The development history, dependencies, and source code are available for anyone to inspect.
 
+I can't help but wonder if @tosterfork is threatened by the idea of a free, open-source alternative competing with his cloud subscription model. Does he not see what's happening in the software industry? People are constantly building free, open-source alternatives to expensive commercial products, including alternatives to Adobe software. That's how competition works. No developer owns an entire category of software just because they built a product first.
+
+Revidi still lacks 120 FPS recording to this day, puts its editor behind a paywall despite advertising free local use, and constantly scans your network, which raises legitimate questions about what it's doing and why. Meanwhile, Rewind aims to offer gamers a lightweight, local-first clipping tool without unnecessary subscriptions, locked features, or complicated OBS setups.
+
+The whole point of open-source software is that users deserve alternatives, developers can innovate, and people shouldn't have to pay for every feature just because someone decided to monetize it. Instead of treating a free alternative as a threat, why not compete by improving the product? If Revidi is genuinely better, users will choose it. If Rewind offers more value for free, users should have the freedom to choose that, too.
+
 **Inspiration is not theft. A folder name is not evidence of copied code. Accusations are not proof.**
 
 ## What actually happened
