@@ -6,7 +6,7 @@
 
 I built **Rewind**, an open-source clipping tool inspired by Revidi, a closed-source application developed by toasterfork on Discord. He has accused me of stealing his code and threatened a DMCA takedown against this repository.
 
-**I contacted before starting my project for his permission, and he approved it in writing** —his reply: *"Revidi is derivative at the end of the day it would be unfair for me to say no, so definitely go
+**I contacted toasterfork on discord before starting my project asking for his blessing, and he approved it in writing** —his reply: *"Revidi is derivative at the end of the day it would be unfair for me to say no, so definitely go
   ahead"*, and *"there is no secret to what I've built."* **ask ur self if there is no secret why is he threatening me with a DMCA takedown on this repo?**
   
 During the dispute I said some things in a another private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me — I apologize.
