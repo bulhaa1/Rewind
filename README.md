@@ -57,7 +57,7 @@ Verify it yourself:
 - `git log --all -S 'Revidi-Clone'` — no remaining matches.
 - `git log --format='%ae' | sort -u` — only `bulhaa1@users.noreply.github.com`.
 
-### On the visual UI similarities
+## On the visual UI similarities
 
 Both applications are built on the same open-source OBS engine
 (`@streamlabs/obs-studio-node`), and a recorder on that engine must present
