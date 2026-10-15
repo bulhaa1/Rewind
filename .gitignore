@@ -33,3 +33,8 @@ PRODUCT.md
 
 # Superpowers plan workspace (scratch)
 .superpowers/
+
+# Local agent instructions and packaging verification scratch. AGENTS.md
+# carries local paths that must never be published.
+AGENTS.md
+release-verify/

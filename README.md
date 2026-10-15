@@ -193,7 +193,6 @@ checklist for a machine nobody has tried yet.
 |---|---|---|---|---|---|---|---|---|
 | **Rewind** | **Free · Open Source** | **Yes** | **Yes** | **Yes** | **None** | **None** | **Super Easy** | **9/10** |
 | Medal.tv | Free (Premium available) | Yes | Yes | Yes | Yes | Yes | Medium | 7/10 |
-| Revidi | Free (Premium available) | Yes | Yes | Yes | Minimal | Yes | Easy | 8/10 |
 | NVIDIA ShadowPlay | Free | Yes | No | Part of NVIDIA App | Yes | Can Opt Out | Easy | 7/10 |
 | AMD ReLive | Free | Yes | No | Part of AMD Adrenalin | Yes | Can Opt Out | Easy | 6/10 |
 | Outplayed | Free | Yes | Yes | Part of Overwolf | Yes | Yes | Medium | 7.5/10 |
