@@ -1,5 +1,9 @@
 # Rewind
 
+<img width="990" alt="Promo: the buffer dial fills under a spotlight, a keypress saves a clip into the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/promo-teaser.gif" />
+
+*▲ The whole 42-second film at a glance — full quality: [assets/preview/promo.mp4](assets/preview/promo.mp4)*
+
 Have you ever wanted a simple, lightweight way to clip your gameplay or take screenshots without a bulky overlay, unnecessary background processes, or an app that gets in the way?
 
 Rewind is built for exactly that.
