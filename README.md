@@ -6,7 +6,10 @@
 
 I built **Rewind**, an open-source clipping tool inspired by Revidi, a closed-source application developed by toasterfork on Discord. He has accused me of stealing his code and threatened a DMCA takedown against this repository.
 
-During this dispute I said some things in a private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me — I apologize.
+**I contacted before starting my project for his permission, and he approved it in writing** —his reply: *"Revidi is derivative at the end of the day it would be unfair for me to say no, so definitely go
+  ahead"*, and *"there is no secret to what I've built."* **ask ur self if there is no secret why is he threatening me with a DMCA takedown on this repo?**
+  
+During the dispute I said some things in a another private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me — I apologize.
 
 It does not change a single fact in this statement
 
@@ -85,7 +88,9 @@ Three facts matter:
 - **Both applications use the same public capture technology.** Revidi's own [privacy policy](https://revidi.app/privacy) identifies `@streamlabs/obs-studio-node`, the same OBS-based package used by Rewind.
 - **Similar functionality does not establish copied source code.** Replay buffers, hotkeys, recording, and game detection are features that can be independently implemented.
 
-Revidi's internal implementation is unknown to me. The code available for inspection is Rewind's, and it is public.
+  
+**Revidi's internal implementation is unknown to me. The code available for inspection is Rewind's, and it is public. The code itself is independently generated: my AI agent worked from public dependencies, OBS's public documentation, and my own direction. Revidi'ssource code was never an input — it was never available. Where any generated code resembles anything, it reflects the same public libraries and the same engine, not access to Revidi's files.**
+
 
 ## Revidi vs. Rewind
 
