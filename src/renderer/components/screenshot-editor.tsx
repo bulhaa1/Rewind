@@ -196,7 +196,7 @@ export function ScreenshotEditor({ shot, onClose }: { shot: ScreenshotInfo; onCl
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button
               size="sm"
-              variant={cropMode ? 'default' : 'outline'}
+              variant={cropMode ? 'primary' : 'outline'}
               onClick={() => {
                 setCropMode((v) => !v)
                 setSel(null)
