@@ -601,6 +601,7 @@ export class AudioDeviceChannels {
 
   /** Endpoint inventory plus the user's added channels, with track assignment resolved. */
   getDevices(): AudioDevice[] {
+    this.reconcileChannels()
     const stored = getSetting('deviceChannels')
     const available = this.ready ? listDevices(this.deps.obs()) : []
     const map = new Map<string, AudioDevice>()
@@ -658,12 +659,38 @@ export class AudioDeviceChannels {
     return undefined
   }
 
+  /**
+   * Releases any added channel whose endpoint is now served by its bound channel.
+   *
+   * This happens when the Windows default device flips outside the app (Adrenalin
+   * and headset software both do it) while an added channel holds what the default
+   * now resolves to: the same endpoint would be captured twice, which doubles the
+   * voice and doubles the noise. Re-checked on every inventory read, since a
+   * default flip happens with no app-side event to hook.
+   */
+  private reconcileChannels(): void {
+    if (!this.ready || this.channels.size === 0) return
+    for (const id of [...this.channels.keys()]) {
+      const d = listDevices(this.deps.obs(), true).find((x) => x.id === id)
+      if (!d) continue
+      if (this.coveredBy(d)) this.removeChannel(id)
+    }
+  }
+
+  /** Same check as above, runnable right after a binding change. */
+  reconcileBindings(): void {
+    this.reconcileChannels()
+  }
+
   addChannel(id: string): void {
     const stored = getSetting('deviceChannels')
     if (stored[id]) return
 
     const known = listDevices(this.deps.obs(), true).find((d) => d.id === id)
     if (!known) throw new Error('Audio device not found')
+    if (this.coveredBy(known)) {
+      throw new Error(`"${known.label}" is already captured by its bound audio channel`)
+    }
     if (Object.keys(stored).length >= SLOT.DEVICE_MAX) {
       throw new Error(`Cannot capture more than ${SLOT.DEVICE_MAX} extra audio devices`)
     }

@@ -80,6 +80,8 @@ export const IPC = {
   openScreenshot: 'open-screenshot',
   showScreenshotInFolder: 'show-screenshot-in-folder',
   deleteScreenshot: 'delete-screenshot',
+  getScreenshotData: 'get-screenshot-data',
+  overwriteScreenshot: 'overwrite-screenshot',
 
   // audio
   getAudioLevels: 'get-audio-levels',
@@ -135,6 +137,8 @@ export const IPC = {
   setLaunchOnStartup: 'set-launch-on-startup',
   getStartMinimized: 'get-start-minimized',
   setStartMinimized: 'set-start-minimized',
+  getTheme: 'get-theme',
+  setTheme: 'set-theme',
 
   // notifications
   notificationClick: 'notification-click',

@@ -14,6 +14,7 @@ import {
   QUICK_CLIP_MIN,
   RECORDINGS_SUBDIR,
   SCREENSHOT_SUBDIR,
+  THEMES,
   VISUAL_QUALITIES,
   clampQuickClip,
 } from '@shared/constants.js'
@@ -36,6 +37,7 @@ import type {
   IpcResult,
   ObsStatus,
   ScreenshotInfo,
+  ThemeName,
 } from '@shared/types.js'
 
 const log = scope('IPC')
@@ -827,6 +829,37 @@ export function registerIpc(s: Services): void {
     return ok()
   })
 
+  handle(IPC.getScreenshotData, async (file: unknown) => {
+    const resolved = resolveScreenshot(file, s, 'get-screenshot-data')
+    if ('error' in resolved) return resolved
+    try {
+      return ok(`data:image/png;base64,${fs.readFileSync(resolved.path).toString('base64')}`)
+    } catch (e) {
+      filesLog.error('Failed to read screenshot:', e)
+      return fail(messageOf(e))
+    }
+  })
+
+  handle(IPC.overwriteScreenshot, async (file: unknown, dataUrl: unknown) => {
+    const resolved = resolveScreenshot(file, s, 'overwrite-screenshot')
+    if ('error' in resolved) return resolved
+    const PREFIX = 'data:image/png;base64,'
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith(PREFIX)) return fail('Invalid image data')
+    const buf = Buffer.from(dataUrl.slice(PREFIX.length), 'base64')
+    if (buf.length === 0) return fail('Invalid image data')
+    try {
+      fs.writeFileSync(resolved.path, buf)
+      filesLog.info(`Screenshot edited in place: ${resolved.path}`)
+      // The thumbnail cache on disk is now stale; drop it so the rail re-renders.
+      const { deleteThumbnail } = require('./thumbnail.js')
+      deleteThumbnail(resolved.path)
+      return ok()
+    } catch (e) {
+      filesLog.error('Failed to write edited screenshot:', e)
+      return fail(messageOf(e))
+    }
+  })
+
   handle(IPC.deleteScreenshot, async (file: unknown) => {
     const resolved = resolveScreenshot(file, s, 'delete-screenshot')
     if ('error' in resolved) return resolved
@@ -1011,6 +1044,7 @@ export function registerIpc(s: Services): void {
       const store = require('./store.js')
       store.setSetting(channel === 'desktop' ? 'desktopDeviceId' : 'micDeviceId', deviceId)
       obsCore().applyChannelDevice(channel)
+      audioDevices().reconcileBindings()
       return ok()
     } catch (e) {
       return fail(`Failed to set ${channel} device: ${messageOf(e)}`)
@@ -1232,7 +1266,7 @@ export function registerIpc(s: Services): void {
     applyEncoderSetting('nvencPreset', value, ['p3', 'p4', 'p5'], 'Invalid preset value', 'chain'),
   )
   handle(IPC.setVisualQuality, (value: unknown) =>
-    applyEncoderSetting('visualQuality', value, ['low', 'standard', 'high', 'highest'], 'Invalid visual quality value', 'chain'),
+    applyEncoderSetting('visualQuality', value, ['low', 'balanced', 'quality'], 'Invalid visual quality value', 'chain'),
   )
 
   handle(IPC.setVideoCodec, async (value: unknown) => {
@@ -1321,6 +1355,16 @@ export function registerIpc(s: Services): void {
     (v) => app.setLoginItemSettings({ openAtLogin: v }),
   )
   toggle(IPC.getStartMinimized, IPC.setStartMinimized, 'startMinimized', 'Start minimized')
+
+  handle(IPC.getTheme, () => ok(getSetting('theme')))
+  handle(IPC.setTheme, (value: unknown) => {
+    if (typeof value !== 'string' || !THEMES.some((t) => t.value === value)) {
+      return fail('Invalid theme')
+    }
+    setSetting('theme', value as ThemeName)
+    log.info(`Theme: ${value}`)
+    return ok()
+  })
 
   // -------------------------------------------------------------------------
   // Hotkeys

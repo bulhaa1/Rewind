@@ -3,12 +3,17 @@
 The working list. `README.md` carries a short public-facing subset; this is the
 full thing, including things that are believed fine but have not been tested.
 
-Last updated: 2026-10-14, at the 1.3.1 hotfix: monitor capture moved to Windows Graphics
-Capture after the installed build was found to write flat black clips — DXGI desktop
-duplication delivers nothing to a process that is only system-DPI aware, which the
-packaged obs64 is once obs-browser (CEF) is excluded from the installer. Also in 1.3.1:
-the Record row fades out while the buffer is off, and the redundant "Auto detect launched
-game" card is gone from the capture source picker.
+Last updated: 2026-10-16, at 1.5.0 — the final release (end of life). This
+update adds the encoder preset (Low / Balanced /
+Quality, with migration), a screenshot editor (crop, brightness/contrast/saturation,
+revert, overwrite with confirm), themes with per-theme fonts, and removes every
+network path: the update button no longer checks for anything. Four fixes landed,
+unverified on real hardware until noted below: monitor capture on scaled (HiDPI)
+displays recorded a zoomed quarter of the screen; a capture-source switch during an
+engine reinitialisation crashed on a null scene and left the buffer paused on every
+detector tick; an elevated game process was treated as exited and capture dropped to
+the desktop; and the microphone picker hid the device "Windows Default" resolves to
+while an added device channel could capture the same endpoint twice.
 
 Previous: 1.3.0, the clip editor (trim, per-track audio with waveforms and live
 monitoring, replace-or-copy), compression on the GPU with a source-relative quality ladder
@@ -300,6 +305,36 @@ recording with the relevant devices configured.
 ---
 
 ## Fixed, unverified
+
+### 1.5.0: four fixes found by diagnosis and audit
+
+Found from a 1.4.1 user's logs plus a whole-repository read (same basis as the 1.3.0
+audit: reasoned cases, not measured ones, so they live here until probed).
+
+- **Quarter-screen recordings on scaled displays.** On a display at 200% scaling, OBS's
+  monitor label reports the DPI-virtualized size (1280x800 for a 2560x1600 panel). The
+  scene-item fit was computed from that label, scaled the item 2x, and the recording
+  showed a zoomed top-left quarter of the screen — "recording only records 1/4 of the
+  screen". `capture.ts` now re-fits the live source from the frame size OBS itself
+  reports through the source-size callback, which is correct whether the label is right
+  or wrong. **Probe:** clip a 200%-scaled display and check the clip shows the full
+  screen; nothing here can run that without the display.
+- **Crash loop when a source switch met a reinitialising engine.** The scene is released
+  before reinit finishes; a detector tick in that window hit `scene.add` on null and
+  logged "Failed to install capture source; leaving the buffer paused" on every poll
+  (in the wild: for minutes). The switch now skips the install with a log line when no
+  scene exists.
+- **Elevated games dropped from capture.** The detector's liveness probe treated any
+  `process.kill(pid, 0)` failure as "game exited"; for a game running elevated the call
+  fails with EPERM while the process is alive, so capture switched back to the desktop
+  mid-game. Only "no such process" counts as an exit now.
+- **Microphone picker hid the default device, and one device could be captured twice.**
+  The endpoint "Windows Default" resolves to was filtered out of the picker (read as
+  "not detecting my microphone"), and a device channel added while the default pointed
+  elsewhere kept capturing when the default flipped back onto it — the same input twice
+  on two tracks. The picker now names the resolved default and lists every input; the
+  audio service releases a device channel its bound channel covers, checked on binding
+  change and every inventory read.
 
 ### The 1.3.0 audit (twenty findings, commit `8149895`)
 

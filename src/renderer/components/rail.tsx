@@ -9,6 +9,7 @@ import { QK, clipsQuery, hotkeysQuery, screenshotsQuery } from '../lib/queries'
 import { SPRING_SNAPPY, SPRING_SOFT } from '../lib/motion'
 import { useBackgroundAction } from '../lib/context'
 import { Badge, Button, Dialog, InlineSpinner, cn } from './ui'
+import { ScreenshotEditor } from './screenshot-editor'
 import type { ClipInfo, DeleteScope, ScreenshotInfo } from '@shared/types.js'
 
 const OVERSCAN = 4
@@ -263,10 +264,12 @@ function ClipCard({
 function ScreenshotCard({
   shot,
   thumbHeight,
+  onEdit,
   onDelete,
 }: {
   shot: ScreenshotInfo
   thumbHeight: number
+  onEdit: () => void
   onDelete: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -277,8 +280,8 @@ function ScreenshotCard({
         role="button"
         tabIndex={0}
         data-testid="rail-card"
-        title={`Open ${shot.name}`}
-        onClick={() => void api.openScreenshot(shot.path)}
+        title={`Edit ${shot.name}`}
+        onClick={onEdit}
         onContextMenu={(e) => {
           e.preventDefault()
           setMenuOpen(true)
@@ -286,7 +289,7 @@ function ScreenshotCard({
         onKeyDown={(e) => {
           if (e.key !== 'Enter' && e.key !== ' ') return
           e.preventDefault()
-          void api.openScreenshot(shot.path)
+          onEdit()
         }}
         className={cn(
           'group flex cursor-pointer flex-col rounded-lg border bg-surface p-2 transition-colors',
@@ -312,6 +315,9 @@ function ScreenshotCard({
           </div>
           <span onClick={(e) => e.stopPropagation()}>
             <CardMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <Item icon={<ImageIcon className="h-3.5 w-3.5" strokeWidth={1.5} />} onSelect={() => void api.openScreenshot(shot.path)}>
+                Open in viewer
+              </Item>
               <Item
                 icon={<FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />}
                 onSelect={() => void api.showScreenshotInFolder(shot.path)}
@@ -358,6 +364,7 @@ export function Rail({
   const { data: hotkeys } = useQuery(hotkeysQuery)
 
   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null)
+  const [editingShot, setEditingShot] = useState<ScreenshotInfo | null>(null)
   const [renaming, setRenaming] = useState<ClipInfo | null>(null)
 
   // Memoized: the rail re-renders on menu opens, width drags and view switches, and
@@ -531,6 +538,7 @@ export function Rail({
                     <ScreenshotCard
                       shot={item as ScreenshotInfo}
                       thumbHeight={thumb}
+                      onEdit={() => setEditingShot(item as ScreenshotInfo)}
                       onDelete={() => setDeleteTarget({ path: item.path, name: (item as ScreenshotInfo).name })}
                     />
                   )}
@@ -541,6 +549,8 @@ export function Rail({
           </div>
         </div>
       )}
+
+      {editingShot ? <ScreenshotEditor shot={editingShot} onClose={() => setEditingShot(null)} /> : null}
 
       <Dialog
         open={!!deleteTarget}

@@ -20,6 +20,7 @@ import type {
   SaveClipArgs,
   ScreenshotInfo,
   StorageUsage,
+  ThemeName,
   WindowInfo,
 } from '@shared/types.js'
 
@@ -137,6 +138,12 @@ export interface RewindApi {
   openScreenshot(file: string): Promise<IpcResult>
   showScreenshotInFolder(file: string): Promise<IpcResult>
   deleteScreenshot(file: string): Promise<IpcResult>
+  getScreenshotData(file: string): Promise<IpcResult<string>>
+  overwriteScreenshot(file: string, dataUrl: string): Promise<IpcResult>
+
+  // Theme
+  getTheme(): Promise<IpcResult<ThemeName>>
+  setTheme(value: ThemeName): Promise<IpcResult>
 
   // Audio
   getAudioLevels(): Promise<IpcResult<{ desktop: AudioLevel; microphone: AudioLevel }>>

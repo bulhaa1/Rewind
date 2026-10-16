@@ -469,7 +469,10 @@ export class GameDetector {
     if (this.activeGamePid === 0) return
     try {
       process.kill(this.activeGamePid, 0)
-    } catch {
+    } catch (e) {
+      // EPERM means the process is alive but out of our reach — the normal case
+      // for a game running elevated. Only "no such process" is an exit.
+      if ((e as NodeJS.ErrnoException)?.code === 'EPERM') return
       log.info(`Game process exited (PID ${this.activeGamePid}), switching back to display`)
       void this.switchBackToDisplay()
     }

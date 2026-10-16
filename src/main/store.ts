@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import { DEFAULT_SETTINGS } from '@shared/constants.js'
-import type { PersistedSettings } from '@shared/types.js'
+import type { PersistedSettings, ThemeName } from '@shared/types.js'
 import { scope } from './logger.js'
 
 const log = scope('Store')
@@ -15,6 +15,8 @@ class JsonStore<T extends object> {
   constructor(
     private readonly filePath: string,
     private readonly defaults: T,
+    /** Applied to every freshly parsed file, before it is cached. */
+    private readonly migrate?: (data: T) => T,
   ) {}
 
   /** Last good copy. Also means one parse per run instead of one per read. */
@@ -29,7 +31,8 @@ class JsonStore<T extends object> {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object') {
         this.unreadable = false
-        return (this.cached = parsed as T)
+        const data = parsed as T
+        return (this.cached = this.migrate ? this.migrate(data) : data)
       }
       this.backupCorrupt()
     } catch (e) {
@@ -98,11 +101,37 @@ class JsonStore<T extends object> {
   }
 }
 
-function storeFile<T extends object>(name: string, defaults: T): JsonStore<T> {
-  return new JsonStore<T>(path.join(app.getPath('userData'), `${name}.json`), defaults)
+function storeFile<T extends object>(name: string, defaults: T, migrate?: (data: T) => T): JsonStore<T> {
+  return new JsonStore<T>(path.join(app.getPath('userData'), `${name}.json`), defaults, migrate)
 }
 
-export const settings: JsonStore<PersistedSettings> = storeFile('settings', DEFAULT_SETTINGS)
+/**
+ * Pre-1.5.0 quality tier names mapped onto the three encoder presets. The old
+ * middle tiers collapse into "balanced"; "highest" becomes "quality".
+ */
+const QUALITY_MIGRATION: Record<string, PersistedSettings['visualQuality']> = {
+  standard: 'balanced',
+  high: 'balanced',
+  highest: 'quality',
+}
+
+const THEME_NAMES: ThemeName[] = ['graphite', 'terminal', 'grotesk']
+
+function migrateSettings(data: PersistedSettings): PersistedSettings {
+  const mapped = QUALITY_MIGRATION[data.visualQuality as string]
+  if (mapped) data.visualQuality = mapped
+  if (Array.isArray(data.profiles)) {
+    for (const p of data.profiles) {
+      const q = QUALITY_MIGRATION[p?.visualQuality as string]
+      if (q) p.visualQuality = q
+    }
+  }
+  // Themes removed after release fall back to the default (a stored "paper").
+  if (!THEME_NAMES.includes(data.theme as ThemeName)) data.theme = 'graphite'
+  return data
+}
+
+export const settings: JsonStore<PersistedSettings> = storeFile('settings', DEFAULT_SETTINGS, migrateSettings)
 
 /** Typed read/write over the settings store. */
 export function getSetting<K extends keyof PersistedSettings>(key: K): PersistedSettings[K] {

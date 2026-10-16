@@ -1446,7 +1446,7 @@ async function runProfilesSelfTest(): Promise<void> {
     const { planProfileChange, getProfiles, captureActiveProfileValues, writeProfileValues } =
       require('./profiles.js') as typeof import('./profiles.js')
 
-    const base = { fps: 30, visualQuality: 'high' as const, bufferDuration: 60 }
+    const base = { fps: 30, visualQuality: 'balanced' as const, bufferDuration: 60 }
     expect(planProfileChange(base, { ...base, name: 'x' }) === 'none', 'tier: no change -> none')
     expect(planProfileChange(base, { ...base, bufferDuration: 120, name: 'x' }) === 'duration', 'tier: length -> duration')
     expect(planProfileChange(base, { ...base, visualQuality: 'low', name: 'x' }) === 'chain', 'tier: quality -> chain')

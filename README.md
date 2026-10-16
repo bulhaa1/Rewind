@@ -1,5 +1,7 @@
 # Rewind
 
+> **Rewind is end of life.** Development has stopped, and 1.5.0 is the final release. The app keeps working as it is, and the source stays public under GPL-2.0-or-later — fork it and build on it. The update button no longer checks for anything.
+
 <img width="990" alt="Promo: the buffer dial fills under a spotlight, a keypress saves a clip into the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/promo-teaser.gif" />
 
 
@@ -32,6 +34,18 @@ Rewind is built around a simple idea: your capture software should work for you,
 No unnecessary distractions. No cloud dependency. Just your gameplay, captured locally.
 
 Rewind — Play. Capture. Keep.
+
+## What's new in 1.5.0
+
+The final release. Rewind is end of life after this version — see the banner above.
+
+- **Encoder Preset** — Low / Balanced / Quality replaces the four-tier Visual Quality (CQP 28 / 23 / 16). Your saved setting and profiles migrate automatically.
+- **Screenshot editor** — click a screenshot to crop it and adjust brightness, contrast and saturation. Saving overwrites the original after a confirm; Revert crop restores the untouched image.
+- **Themes** — Graphite, Terminal and Grotesk, each with its own interface font, switchable from the titlebar.
+- **Microphone picker fixes** — every input is listed by name, including what "Windows Default" resolves to, and a device is never captured twice.
+- **Fixed: quarter-screen recordings** on displays with scaling (200% and similar) — the capture is now fitted from the source's real frame size.
+- **Fixed:** a crash loop when the capture engine reinitialised mid-switch, and elevated games being dropped from capture.
+- **Removed:** the Discord button. The update panel no longer contacts the network — the app now makes no network request at all.
 
 ## What's new in 1.4.1
 
@@ -107,10 +121,9 @@ the usual per-user places, and the in-app updater is off, because updating a por
 install a second one. To move up a version, download the new zip.
 
 Recording, editing and clips are all local files. Rewind contains no analytics,
-no telemetry and no crash reporting, and it makes no network request on its own —
-the only way it ever contacts the network is if you press **Check for updates**
-in the header (see [Updating](#updating)). Nothing polls, nothing downloads
-unasked, and quitting the app does not install an update you have not applied.
+no telemetry and no crash reporting, and it makes no network request at all —
+since 1.5.0 even the manual update check is gone (see [Updating](#updating)).
+Nothing polls, nothing downloads anything, and nothing is ever uploaded.
 
 **Windows x64 only.** There is no ARM or 32-bit build and no non-Windows build YET.
 
@@ -163,25 +176,11 @@ so it can be pasted straight into a chat.
 
 ## Updating
 
-Rewind is privacy-first, and the updater is built the same way: **it never checks
-for updates on its own.** There is no background poll, no silent download, and
-quitting the app never installs anything. You only hear about a new version when
-you go looking for it.
-
-To update:
-
-1. Click the download-arrow icon at the top-right of the panel, next to the
-   settings gear.
-2. Press **Check for updates**.
-3. If a version is available, press **Download**, then **Restart and install**.
-   The installer runs silently — no wizard, no clicks — and the app comes back up
-   on the new version. Your clips, settings and hotkeys carry over, and what the
-   updater downloaded is cleared from disk shortly afterwards instead of piling up.
-
-<img width="268" alt="The update tab: 'Rewind only contacts the network when you check', with a Check for updates button" src="assets/preview/update-tab.png" />
-
-The same tab shows why if a check fails, and nothing is ever downloaded until you
-press Download.
+Rewind is end of life, and 1.5.0 is the last version. **The update button no longer
+checks for updates** — it explains that development has stopped and links to the
+source. The app makes no network request, ever: no check, no download, no install.
+If a new version ever appears on this repository's releases page, download it from
+there by hand.
 
 What your machine can encode, and what Rewind does when it cannot, is documented in
 [`docs/hardware-compatibility.md`](docs/hardware-compatibility.md) — including a
@@ -256,7 +255,7 @@ GPL-2.0-or-later. See [LICENSE](LICENSE).
 GPL-3.0-or-later, and bare `GPL-2.0` in SPDX terms means *-only*, which cannot be
 combined with GPL-3.0. OBS Studio and `obs-studio-node` are GPL-2.0.
 
-Inspired by work from @toasterfork. Rewind is an entirely independent implementation designed by analyzing external software behavior and building equivalent functionality on top of the OBS engine.
+Inspired by work from toasterfork on Discord. Rewind is an entirely independent implementation designed by analyzing external software behavior and building equivalent functionality on top of the OBS engine.
 
 Bundled third-party components keep their own licences, including OBS Studio
 (GPL-2.0), ffmpeg (GPL), koffi (MIT), uiohook-napi (MIT) and Electron (MIT).

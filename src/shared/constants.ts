@@ -6,7 +6,7 @@
  * of being scattered through the encoder and buffer code. Changing a value here is
  * a deliberate change to how Rewind behaves, not a refactor.
  */
-import type { CaptureMode, EncoderVendor, VideoCodec } from './types.js'/** OBS source names. These three exist purely to satisfy the 0.25 replay-buffer API. */
+import type { CaptureMode, EncoderVendor, ThemeName, VideoCodec } from './types.js'/** OBS source names. These three exist purely to satisfy the 0.25 replay-buffer API. */
 export const OBS_SOURCE_NAMES = {
   replayEncoder: 'rewind-replay-encoder',
   recordingPlaceholder: 'rewind-recording-placeholder',
@@ -55,9 +55,9 @@ export const clampQuickClip = (seconds: number) =>
 export const PROFILE_COUNT_MAX = 4
 
 export const DEFAULT_PROFILES: import('./types.js').Profile[] = [
-  { name: 'Balanced', bufferDuration: 60, fps: 30, visualQuality: 'high' },
-  { name: 'Long buffer', bufferDuration: 120, fps: 30, visualQuality: 'standard' },
-  { name: 'Smooth', bufferDuration: 30, fps: 60, visualQuality: 'high' },
+  { name: 'Balanced', bufferDuration: 60, fps: 30, visualQuality: 'balanced' },
+  { name: 'Long buffer', bufferDuration: 120, fps: 30, visualQuality: 'balanced' },
+  { name: 'Smooth', bufferDuration: 30, fps: 60, visualQuality: 'balanced' },
   { name: 'Light', bufferDuration: 60, fps: 30, visualQuality: 'low' },
 ]
 
@@ -93,11 +93,12 @@ export const DEFAULT_SETTINGS = {
   // Off by default: a launch that shows nothing is indistinguishable from a launch
   // that failed, so it is only worth switching on once there is a tray habit.
   startMinimized: false,
+  theme: 'graphite' as ThemeName,
   fps: 30,
   nvencMultipass: 'disabled',
   nvencPreset: 'p4',
   outputResolution: 'native',
-  visualQuality: 'high',
+  visualQuality: 'balanced',
   videoCodec: 'h264' as VideoCodec,
   videoEncoder: 'auto' as EncoderVendor,
   profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
@@ -112,6 +113,13 @@ export const DEFAULT_SETTINGS = {
 
 /** Screenshots default to `<outputPath>/Screenshots`. */
 export const SCREENSHOT_SUBDIR = 'Screenshots'
+
+/** The theme picker's entries, in display order. Palette + font live in index.css. */
+export const THEMES: { value: ThemeName; label: string }[] = [
+  { value: 'graphite', label: 'Graphite' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'grotesk', label: 'Grotesk' },
+]
 
 /**
  * Folders the app owns inside the clips root.
@@ -177,25 +185,23 @@ export const QSV_H264_LEGACY = 'obs_qsv11'
 
 export const X264_ENCODER = 'obs_x264'
 
-export type VisualQuality = 'low' | 'standard' | 'high' | 'highest'
+export type VisualQuality = 'low' | 'balanced' | 'quality'
 
 /** Every quality tier, in the order the settings panel shows them. */
-export const VISUAL_QUALITIES: VisualQuality[] = ['low', 'standard', 'high', 'highest']
+export const VISUAL_QUALITIES: VisualQuality[] = ['low', 'balanced', 'quality']
 
 /** Constant-QP targets for hardware encoders. */
 export const CQP_BY_QUALITY: Record<VisualQuality, number> = {
   low: 28,
-  standard: 23,
-  high: 20,
-  highest: 16,
+  balanced: 23,
+  quality: 16,
 }
 
 /** VBR bitrate targets (kbps) for x264. */
 export const VBR_KBPS_BY_QUALITY: Record<VisualQuality, number> = {
   low: 4000,
-  standard: 8000,
-  high: 12000,
-  highest: 20000,
+  balanced: 8000,
+  quality: 20000,
 }
 
 /** Keyframe interval, in seconds. */
@@ -391,9 +397,8 @@ export const NVENC_PRESET_OPTIONS = [
 
 export const VISUAL_QUALITY_OPTIONS = [
   { value: 'low', label: 'Low (smallest files)' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'high', label: 'High (default)' },
-  { value: 'highest', label: 'Highest (archival)' },
+  { value: 'balanced', label: 'Balanced (default)' },
+  { value: 'quality', label: 'Quality (largest files)' },
 ]
 
 export const CODEC_OPTIONS = [

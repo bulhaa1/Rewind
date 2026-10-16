@@ -340,10 +340,22 @@ function AudioChannelEditor({ channel, label }: { channel: AudioChannel; label: 
   const selectable = ofKind.filter((d) => d.available && !d.added && !d.coveredBy)
   const added = ofKind.filter((d) => d.added)
   const boundMissing = bound !== 'default' && !ofKind.some((d) => d.id === bound && d.available)
+  // The endpoint Windows resolves "default" to, for this channel's kind.
+  const systemDefault = ofKind.find((d) => d.isSystemDefault && d.available)
 
+  // Every available endpoint is selectable by name — including the one the
+  // default binding already covers, which previously vanished from the list and
+  // read as "my microphone is not detected". Covered entries are marked instead.
   const deviceOptions: Option<string>[] = [
-    { value: 'default', label: 'Windows Default' },
-    ...selectable.map((d) => ({ value: d.id, label: d.label })),
+    { value: 'default', label: systemDefault ? `Windows Default — ${systemDefault.label}` : 'Windows Default' },
+    ...ofKind
+      .filter((d) => d.available && !d.added)
+      .map((d) => ({
+        value: d.id,
+        // Only marked while the default binding covers it; an explicit bind of
+        // the same device reports coveredBy too, but is not "the default".
+        label: bound === 'default' && d.coveredBy ? `${d.label} (Windows Default)` : d.label,
+      })),
   ]
 
   const commit = useCallback(
@@ -801,8 +813,8 @@ function QualitySection() {
           />
         </Row>
 
-        <Row label="Visual Quality" description="How much detail the encoder preserves per frame">
-          <SettingSelect binding={SETTINGS.visualQuality} initial="high" options={VISUAL_QUALITY_OPTIONS} label="Visual Quality" />
+        <Row label="Encoder Preset" description="How much detail the encoder preserves per frame">
+          <SettingSelect binding={SETTINGS.visualQuality} initial="balanced" options={VISUAL_QUALITY_OPTIONS} label="Encoder Preset" />
         </Row>
 
         <Row label="Frame Rate" description="Frames per second encoded">
@@ -814,8 +826,8 @@ function QualitySection() {
             <Row label="Multipass Encoding" description="Whether NVENC analyzes each frame twice">
               <SettingSelect binding={SETTINGS.nvencMultipass} initial="disabled" options={MULTIPASS_OPTIONS} label="Multipass Encoding" />
             </Row>
-            <Row label="Encoder Preset" description="How much effort the encoder spends per frame">
-              <SettingSelect binding={SETTINGS.nvencPreset} initial="p4" options={NVENC_PRESET_OPTIONS} label="Encoder Preset" />
+            <Row label="NVENC Preset" description="How much effort the encoder spends per frame">
+              <SettingSelect binding={SETTINGS.nvencPreset} initial="p4" options={NVENC_PRESET_OPTIONS} label="NVENC Preset" />
             </Row>
           </>
         ) : null}
