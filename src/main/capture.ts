@@ -68,6 +68,8 @@ export class CaptureManager {
   private lastWindowListProbeAt = 0
   private switchMutex = new Mutex()
   private sourceGeneration = 0
+  /** Source size the current fit was computed from; a repeat report is a no-op. */
+  private fittedFrom: { width: number; height: number } | null = null
   private hookWaiter: { sourceName: string; processName: string; resolve: () => void } | null = null
   private onHookFallback = false
   /** True while the buffer is paused; no source should be live in that state. */
@@ -134,6 +136,32 @@ export class CaptureManager {
     if (waiter && sources.some((s) => s.name === waiter.sourceName && s.width > 0)) {
       waiter.resolve()
     }
+
+    /*
+     * Fit from the source's reported frame size, not from the monitor label.
+     *
+     * On a scaled display OBS's monitor label can be the DPI-virtualized size
+     * (1280x800 for a 2560x1600 panel), so the label-based fit scaled the item
+     * 2x and the recording showed a zoomed quarter of the screen. OBS reports
+     * each source's true frame size here; re-fitting from it is correct whether
+     * the label was right or wrong. Keyed by source name, so a re-created source
+     * always re-fits once.
+     */
+    const name = this.displaySource?.name
+    if (!name || !this.displaySceneItem) return
+    const s = sources.find((x) => x.name === name && x.width > 0 && x.height > 0)
+    if (!s) return
+    if (this.fittedFrom?.width === s.width && this.fittedFrom?.height === s.height) return
+    this.fittedFrom = { width: s.width, height: s.height }
+    const scale = Math.min(this.canvasWidth / s.width, this.canvasHeight / s.height)
+    this.displaySceneItem.scale = { x: scale, y: scale }
+    this.displaySceneItem.position = {
+      x: Math.round((this.canvasWidth - s.width * scale) / 2),
+      y: Math.round((this.canvasHeight - s.height * scale) / 2),
+    }
+    log.info(
+      `Source fitted from reported size: src=${s.width}x${s.height} canvas=${this.canvasWidth}x${this.canvasHeight} scale=${scale.toFixed(3)}`,
+    )
   }
 
   // -------------------------------------------------------------------------
@@ -420,6 +448,7 @@ export class CaptureManager {
       /* noop */
     }
     this.displaySource = null
+    this.fittedFrom = null
   }
 
   /**
@@ -438,6 +467,14 @@ export class CaptureManager {
     // source change made in the paused state costs nothing now.
     if (this.capturePaused) {
       log.info('Capture is paused; the source change applies on resume')
+      return
+    }
+
+    // The scene is released before the engine finishes reinitialising. A detector
+    // tick in that window used to crash here (`scene.add` on null) on every poll
+    // until it recovered on its own; skipping the install is the correct outcome.
+    if (!this.scene) {
+      log.warn('No capture scene (engine reinitialising); the source change applies when it is ready')
       return
     }
 

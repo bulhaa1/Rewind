@@ -20,6 +20,9 @@ export type AudioChannel = 'desktop' | 'microphone'
 
 export type DeviceKind = 'output' | 'input'
 
+/** UI theme: palette + interface font, applied via `data-theme` on the root. */
+export type ThemeName = 'graphite' | 'terminal' | 'grotesk'
+
 export type ObsStatus = 'initializing' | 'ready' | 'paused' | 'saving' | 'error'
 
 export type BufferStatus = 'recorded' | 'saved' | 'screenshot' | 'buffer-on' | 'buffer-off' | 'error'
@@ -72,11 +75,14 @@ export interface PersistedSettings {
    * ways back in, which is what makes it safe to leave switched on.
    */
   startMinimized: boolean
+  /** UI theme: palette + interface font. See `THEMES` in constants. */
+  theme: ThemeName
   fps: number
   nvencMultipass: 'disabled' | 'qres'
   nvencPreset: 'p3' | 'p4' | 'p5'
   outputResolution: 'native' | '1080p' | '720p'
-  visualQuality: 'low' | 'standard' | 'high' | 'highest'
+  /** Encoder preset: how much detail clips preserve. See CQP/VBR tables in constants. */
+  visualQuality: 'low' | 'balanced' | 'quality'
   videoCodec: VideoCodec
   videoEncoder: EncoderVendor
   /** Capture profiles the user defines. Edited in Settings; switched from the deck. */
@@ -111,7 +117,7 @@ export interface Profile {
   name: string
   bufferDuration: number
   fps: number
-  visualQuality: 'low' | 'standard' | 'high' | 'highest'
+  visualQuality: 'low' | 'balanced' | 'quality'
 }
 
 export interface MonitorInfo {

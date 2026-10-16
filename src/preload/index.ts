@@ -92,6 +92,10 @@ api.getScreenshotThumbnail = invoke(IPC.getScreenshotThumbnail)
 api.openScreenshot = invoke(IPC.openScreenshot)
 api.showScreenshotInFolder = invoke(IPC.showScreenshotInFolder)
 api.deleteScreenshot = invoke(IPC.deleteScreenshot)
+api.getScreenshotData = invoke(IPC.getScreenshotData)
+api.overwriteScreenshot = invoke(IPC.overwriteScreenshot)
+api.getTheme = invoke(IPC.getTheme)
+api.setTheme = invoke(IPC.setTheme)
 
 // Audio
 api.getAudioLevels = invoke(IPC.getAudioLevels)

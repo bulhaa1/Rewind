@@ -4,6 +4,8 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource/geist-mono/400.css';
 @import '@fontsource/geist-mono/500.css';
+@import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/space-grotesk';
 
 /*
  * Rewind design tokens.
@@ -62,6 +64,50 @@
   --shadow-pop: 0 2px 6px oklch(0% 0 0 / 0.5), 0 16px 32px oklch(0% 0 0 / 0.45);
 
   --radius: 0.5rem;
+}
+
+/*
+ * Themes.
+ *
+ * A theme is a palette plus an interface font, applied by setting `data-theme`
+ * on the document root (see useTheme in lib/hooks.ts). The @theme block above
+ * is Graphite, the default; each block below re-declares the tokens a theme
+ * changes, and every utility that references a token picks the override up.
+ */
+:root[data-theme='terminal'] {
+  --font-sans: 'JetBrains Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-canvas: oklch(13% 0.018 150);
+  --color-surface: oklch(16% 0.02 150);
+  --color-raised: oklch(19.5% 0.022 150);
+  --color-line: oklch(25% 0.025 150);
+  --color-line-strong: oklch(33% 0.03 150);
+
+  --color-ink: oklch(90% 0.02 150);
+  --color-ink-muted: oklch(66% 0.03 150);
+  --color-ink-faint: oklch(52% 0.03 150);
+
+  --color-accent: oklch(76% 0.17 150);
+  --color-accent-dim: oklch(62% 0.15 150);
+  --color-accent-soft: oklch(76% 0.17 150 / 0.14);
+}
+
+:root[data-theme='grotesk'] {
+  --font-sans: 'Space Grotesk Variable', 'Geist Variable', 'SF Pro Display', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: oklch(15% 0.012 250);
+  --color-surface: oklch(19% 0.014 250);
+  --color-raised: oklch(23% 0.016 250);
+  --color-line: oklch(29% 0.018 250);
+  --color-line-strong: oklch(37% 0.02 250);
+
+  --color-ink: oklch(95% 0.004 250);
+  --color-ink-muted: oklch(72% 0.012 250);
+  --color-ink-faint: oklch(58% 0.014 250);
+
+  --color-accent: oklch(74% 0.14 235);
+  --color-accent-dim: oklch(60% 0.12 235);
+  --color-accent-soft: oklch(74% 0.14 235 / 0.14);
 }
 
 @keyframes rewind-scanner {

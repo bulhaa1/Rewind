@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, unwrap } from '../lib/api'
 import { QK } from '../lib/queries'
 
 /**
@@ -43,6 +43,23 @@ export function playNotificationSound(): void {
 /** Subscribes to the notification-sound event for the lifetime of the app. */
 export function useNotificationSound(): void {
   useEffect(() => api.on('play-notification-sound', playNotificationSound), [])
+}
+
+/**
+ * Applies the persisted theme to this window's root element.
+ *
+ * Every window (panel, editor, notification popup) mounts `AppEffects`, so each
+ * resolves the theme itself; the palette swap is pure CSS on `data-theme`.
+ */
+export function useTheme(): void {
+  const { data } = useQuery({
+    queryKey: QK.setting('theme'),
+    queryFn: () => unwrap(api.getTheme()),
+    staleTime: Infinity,
+  })
+  useEffect(() => {
+    document.documentElement.dataset.theme = data ?? 'graphite'
+  }, [data])
 }
 /**
  * Wires the notification popup window's close behaviour.

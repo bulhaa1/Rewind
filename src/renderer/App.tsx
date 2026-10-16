@@ -4,7 +4,7 @@ import { Toaster } from 'sonner'
 import { MotionConfig } from 'motion/react'
 import { queryClient } from './lib/queries'
 import { BackgroundActionProvider, ObsStatusProvider, useLibraryInvalidation } from './lib/context'
-import { useNotificationSound, usePopupWindow, useEditorClipPath } from './lib/hooks'
+import { useNotificationSound, usePopupWindow, useEditorClipPath, useTheme } from './lib/hooks'
 import { MainView } from './pages/MainView'
 import { SettingsView } from './components/settings/SettingsView'
 import { EditorPage } from './components/editor'
@@ -133,6 +133,7 @@ export function App() {
 
 /** Cross-cutting subscriptions that every window needs. */
 function AppEffects() {
+  useTheme()
   useNotificationSound()
   useLibraryInvalidation()
   return null
