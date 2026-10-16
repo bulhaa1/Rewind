@@ -1,4 +1,4 @@
-# Rewind and Revidi ΓÇö A Public Statement
+# Rewind and Revidi — A Public Statement
 
 **Facts, dates, and evidence you can verify yourself.**
 
@@ -6,22 +6,22 @@
 
 I built **Rewind**, an open-source clipping tool inspired by Revidi, a closed-source application developed by toasterfork on Discord. He has accused me of stealing his code and threatened a DMCA takedown against this repository.
 
-**On 10 October 2026 I contacted toasterfork on discord before starting my project asking for his blessing, and he approved it in writing** ΓÇöhis reply after 10minutes of my dm: *"Revidi is derivative at the end of the day it would be unfair for me to say no, so definitely go
+**On 10 October 2026 I contacted toasterfork on discord before starting my project asking for his blessing, and he approved it in writing** —his reply after 10minutes of my dm: *"Revidi is derivative at the end of the day it would be unfair for me to say no, so definitely go
   ahead"*, and *"there is no secret to what I've built."* **ask ur self if there is no secret why is he threatening me with a DMCA takedown on this repo?**
   
-During the dispute I said some things in a another private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me ΓÇö I apologize.
+During the dispute I said some things in a another private conversation that were angry and unfair. I got emotional over watching my first project get called stolen and that got the better of me, and that is on me — I apologize.
 
 It does not change a single fact in this statement
 
 His evidence includes a folder name in my Git history: `Revidi-Clone`.
 
-Let me be clear: **I have never had access to RevidiΓÇÖs source code.** I used AI to study its externally observable behavior, then built my own implementation using the same publicly available OBS capture engine. Rewind has its own code, UI, features, architecture, and direction.
+Let me be clear: **I have never had access to Revidi’s source code.** I used AI to study its externally observable behavior, then built my own implementation using the same publicly available OBS capture engine. Rewind has its own code, UI, features, architecture, and direction.
 
 I credited Revidi as inspiration in my early README. The development history, dependencies, and source code are available for anyone to inspect.
 
 I can't help but wonder if toasterfork is threatened by the idea of a free, open-source alternative competing with his cloud subscription model. Does he not see what's happening in the software industry? People are constantly building free, open-source alternatives to expensive commercial products, including alternatives to Adobe software. That's how competition works. No developer owns an entire category of software just because they built a product first.
 
-Revidi still lacks 120 FPS recording to this day, puts its editor behind a paywall despite advertising free local use, and ΓÇö per its own privacy policy ΓÇö ships Mixpanel analytics covering device information and public IP addresses while checking an update manifest roughly every four hours. Meanwhile, Rewind aims to offer gamers a lightweight, local-first clipping tool without unnecessary subscriptions, locked features, or complicated OBS setups.
+Revidi still lacks 120 FPS recording to this day, puts its editor behind a paywall despite advertising free local use, and — per its own privacy policy — ships Mixpanel analytics covering device information and public IP addresses while checking an update manifest roughly every four hours. Meanwhile, Rewind aims to offer gamers a lightweight, local-first clipping tool without unnecessary subscriptions, locked features, or complicated OBS setups.
 
 The whole point of open-source software is that users deserve alternatives, developers can innovate, and people shouldn't have to pay for every feature just because someone decided to monetize it. Instead of treating a free alternative as a threat, why not compete by improving the product? If Revidi is genuinely better, users will choose it. If Rewind offers more value for free, users should have the freedom to choose that, too.
 
@@ -57,7 +57,7 @@ The distinction matters: Rewind is a local-first application with no server, clo
 
 Yes, the original working folder was named `Revidi-Clone`. I had not settled on a project name and used it as a temporary development folder while building the application.
 
-The product itself was renamed **Reflect ΓåÆ Rewind** openly in the early commits. A working-directory name does not establish that source code was copied.
+The product itself was renamed **Reflect → Rewind** openly in the early commits. A working-directory name does not establish that source code was copied.
 
 After this dispute began, I rewrote Git history using `git filter-branch` to remove my personal email address and local Windows paths. The obsolete folder name was removed in the same pass. Every commit now uses my GitHub noreply identity.
 
@@ -65,8 +65,8 @@ I should have communicated that change upfront. However, **this was a privacy cl
 
 Verify it yourself:
 
-- `git log --all -S 'Revidi-Clone'` ΓÇö no remaining matches.
-- `git log --format='%ae' | sort -u` ΓÇö only `bulhaa1@users.noreply.github.com`.
+- `git log --all -S 'Revidi-Clone'` — no remaining matches.
+- `git log --format='%ae' | sort -u` — only `bulhaa1@users.noreply.github.com`.
 
 ## On the visual UI similarities
 
@@ -74,11 +74,11 @@ Both applications are built on the same open-source OBS engine
 (`@streamlabs/obs-studio-node`), and a recorder on that engine must present
 the same controls: buffer length, frame rate, quality tiers, encoder
 selection (NVENC, AMF, QSV), and capture sources. Those parameters are
-defined by OBS itself ΓÇö its public, GPL-2.0 source and documentation say
+defined by OBS itself — its public, GPL-2.0 source and documentation say
 what they are and what values they accept.
 
 The interface is built exclusively from public, permissively-licensed
-libraries ΓÇö React and Tailwind CSS (MIT), lucide-react (ISC) for icons.
+libraries — React and Tailwind CSS (MIT), lucide-react (ISC) for icons.
 When two apps use the same icon library, the icons are identical by
 definition; the dependency is declared in `package.json` for anyone to
 verify.
@@ -86,7 +86,7 @@ verify.
 Rewind's development has always been open about studying Revidi's behavior
 as an application, so it is no secret that the settings organization and
 some labels will feel familiar. Where they coincide, they are short
-functional phrases ΓÇö the same words any recorder needs on the same screen.
+functional phrases — the same words any recorder needs on the same screen.
 
 ## On the code-theft accusations
 
@@ -97,7 +97,7 @@ Three facts matter:
 - **Similar functionality does not establish copied source code.** Replay buffers, hotkeys, recording, and game detection are features that can be independently implemented.
 
   
-**Revidi's internal implementation is unknown to me. The code available for inspection is Rewind's, and it is public. The code itself is independently generated: my AI agent worked from public dependencies, OBS's public documentation, and my own direction. Revidi'ssource code was never an input ΓÇö it was never available. Where any generated code resembles anything, it reflects the same public libraries and the same engine, not access to Revidi's files.**
+**Revidi's internal implementation is unknown to me. The code available for inspection is Rewind's, and it is public. The code itself is independently generated: my AI agent worked from public dependencies, OBS's public documentation, and my own direction. Revidi'ssource code was never an input — it was never available. Where any generated code resembles anything, it reflects the same public libraries and the same engine, not access to Revidi's files.**
 
 
 ## Revidi vs. Rewind
@@ -171,7 +171,7 @@ Copyright disputes should be based on evidence of infringement, not assumptions 
 
 Revidi's source code was never available to me. Rewind's implementation uses public dependencies, and its development history and source code are available for inspection. Anyone making an allegation should identify the specific material they believe infringes their copyright.
 
-If a notice is filed, I will respond through GitHub's applicable counter-notice process under 17 U.S.C. ┬º 512(g), where appropriate. I remain open to resolving this directly, but I will not accept an accusation of code theft as established fact simply because the applications share a purpose.
+If a notice is filed, I will respond through GitHub's applicable counter-notice process under 17 U.S.C. § 512(g), where appropriate. I remain open to resolving this directly, but I will not accept an accusation of code theft as established fact simply because the applications share a purpose.
 
 ## Auditable by design
 
