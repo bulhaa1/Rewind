@@ -1,6 +1,6 @@
 # Rewind
 
-> **Rewind is end of life.** Development has stopped, and 1.5.0 is the final release. The app keeps working as it is, and the source stays public under GPL-2.0-or-later — fork it and build on it. The update button no longer checks for anything.
+> **Rewind is end of life.** Development has stopped, and 1.5.0 is the final release. A successor is already in the works: an ambitious new project that continues the work Rewind started. It is built from the ground up and is currently in late alpha stage and moving very fast, and it will bring lot of new features. Thank you for starring this repo.
 
 <img width="990" alt="Promo: the buffer dial fills under a spotlight, a keypress saves a clip into the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/promo-teaser.gif" />
 
@@ -37,7 +37,7 @@ Rewind — Play. Capture. Keep.
 
 ## What's new in 1.5.0
 
-The final release. Rewind is end of life after this version — see the banner above.
+The final release. Rewind is end of life after this version — see the banner above. This is the last release of Rewind, but not the last of the idea: an ambitious new project is on the way and continues the work. It is built from the ground up and is currently in late alpha stage, moving very fast, and it will bring lot of new features.
 
 - **Encoder Preset** — Low / Balanced / Quality replaces the four-tier Visual Quality (CQP 28 / 23 / 16). Your saved setting and profiles migrate automatically.
 - **Screenshot editor** — click a screenshot to crop it and adjust brightness, contrast and saturation. Saving overwrites the original after a confirm; Revert crop restores the untouched image.
