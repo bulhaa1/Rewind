@@ -1,6 +1,6 @@
 # Rewind
 
-> **Rewind is end of life.** Development has stopped, and 1.5.0 is the final release. A successor is already in the works: an ambitious new project that continues the work Rewind started. It is built from the ground up and is currently in late alpha stage and moving very fast, and it will bring lot of new features. Thank you for starring this repo.
+> **Rewind is end of life.** Development has stopped, and 1.5.0 is the final release. Its successor is **[BuffrX](https://github.com/bulhaa1/BuffrX)**: rebuilt from the ground up, with everything Rewind taught me built in. Same idea, a level up. BuffrX is coming in November 2026, and the [BuffrX repository](https://github.com/bulhaa1/BuffrX) is where to watch for it. Thank you for starring this repo.
 
 <img width="990" alt="Promo: the buffer dial fills under a spotlight, a keypress saves a clip into the rail, the editor trims and mixes, and the Rewind lockup closes the film" src="assets/preview/promo-teaser.gif" />
 
